@@ -15,6 +15,8 @@ load_dotenv()
 API_ID = int(os.getenv("API_ID", "0"))
 API_HASH = os.getenv("API_HASH", "")
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
+SHOW_PROGRESS = os.getenv("SHOW_PROGRESS", "1") != "0"
+PROGRESS_EVERY = float(os.getenv("PROGRESS_EVERY", "1.5"))
 
 if not API_ID or not API_HASH or not BOT_TOKEN:
     raise SystemExit("Missing API_ID, API_HASH, or BOT_TOKEN in environment.")
@@ -70,8 +72,10 @@ recent_cache = RecentCache()
 
 
 async def progress_callback(current: int, total: int, phase: str, status, start_time: float, state: dict):
+    if not SHOW_PROGRESS or status is None:
+        return
     now = time.time()
-    if current != total and now - state["last"] < 0.7:
+    if current != total and now - state["last"] < PROGRESS_EVERY:
         return
     state["last"] = now
 
@@ -92,6 +96,12 @@ async def progress_callback(current: int, total: int, phase: str, status, start_
 
 app = Client("fileconversionbot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
+@app.on_message(filters.command("start"))
+async def handle_start(client: Client, message):
+    await message.reply_text(
+        "Send me any file as a document. "
+        "If it's video/audio/photo, I'll re-upload as media with the same caption."
+    )
 
 @app.on_message(filters.document)
 async def handle_document(client: Client, message):
@@ -105,24 +115,29 @@ async def handle_document(client: Client, message):
         return
 
     caption = message.caption
-    status = await message.reply_text("Preparing...")
+    status = await message.reply_text("Preparing...") if SHOW_PROGRESS else None
 
     kind = classify_document(doc)
     if kind is None:
-        await status.edit_text("Unsupported file type.")
+        if status:
+            await status.edit_text("Unsupported file type.")
         return
 
     with tempfile.TemporaryDirectory() as tmpdir:
         state = {"last": 0.0}
         start_time = time.time()
-        download_path = await message.download(
-            file_name=tmpdir,
-            progress=progress_callback,
-            progress_args=("Downloading", status, start_time, state),
-        )
+        if SHOW_PROGRESS:
+            download_path = await message.download(
+                file_name=tmpdir,
+                progress=progress_callback,
+                progress_args=("Downloading", status, start_time, state),
+            )
+        else:
+            download_path = await message.download(file_name=tmpdir)
 
         if not download_path:
-            await status.edit_text("Download failed.")
+            if status:
+                await status.edit_text("Download failed.")
             return
 
         upload_state = {"last": 0.0}
@@ -133,7 +148,7 @@ async def handle_document(client: Client, message):
                 chat_id=message.chat.id,
                 video=download_path,
                 caption=caption,
-                progress=progress_callback,
+                progress=progress_callback if SHOW_PROGRESS else None,
                 progress_args=("Uploading video", status, upload_start, upload_state),
             )
         elif kind == "audio":
@@ -141,7 +156,7 @@ async def handle_document(client: Client, message):
                 chat_id=message.chat.id,
                 audio=download_path,
                 caption=caption,
-                progress=progress_callback,
+                progress=progress_callback if SHOW_PROGRESS else None,
                 progress_args=("Uploading audio", status, upload_start, upload_state),
             )
         elif kind == "photo":
@@ -149,7 +164,7 @@ async def handle_document(client: Client, message):
                 chat_id=message.chat.id,
                 photo=download_path,
                 caption=caption,
-                progress=progress_callback,
+                progress=progress_callback if SHOW_PROGRESS else None,
                 progress_args=("Uploading photo", status, upload_start, upload_state),
             )
         else:
@@ -158,14 +173,15 @@ async def handle_document(client: Client, message):
                 document=download_path,
                 caption=caption,
                 file_name=doc.file_name or Path(download_path).name,
-                progress=progress_callback,
+                progress=progress_callback if SHOW_PROGRESS else None,
                 progress_args=("Uploading document", status, upload_start, upload_state),
             )
 
-    try:
-        await status.delete()
-    except Exception:
-        pass
+    if status:
+        try:
+            await status.delete()
+        except Exception:
+            pass
 
 
 app.run()
