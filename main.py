@@ -93,10 +93,12 @@ async def progress_callback(current: int, total: int, phase: str, status, start_
 app = Client("fileconversionbot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
 
-@app.on_message(filters.document & ~filters.edited)
+@app.on_message(filters.document)
 async def handle_document(client: Client, message):
     doc = message.document
     if not doc:
+        return
+    if message.edit_date:
         return
 
     if not recent_cache.add(doc.file_unique_id):
