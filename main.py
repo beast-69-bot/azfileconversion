@@ -126,14 +126,15 @@ async def handle_document(client: Client, message):
     with tempfile.TemporaryDirectory() as tmpdir:
         state = {"last": 0.0}
         start_time = time.time()
+        target_path = Path(tmpdir) / (doc.file_name or "file")
         if SHOW_PROGRESS:
             download_path = await message.download(
-                file_name=tmpdir,
+                file_name=str(target_path),
                 progress=progress_callback,
                 progress_args=("Downloading", status, start_time, state),
             )
         else:
-            download_path = await message.download(file_name=tmpdir)
+            download_path = await message.download(file_name=str(target_path))
 
         if not download_path:
             if status:
