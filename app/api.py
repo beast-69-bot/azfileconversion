@@ -164,6 +164,8 @@ async def download(token: str, range: Optional[str] = Header(None)):
     ref = await store.get(token, settings.token_ttl_seconds)
     if not ref:
         raise HTTPException(status_code=404, detail="Invalid or expired token")
+    if not settings.direct_download:
+        raise HTTPException(status_code=403, detail="Download via bot only")
     if ref.access != "premium":
         raise HTTPException(status_code=403, detail="Download is premium-only")
 
@@ -235,8 +237,9 @@ async def player(token: str):
         media_tag = "audio"
 
     download_block = ""
-    if ref.access == "premium":
-        download_block = f'<p><a href="/download/{token}">Download</a></p>'
+    if ref.access == "premium" and settings.bot_username:
+        download_link = f"https://t.me/{settings.bot_username}?start=dl_{token}"
+        download_block = f'<p><a href="{download_link}">Download</a></p>'
 
     html = f"""
 <!doctype html>

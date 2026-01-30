@@ -19,6 +19,8 @@ class Settings:
     admin_ids: set[int]
     db_path: str
     public_stream: bool
+    bot_username: str
+    direct_download: bool
 
 
 def _parse_admin_ids(value: str) -> set[int]:
@@ -45,6 +47,8 @@ def get_settings() -> Settings:
     admin_ids = _parse_admin_ids(os.getenv("ADMIN_IDS", ""))
     db_path = os.getenv("DB_PATH", "data/premium.db")
     public_stream = os.getenv("PUBLIC_STREAM", "true").lower() in {"1", "true", "yes", "y"}
+    bot_username = os.getenv("BOT_USERNAME", "").lstrip("@")
+    direct_download = os.getenv("DIRECT_DOWNLOAD", "false").lower() in {"1", "true", "yes", "y"}
 
     if not api_id or not api_hash or not bot_token:
         raise SystemExit("Missing API_ID, API_HASH, or BOT_TOKEN in environment.")
@@ -65,4 +69,6 @@ def get_settings() -> Settings:
         admin_ids=admin_ids,
         db_path=db_path,
         public_stream=public_stream,
+        bot_username=bot_username,
+        direct_download=direct_download,
     )

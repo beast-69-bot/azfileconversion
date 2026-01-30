@@ -43,6 +43,56 @@ def parse_period(value: str) -> int | None:
     return int(value)
 
 
+async def send_premium_file(client: Client, user_id: int, ref: FileRef) -> None:
+    try:
+        await client.copy_message(
+            chat_id=user_id,
+            from_chat_id=ref.chat_id,
+            message_id=ref.message_id,
+        )
+        return
+    except Exception:
+        pass
+    await client.send_cached_media(
+        chat_id=user_id,
+        file_id=ref.file_id,
+    )
+
+
+@app.on_message(filters.command("start") & filters.private)
+async def start_handler(client: Client, message):
+    text = message.text or ""
+    parts = text.split(maxsplit=1)
+    if len(parts) < 2:
+        await message.reply_text("Send /add <userid> <period_days|life> to add premium users.")
+        return
+
+    payload = parts[1].strip()
+    if not payload.startswith("dl_"):
+        await message.reply_text("Invalid link.")
+        return
+
+    if not message.from_user:
+        await message.reply_text("User not found.")
+        return
+
+    user_id = message.from_user.id
+    if not await db.is_premium(user_id):
+        await message.reply_text("Premium required. Contact admin to upgrade.")
+        return
+
+    token = payload[3:]
+    ref = await store.get(token, settings.token_ttl_seconds)
+    if not ref:
+        await message.reply_text("Link expired or invalid.")
+        return
+    if ref.access != "premium":
+        await message.reply_text("Use premium link for download.")
+        return
+
+    await send_premium_file(client, user_id, ref)
+
+
 @app.on_message(filters.command("add") & filters.private)
 async def add_premium_user(client: Client, message):
     if not is_admin(message.from_user.id if message.from_user else None):
