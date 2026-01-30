@@ -102,23 +102,33 @@ def build_location(file_id: str):
     )
 
 
+def clamp_limit(value: int) -> int:
+    value = max(1024, min(value, 524288))
+    return (value // 1024) * 1024
+
+
 async def telegram_stream(file_id: str, start: int, end: Optional[int]) -> AsyncGenerator[bytes, None]:
     location = build_location(file_id)
     offset = start
     remaining = None if end is None else end - start + 1
 
     while True:
-        limit = settings.chunk_size
+        target = settings.chunk_size
         if remaining is not None:
-            limit = min(limit, remaining)
-        # Telegram requires limit in range 1..524288
-        limit = max(1, min(limit, 524288))
+            target = min(target, remaining)
+        limit = clamp_limit(target)
+
         result = await client.invoke(GetFile(location=location, offset=offset, limit=limit))
         if not result.bytes:
             break
         chunk = result.bytes
+
+        if remaining is not None and len(chunk) > remaining:
+            chunk = chunk[:remaining]
+
         yield chunk
         offset += len(chunk)
+
         if remaining is not None:
             remaining -= len(chunk)
             if remaining <= 0:
