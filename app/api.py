@@ -103,7 +103,6 @@ def parse_range(range_header: Optional[str], size: Optional[int]) -> tuple[int, 
 
 
 
-def resolve_mime(ref: FileRef) -> str:
 def human_size(num: int | None) -> str:
     if not num:
         return "Unknown size"
@@ -115,6 +114,7 @@ def human_size(num: int | None) -> str:
     return f"{size:.1f} PB"
 
 
+def resolve_mime(ref: FileRef) -> str:
     if ref.mime_type:
         return ref.mime_type
     if ref.file_name:
