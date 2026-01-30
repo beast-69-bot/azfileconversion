@@ -43,10 +43,11 @@ class PremiumDB:
         await self._conn.commit()
 
     async def is_premium(self, user_id: int) -> bool:
-        row = await self._conn.execute_fetchone(
+        cursor = await self._conn.execute(
             "SELECT expires_at FROM premium_users WHERE user_id = ?",
             (user_id,),
         )
+        row = await cursor.fetchone()
         if not row:
             return False
         expires_at = row[0]
