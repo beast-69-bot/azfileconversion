@@ -1,4 +1,5 @@
-﻿import secrets
+﻿import asyncio
+import secrets
 import time
 
 from pyrogram import Client, filters
@@ -48,7 +49,7 @@ async def runner() -> None:
     await store.connect()
     await app.start()
     try:
-        await app.idle()
+        await asyncio.Event().wait()
     finally:
         await app.stop()
         await store.close()
