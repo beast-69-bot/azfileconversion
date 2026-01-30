@@ -41,7 +41,7 @@ def get_settings() -> Settings:
     api_hash = os.getenv("API_HASH", "")
     bot_token = os.getenv("BOT_TOKEN", "")
     base_url = os.getenv("BASE_URL", "http://localhost:8000").rstrip("/")
-    redis_url = os.getenv("REDIS_URL")
+    redis_url = os.getenv("REDIS_URL") or None
     token_ttl_seconds = int(os.getenv("TOKEN_TTL_SECONDS", "0"))
     chunk_size = int(os.getenv("CHUNK_SIZE", "262144"))
     admin_ids = _parse_admin_ids(os.getenv("ADMIN_IDS", ""))
