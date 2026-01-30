@@ -95,17 +95,17 @@ def resolve_mime(ref: FileRef) -> str:
 
 
 async def telegram_stream(message, start: int, end: Optional[int]) -> AsyncGenerator[bytes, None]:
-    chunk_size = 1024 * 1024
-    chunk_offset = start // chunk_size
+    tg_chunk_size = 1024 * 1024
+    chunk_offset = start // tg_chunk_size
     chunk_limit = 0
     if end is not None:
         byte_len = end - start + 1
-        chunk_limit = ((byte_len + chunk_size - 1) // chunk_size) + 1
+        chunk_limit = ((byte_len + tg_chunk_size - 1) // tg_chunk_size) + 1
 
     async for chunk in client.stream_media(message, offset=chunk_offset, limit=chunk_limit):
         if start or end is not None:
             if start:
-                drop = start % chunk_size
+                drop = start % tg_chunk_size
                 chunk = chunk[drop:]
                 start = 0
             if end is not None:
@@ -113,7 +113,11 @@ async def telegram_stream(message, start: int, end: Optional[int]) -> AsyncGener
                 if len(chunk) > remaining:
                     chunk = chunk[:remaining]
                 end = remaining - len(chunk) - 1
-        yield chunk
+        if settings.chunk_size and settings.chunk_size < len(chunk):
+            for i in range(0, len(chunk), settings.chunk_size):
+                yield chunk[i:i + settings.chunk_size]
+        else:
+            yield chunk
         await asyncio.sleep(0)
 
 
