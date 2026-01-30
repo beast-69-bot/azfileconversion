@@ -28,7 +28,14 @@ class TokenStore:
 
     async def connect(self) -> None:
         if self._redis_url and redis is not None:
-            self._redis = redis.from_url(self._redis_url, decode_responses=True)
+            ssl_cert_reqs = None
+            if self._redis_url.startswith("rediss://"):
+                ssl_cert_reqs = "none"
+            self._redis = redis.from_url(
+                self._redis_url,
+                decode_responses=True,
+                ssl_cert_reqs=ssl_cert_reqs,
+            )
 
     async def close(self) -> None:
         if self._redis is not None:
