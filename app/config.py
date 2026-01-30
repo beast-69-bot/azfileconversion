@@ -23,6 +23,7 @@ class Settings:
     direct_download: bool
     reupload_video: bool
     dump_chat_id: int | str | None
+    send_link_as_message: bool
 
 
 def _parse_admin_ids(value: str) -> set[int]:
@@ -52,6 +53,7 @@ def get_settings() -> Settings:
     bot_username = os.getenv("BOT_USERNAME", "").lstrip("@")
     direct_download = os.getenv("DIRECT_DOWNLOAD", "false").lower() in {"1", "true", "yes", "y"}
     reupload_video = os.getenv("REUPLOAD_VIDEO", "false").lower() in {"1", "true", "yes", "y"}
+    send_link_as_message = os.getenv("SEND_LINK_AS_MESSAGE", "false").lower() in {"1", "true", "yes", "y"}
     dump_chat_id_raw = os.getenv("DUMP_CHAT_ID", "").strip()
     dump_chat_id_val: int | str | None = None
     if dump_chat_id_raw:
@@ -86,4 +88,5 @@ def get_settings() -> Settings:
         direct_download=direct_download,
         reupload_video=reupload_video,
         dump_chat_id=dump_chat_id_val,
+        send_link_as_message=send_link_as_message,
     )

@@ -202,6 +202,9 @@ async def handle_channel_media(client: Client, message):
     else:
         new_caption = link_text
     try:
+        if settings.send_link_as_message:
+            await client.send_message(chat_id=original_message.chat.id, text=link_text)
+            return
         if reuploaded:
             try:
                 await client.edit_message_caption(
@@ -209,7 +212,8 @@ async def handle_channel_media(client: Client, message):
                     message_id=original_message.id,
                     caption=new_caption,
                 )
-            except Exception:
+            except Exception as exc:
+                logger.exception("Caption edit failed, sending message: %s", exc)
                 await client.send_message(chat_id=original_message.chat.id, text=link_text)
         else:
             await client.edit_message_caption(
