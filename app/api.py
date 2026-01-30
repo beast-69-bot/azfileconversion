@@ -104,6 +104,17 @@ def parse_range(range_header: Optional[str], size: Optional[int]) -> tuple[int, 
 
 
 def resolve_mime(ref: FileRef) -> str:
+def human_size(num: int | None) -> str:
+    if not num:
+        return "Unknown size"
+    size = float(num)
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if size < 1024:
+            return f"{size:.1f} {unit}"
+        size /= 1024
+    return f"{size:.1f} PB"
+
+
     if ref.mime_type:
         return ref.mime_type
     if ref.file_name:
@@ -287,6 +298,8 @@ async def player(token: str):
     if ref.media_type == "audio":
         media_tag = "audio"
 
+    file_name = ref.file_name or "Unknown file"
+    size_text = human_size(ref.file_size)
     download_block = ""
     if ref.access == "premium" and settings.bot_username:
         download_link = f"https://t.me/{settings.bot_username}?start=dl_{token}"
@@ -296,24 +309,164 @@ async def player(token: str):
 <!doctype html>
 <html>
   <head>
-    <meta charset=\"utf-8\" />
-    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Stream</title>
     <style>
-      body {{ font-family: Arial, sans-serif; background: #0b1020; color: #fff; margin: 0; display: grid; place-items: center; height: 100vh; }}
-      .player {{ width: min(960px, 95vw); }}
-      {media_tag} {{ width: 100%; height: auto; background: #000; }}
-      a {{ color: #8ab4ff; }}
+      @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+      :root {{
+        --bg-1: #0b0f1a;
+        --bg-2: #111a2b;
+        --accent: #7bdff2;
+        --accent-2: #f2a07b;
+        --card: rgba(15, 22, 36, 0.9);
+        --border: rgba(255, 255, 255, 0.08);
+        --text: #e9eef8;
+        --muted: #9fb0c9;
+      }}
+      * {{ box-sizing: border-box; }}
+      body {{
+        margin: 0;
+        font-family: 'Space Grotesk', system-ui, sans-serif;
+        color: var(--text);
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        background:
+          radial-gradient(1200px 500px at 10% 0%, rgba(123, 223, 242, 0.12), transparent 60%),
+          radial-gradient(900px 600px at 90% 10%, rgba(242, 160, 123, 0.14), transparent 60%),
+          linear-gradient(135deg, var(--bg-1), var(--bg-2));
+        overflow: hidden;
+      }}
+      body::before {{
+        content: '';
+        position: fixed;
+        inset: 0;
+        background: repeating-linear-gradient(
+          115deg,
+          rgba(255,255,255,0.03) 0px,
+          rgba(255,255,255,0.03) 1px,
+          transparent 1px,
+          transparent 6px
+        );
+        pointer-events: none;
+        opacity: 0.35;
+      }}
+      .shell {{
+        width: min(1024px, 94vw);
+        padding: 28px;
+        border-radius: 24px;
+        background: var(--card);
+        border: 1px solid var(--border);
+        box-shadow: 0 20px 60px rgba(0,0,0,0.35);
+        backdrop-filter: blur(12px);
+        animation: float-in 600ms ease-out;
+      }}
+      .header {{
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 18px;
+      }}
+      .title {{
+        font-size: 20px;
+        font-weight: 700;
+        letter-spacing: 0.3px;
+      }}
+      .meta {{
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 6px;
+      }}
+      .chip {{
+        font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, monospace;
+        font-size: 12px;
+        color: var(--muted);
+        padding: 6px 10px;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        background: rgba(255,255,255,0.03);
+      }}
+      .player {{
+        width: 100%;
+        border-radius: 18px;
+        overflow: hidden;
+        border: 1px solid var(--border);
+        background: #000;
+      }}
+      {media_tag} {{
+        width: 100%;
+        height: auto;
+        display: block;
+        background: #000;
+      }}
+      .actions {{
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-top: 16px;
+        align-items: center;
+      }}
+      .btn {{
+        text-decoration: none;
+        color: #0b0f1a;
+        background: linear-gradient(135deg, var(--accent), #b9f3ff);
+        padding: 10px 16px;
+        border-radius: 12px;
+        font-weight: 600;
+        transition: transform 120ms ease, box-shadow 120ms ease;
+      }}
+      .btn.secondary {{
+        background: transparent;
+        color: var(--text);
+        border: 1px solid var(--border);
+      }}
+      .btn:hover {{
+        transform: translateY(-1px);
+        box-shadow: 0 8px 20px rgba(123, 223, 242, 0.2);
+      }}
+      .hint {{
+        font-size: 12px;
+        color: var(--muted);
+        margin-top: 10px;
+      }}
+      @keyframes float-in {{
+        from {{ opacity: 0; transform: translateY(10px); }}
+        to {{ opacity: 1; transform: translateY(0); }}
+      }}
+      @media (max-width: 600px) {{
+        .shell {{ padding: 18px; }}
+        .title {{ font-size: 18px; }}
+      }}
     </style>
   </head>
   <body>
-    <div class=\"player\">
-      <{media_tag} controls autoplay controlsList=\"nodownload\">
-        <source src=\"/stream/{token}\" type=\"{ref.mime_type or 'application/octet-stream'}\" />
-      </{media_tag}>
-      {download_block}
+    <div class="shell">
+      <div class="header">
+        <div>
+          <div class="title">Streaming</div>
+          <div class="meta">
+            <div class="chip">{file_name}</div>
+            <div class="chip">{size_text}</div>
+            <div class="chip">{resolve_mime(ref)}</div>
+          </div>
+        </div>
+      </div>
+      <div class="player">
+        <{media_tag} controls autoplay preload="auto" controlsList="nodownload">
+          <source src="/stream/{token}" type="{resolve_mime(ref)}" />
+        </{media_tag}>
+      </div>
+      <div class="actions">
+        <a class="btn secondary" href="/stream/{token}">Direct stream</a>
+        {download_block}
+      </div>
+      <div class="hint">If playback stalls, try refreshing once. Some files need a few seconds to start.</div>
     </div>
   </body>
 </html>
 """
+
     return HTMLResponse(content=html)
