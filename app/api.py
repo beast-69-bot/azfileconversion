@@ -1,4 +1,5 @@
 ﻿import asyncio
+import mimetypes
 from typing import AsyncGenerator, Optional
 
 from fastapi import FastAPI, Header, HTTPException
@@ -82,6 +83,17 @@ def parse_range(range_header: Optional[str], size: Optional[int]) -> tuple[int, 
     return start, end
 
 
+
+def resolve_mime(ref: FileRef) -> str:
+    if ref.mime_type:
+        return ref.mime_type
+    if ref.file_name:
+        guessed, _ = mimetypes.guess_type(ref.file_name)
+        if guessed:
+            return guessed
+    return "application/octet-stream"
+
+
 async def telegram_stream(message, start: int, end: Optional[int]) -> AsyncGenerator[bytes, None]:
     chunk_size = 1024 * 1024
     chunk_offset = start // chunk_size
@@ -136,7 +148,7 @@ async def stream(token: str, range: Optional[str] = Header(None)):
 
     headers = {
         "Accept-Ranges": "bytes",
-        "Content-Type": ref.mime_type or "application/octet-stream",
+        "Content-Type": resolve_mime(ref),
     }
 
     status_code = 200
@@ -180,7 +192,7 @@ async def download(token: str, range: Optional[str] = Header(None)):
     filename = ref.file_name or "file"
     headers = {
         "Accept-Ranges": "bytes",
-        "Content-Type": ref.mime_type or "application/octet-stream",
+        "Content-Type": resolve_mime(ref),
         "Content-Disposition": f'attachment; filename="{filename}"',
     }
 
