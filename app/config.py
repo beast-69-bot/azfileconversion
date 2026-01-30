@@ -24,13 +24,13 @@ def get_settings() -> Settings:
     base_url = os.getenv("BASE_URL", "http://localhost:8000").rstrip("/")
     redis_url = os.getenv("REDIS_URL")
     token_ttl_seconds = int(os.getenv("TOKEN_TTL_SECONDS", "86400"))
-    chunk_size = int(os.getenv("CHUNK_SIZE", "524288"))
+    chunk_size = int(os.getenv("CHUNK_SIZE", "262144"))
 
     if not api_id or not api_hash or not bot_token:
         raise SystemExit("Missing API_ID, API_HASH, or BOT_TOKEN in environment.")
 
-    if chunk_size < 262144 or chunk_size > 1048576:
-        raise SystemExit("CHUNK_SIZE must be between 262144 and 1048576 bytes.")
+    if chunk_size < 262144 or chunk_size > 524288:
+        raise SystemExit("CHUNK_SIZE must be between 262144 and 524288 bytes.")
 
     return Settings(
         api_id=api_id,

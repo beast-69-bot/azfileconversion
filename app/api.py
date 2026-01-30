@@ -109,30 +109,33 @@ def clamp_limit(value: int) -> int:
 
 async def telegram_stream(file_id: str, start: int, end: Optional[int]) -> AsyncGenerator[bytes, None]:
     location = build_location(file_id)
-    offset = start
-    remaining = None if end is None else end - start + 1
+    aligned_offset = start - (start % 1024)
+    bytes_to_send = None if end is None else end - start + 1
+    bytes_sent = 0
 
-    while True:
-        target = settings.chunk_size
-        if remaining is not None:
-            target = min(target, remaining)
-        limit = clamp_limit(target)
-
-        result = await client.invoke(GetFile(location=location, offset=offset, limit=limit))
+    while bytes_to_send is None or bytes_sent < bytes_to_send:
+        limit = clamp_limit(settings.chunk_size)
+        result = await client.invoke(GetFile(location=location, offset=aligned_offset, limit=limit))
         if not result.bytes:
             break
-        chunk = result.bytes
 
-        if remaining is not None and len(chunk) > remaining:
-            chunk = chunk[:remaining]
+        raw = result.bytes
+        drop = 0
+        if aligned_offset < start:
+            drop = start - aligned_offset
+        data = raw[drop:]
 
-        yield chunk
-        offset += len(chunk)
+        if bytes_to_send is not None:
+            remaining = bytes_to_send - bytes_sent
+            data = data[:remaining]
 
-        if remaining is not None:
-            remaining -= len(chunk)
-            if remaining <= 0:
-                break
+        if data:
+            yield data
+            bytes_sent += len(data)
+
+        aligned_offset += len(raw)
+        if len(raw) < limit:
+            break
         await asyncio.sleep(0)
 
 
