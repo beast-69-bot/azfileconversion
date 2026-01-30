@@ -45,7 +45,11 @@ class TokenStore:
 
     async def set(self, token: str, ref: FileRef, ttl_seconds: int) -> None:
         if self._redis is not None:
-            await self._redis.setex(token, ttl_seconds, json.dumps(asdict(ref)))
+            payload = json.dumps(asdict(ref))
+            if ttl_seconds and ttl_seconds > 0:
+                await self._redis.setex(token, ttl_seconds, payload)
+            else:
+                await self._redis.set(token, payload)
             return
         self._memory[token] = ref
 
