@@ -109,7 +109,6 @@ async def fetch_message(chat_id: int, message_id: int):
     try:
         return await client.get_messages(chat_id, message_id)
     except Exception:
-        # Ensure peer exists in session cache
         await client.get_chat(chat_id)
         return await client.get_messages(chat_id, message_id)
 
@@ -152,6 +151,48 @@ async def stream(token: str, range: Optional[str] = Header(None)):
     )
 
 
+@app.get("/download/{token}")
+async def download(token: str, range: Optional[str] = Header(None)):
+    await ensure_client_started()
+
+    ref = await store.get(token, settings.token_ttl_seconds)
+    if not ref:
+        raise HTTPException(status_code=404, detail="Invalid or expired token")
+    if ref.access != "premium":
+        raise HTTPException(status_code=403, detail="Download is premium-only")
+
+    message = await fetch_message(ref.chat_id, ref.message_id)
+    if not message or not message.media:
+        raise HTTPException(status_code=404, detail="Message not found")
+
+    start, end = parse_range(range, ref.file_size)
+    total = ref.file_size
+
+    filename = ref.file_name or "file"
+    headers = {
+        "Accept-Ranges": "bytes",
+        "Content-Type": ref.mime_type or "application/octet-stream",
+        "Content-Disposition": f'attachment; filename="{filename}"',
+    }
+
+    status_code = 200
+    if range:
+        status_code = 206
+        if total is None:
+            raise HTTPException(status_code=416, detail="Range Not Supported")
+        content_length = (end - start + 1) if end is not None else total - start
+        headers["Content-Range"] = f"bytes {start}-{start + content_length - 1}/{total}"
+        headers["Content-Length"] = str(content_length)
+    elif total is not None:
+        headers["Content-Length"] = str(total)
+
+    return StreamingResponse(
+        telegram_stream(message, start, end),
+        status_code=status_code,
+        headers=headers,
+    )
+
+
 @app.get("/player/{token}")
 async def player(token: str):
     ref = await store.get(token, settings.token_ttl_seconds)
@@ -161,6 +202,10 @@ async def player(token: str):
     media_tag = "video"
     if ref.media_type == "audio":
         media_tag = "audio"
+
+    download_block = ""
+    if ref.access == "premium":
+        download_block = f'<p><a href="/download/{token}">Download</a></p>'
 
     html = f"""
 <!doctype html>
@@ -178,10 +223,10 @@ async def player(token: str):
   </head>
   <body>
     <div class=\"player\">
-      <{media_tag} controls autoplay>
+      <{media_tag} controls autoplay controlsList=\"nodownload\">
         <source src=\"/stream/{token}\" type=\"{ref.mime_type or 'application/octet-stream'}\" />
       </{media_tag}>
-      <p><a href=\"/stream/{token}\">Direct stream link</a></p>
+      {download_block}
     </div>
   </body>
 </html>

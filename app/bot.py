@@ -36,8 +36,10 @@ async def handle_channel_media(client: Client, message):
 
     logger.info("Media received chat_id=%s title=%s file_unique_id=%s", message.chat.id, message.chat.title, media.file_unique_id)
 
-    token = secrets.token_urlsafe(24)
-    ref = FileRef(
+    normal_token = secrets.token_urlsafe(24)
+    premium_token = secrets.token_urlsafe(24)
+
+    base_ref = dict(
         chat_id=message.chat.id,
         message_id=message.id,
         file_unique_id=media.file_unique_id,
@@ -47,11 +49,28 @@ async def handle_channel_media(client: Client, message):
         media_type=message.media.value,
         created_at=time.time(),
     )
-    await store.set(token, ref, settings.token_ttl_seconds)
 
-    link = build_link(token)
+    await store.set(
+        normal_token,
+        FileRef(**base_ref, access="normal"),
+        settings.token_ttl_seconds,
+    )
+    await store.set(
+        premium_token,
+        FileRef(**base_ref, access="premium"),
+        settings.token_ttl_seconds,
+    )
+
+    link = build_link(normal_token)
+    premium_link = build_link(premium_token)
     try:
-        await client.send_message(chat_id=message.chat.id, text=f"Stream: {link}")
+        await client.send_message(
+            chat_id=message.chat.id,
+            text=(
+                f"Stream (Normal): {link}\n"
+                f"Stream (Premium): {premium_link}"
+            ),
+        )
     except Exception as exc:
         logger.exception("Failed to send link: %s", exc)
 

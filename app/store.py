@@ -18,6 +18,7 @@ class FileRef:
     mime_type: Optional[str]
     file_size: Optional[int]
     media_type: str
+    access: str
     created_at: float
 
 
@@ -57,11 +58,13 @@ class TokenStore:
             # Ignore old schema tokens that stored file_id
             if "file_id" in data:
                 return None
+            if "access" not in data:
+                data["access"] = "normal"
             return FileRef(**data)
         ref = self._memory.get(token)
         if not ref:
             return None
-        if time.time() - ref.created_at > ttl_seconds:
+        if ttl_seconds > 0 and time.time() - ref.created_at > ttl_seconds:
             self._memory.pop(token, None)
             return None
         return ref
