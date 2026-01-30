@@ -23,22 +23,38 @@ client = Client(
     no_updates=True,
 )
 
+_client_started = False
+_client_lock = asyncio.Lock()
+
 
 @app.on_event("startup")
 async def on_startup() -> None:
     await store.connect()
-    while True:
-        try:
-            await client.start()
-            break
-        except FloodWait as exc:
-            await asyncio.sleep(exc.value)
 
 
 @app.on_event("shutdown")
 async def on_shutdown() -> None:
-    await client.stop()
+    if _client_started:
+        await client.stop()
     await store.close()
+
+
+async def ensure_client_started() -> None:
+    global _client_started
+    if _client_started:
+        return
+    async with _client_lock:
+        if _client_started:
+            return
+        try:
+            await client.start()
+            _client_started = True
+        except FloodWait as exc:
+            raise HTTPException(
+                status_code=503,
+                detail=f"Telegram flood-wait. Retry after {exc.value} seconds.",
+                headers={"Retry-After": str(exc.value)},
+            )
 
 
 def parse_range(range_header: Optional[str], size: Optional[int]) -> tuple[int, Optional[int]]:
@@ -82,6 +98,8 @@ async def telegram_stream(file_id: str, start: int, end: Optional[int]) -> Async
 
 @app.get("/stream/{token}")
 async def stream(token: str, range: Optional[str] = Header(None)):
+    await ensure_client_started()
+
     ref = await store.get(token, settings.token_ttl_seconds)
     if not ref:
         raise HTTPException(status_code=404, detail="Invalid or expired token")
