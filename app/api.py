@@ -20,6 +20,7 @@ client = Client(
     api_hash=settings.api_hash,
     bot_token=settings.bot_token,
     no_updates=True,
+    sleep_threshold=10000,
 )
 
 _client_started = False
