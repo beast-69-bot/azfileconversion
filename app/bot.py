@@ -9,7 +9,13 @@ from app.store import FileRef, TokenStore
 settings = get_settings()
 store = TokenStore(settings.redis_url)
 
-app = Client("stream_bot", api_id=settings.api_id, api_hash=settings.api_hash, bot_token=settings.bot_token)
+app = Client(
+    "stream_bot",
+    api_id=settings.api_id,
+    api_hash=settings.api_hash,
+    bot_token=settings.bot_token,
+    in_memory=True,
+)
 
 
 def build_link(token: str) -> str:

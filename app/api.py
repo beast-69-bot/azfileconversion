@@ -13,7 +13,13 @@ store = TokenStore(settings.redis_url)
 
 app = FastAPI()
 
-client = Client("stream_bot", api_id=settings.api_id, api_hash=settings.api_hash, bot_token=settings.bot_token)
+client = Client(
+    "stream_api",
+    api_id=settings.api_id,
+    api_hash=settings.api_hash,
+    bot_token=settings.bot_token,
+    in_memory=True,
+)
 
 
 @app.on_event("startup")
