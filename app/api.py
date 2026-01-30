@@ -5,6 +5,9 @@ from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import HTMLResponse, StreamingResponse
 from pyrogram import Client
 from pyrogram.errors import FloodWait
+from pyrogram.file_id import FileId, FileType
+from pyrogram.raw.functions.upload import GetFile
+from pyrogram.raw.types import InputDocumentFileLocation, InputPhotoFileLocation
 
 from app.config import get_settings
 from app.store import FileRef, TokenStore
@@ -82,17 +85,42 @@ def parse_range(range_header: Optional[str], size: Optional[int]) -> tuple[int, 
     return start, end
 
 
+def build_location(file_id: str):
+    decoded = FileId.decode(file_id)
+    if decoded.file_type == FileType.PHOTO:
+        return InputPhotoFileLocation(
+            id=decoded.media_id,
+            access_hash=decoded.access_hash,
+            file_reference=decoded.file_reference,
+            thumb_size=decoded.thumbnail_size or "w",
+        )
+    return InputDocumentFileLocation(
+        id=decoded.media_id,
+        access_hash=decoded.access_hash,
+        file_reference=decoded.file_reference,
+        thumb_size="",
+    )
+
+
 async def telegram_stream(file_id: str, start: int, end: Optional[int]) -> AsyncGenerator[bytes, None]:
-    limit = None
-    if end is not None:
-        limit = end - start + 1
-    async for chunk in client.iter_download(
-        file_id,
-        offset=start,
-        limit=limit,
-        chunk_size=settings.chunk_size,
-    ):
+    location = build_location(file_id)
+    offset = start
+    remaining = None if end is None else end - start + 1
+
+    while True:
+        limit = settings.chunk_size
+        if remaining is not None:
+            limit = min(limit, remaining)
+        result = await client.invoke(GetFile(location=location, offset=offset, limit=limit))
+        if not result.bytes:
+            break
+        chunk = result.bytes
         yield chunk
+        offset += len(chunk)
+        if remaining is not None:
+            remaining -= len(chunk)
+            if remaining <= 0:
+                break
         await asyncio.sleep(0)
 
 
