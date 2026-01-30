@@ -189,7 +189,7 @@ async def stream(token: str, range: Optional[str] = Header(None)):
         raise HTTPException(status_code=403, detail="Streaming is premium-only")
 
     message = await fetch_message(ref.chat_id, ref.message_id)
-    stream_target = message or ref.file_id
+    stream_target = message if (message and message.media) else ref.file_id
     if not stream_target:
         raise HTTPException(status_code=404, detail="Message not found")
 
@@ -232,7 +232,7 @@ async def download(token: str, range: Optional[str] = Header(None)):
         raise HTTPException(status_code=403, detail="Download is premium-only")
 
     message = await fetch_message(ref.chat_id, ref.message_id)
-    stream_target = message or ref.file_id
+    stream_target = message if (message and message.media) else ref.file_id
     if not stream_target:
         raise HTTPException(status_code=404, detail="Message not found")
 
