@@ -38,7 +38,8 @@ async def handle_channel_media(client: Client, message):
 
     token = secrets.token_urlsafe(24)
     ref = FileRef(
-        file_id=media.file_id,
+        chat_id=message.chat.id,
+        message_id=message.id,
         file_unique_id=media.file_unique_id,
         file_name=getattr(media, "file_name", None),
         mime_type=media.mime_type,

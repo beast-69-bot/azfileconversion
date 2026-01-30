@@ -11,7 +11,8 @@ except Exception:
 
 @dataclass
 class FileRef:
-    file_id: str
+    chat_id: int
+    message_id: int
     file_unique_id: str
     file_name: Optional[str]
     mime_type: Optional[str]

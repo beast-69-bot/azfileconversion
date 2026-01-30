@@ -5,9 +5,6 @@ from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import HTMLResponse, StreamingResponse
 from pyrogram import Client
 from pyrogram.errors import FloodWait
-from pyrogram.file_id import FileId, FileType
-from pyrogram.raw.functions.upload import GetFile
-from pyrogram.raw.types import InputDocumentFileLocation, InputPhotoFileLocation
 
 from app.config import get_settings
 from app.store import FileRef, TokenStore
@@ -85,57 +82,25 @@ def parse_range(range_header: Optional[str], size: Optional[int]) -> tuple[int, 
     return start, end
 
 
-def build_location(file_id: str):
-    decoded = FileId.decode(file_id)
-    if decoded.file_type == FileType.PHOTO:
-        return InputPhotoFileLocation(
-            id=decoded.media_id,
-            access_hash=decoded.access_hash,
-            file_reference=decoded.file_reference,
-            thumb_size=decoded.thumbnail_size or "w",
-        )
-    return InputDocumentFileLocation(
-        id=decoded.media_id,
-        access_hash=decoded.access_hash,
-        file_reference=decoded.file_reference,
-        thumb_size="",
-    )
+async def telegram_stream(message, start: int, end: Optional[int]) -> AsyncGenerator[bytes, None]:
+    chunk_offset = start // (1024 * 1024)
+    chunk_limit = 0
+    if end is not None:
+        byte_len = end - start + 1
+        chunk_limit = ((byte_len + (1024 * 1024) - 1) // (1024 * 1024)) + 1
 
-
-def clamp_limit(value: int) -> int:
-    value = max(1024, min(value, 524288))
-    return (value // 1024) * 1024
-
-
-async def telegram_stream(file_id: str, start: int, end: Optional[int]) -> AsyncGenerator[bytes, None]:
-    location = build_location(file_id)
-    aligned_offset = start - (start % 1024)
-    bytes_to_send = None if end is None else end - start + 1
-    bytes_sent = 0
-
-    while bytes_to_send is None or bytes_sent < bytes_to_send:
-        limit = clamp_limit(settings.chunk_size)
-        result = await client.invoke(GetFile(location=location, offset=aligned_offset, limit=limit))
-        if not result.bytes:
-            break
-
-        raw = result.bytes
-        drop = 0
-        if aligned_offset < start:
-            drop = start - aligned_offset
-        data = raw[drop:]
-
-        if bytes_to_send is not None:
-            remaining = bytes_to_send - bytes_sent
-            data = data[:remaining]
-
-        if data:
-            yield data
-            bytes_sent += len(data)
-
-        aligned_offset += len(raw)
-        if len(raw) < limit:
-            break
+    async for chunk in client.stream_media(message, offset=chunk_offset, limit=chunk_limit):
+        if start or end is not None:
+            if start:
+                drop = start % (1024 * 1024)
+                chunk = chunk[drop:]
+                start = 0
+            if end is not None:
+                remaining = end + 1
+                if len(chunk) > remaining:
+                    chunk = chunk[:remaining]
+                end = remaining - len(chunk) - 1
+        yield chunk
         await asyncio.sleep(0)
 
 
@@ -146,6 +111,10 @@ async def stream(token: str, range: Optional[str] = Header(None)):
     ref = await store.get(token, settings.token_ttl_seconds)
     if not ref:
         raise HTTPException(status_code=404, detail="Invalid or expired token")
+
+    message = await client.get_messages(ref.chat_id, ref.message_id)
+    if not message or not message.media:
+        raise HTTPException(status_code=404, detail="Message not found")
 
     start, end = parse_range(range, ref.file_size)
     total = ref.file_size
@@ -167,7 +136,7 @@ async def stream(token: str, range: Optional[str] = Header(None)):
         headers["Content-Length"] = str(total)
 
     return StreamingResponse(
-        telegram_stream(ref.file_id, start, end),
+        telegram_stream(message, start, end),
         status_code=status_code,
         headers=headers,
     )
