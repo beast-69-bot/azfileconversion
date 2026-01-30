@@ -19,7 +19,6 @@ client = Client(
     api_id=settings.api_id,
     api_hash=settings.api_hash,
     bot_token=settings.bot_token,
-    in_memory=True,
     no_updates=True,
 )
 
@@ -83,16 +82,17 @@ def parse_range(range_header: Optional[str], size: Optional[int]) -> tuple[int, 
 
 
 async def telegram_stream(message, start: int, end: Optional[int]) -> AsyncGenerator[bytes, None]:
-    chunk_offset = start // (1024 * 1024)
+    chunk_size = 1024 * 1024
+    chunk_offset = start // chunk_size
     chunk_limit = 0
     if end is not None:
         byte_len = end - start + 1
-        chunk_limit = ((byte_len + (1024 * 1024) - 1) // (1024 * 1024)) + 1
+        chunk_limit = ((byte_len + chunk_size - 1) // chunk_size) + 1
 
     async for chunk in client.stream_media(message, offset=chunk_offset, limit=chunk_limit):
         if start or end is not None:
             if start:
-                drop = start % (1024 * 1024)
+                drop = start % chunk_size
                 chunk = chunk[drop:]
                 start = 0
             if end is not None:

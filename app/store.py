@@ -54,6 +54,9 @@ class TokenStore:
             if not raw:
                 return None
             data = json.loads(raw)
+            # Ignore old schema tokens that stored file_id
+            if "file_id" in data:
+                return None
             return FileRef(**data)
         ref = self._memory.get(token)
         if not ref:
