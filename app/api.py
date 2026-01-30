@@ -105,6 +105,15 @@ async def telegram_stream(message, start: int, end: Optional[int]) -> AsyncGener
         await asyncio.sleep(0)
 
 
+async def fetch_message(chat_id: int, message_id: int):
+    try:
+        return await client.get_messages(chat_id, message_id)
+    except Exception:
+        # Ensure peer exists in session cache
+        await client.get_chat(chat_id)
+        return await client.get_messages(chat_id, message_id)
+
+
 @app.get("/stream/{token}")
 async def stream(token: str, range: Optional[str] = Header(None)):
     await ensure_client_started()
@@ -113,7 +122,7 @@ async def stream(token: str, range: Optional[str] = Header(None)):
     if not ref:
         raise HTTPException(status_code=404, detail="Invalid or expired token")
 
-    message = await client.get_messages(ref.chat_id, ref.message_id)
+    message = await fetch_message(ref.chat_id, ref.message_id)
     if not message or not message.media:
         raise HTTPException(status_code=404, detail="Message not found")
 
