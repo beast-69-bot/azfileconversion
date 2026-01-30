@@ -28,9 +28,28 @@ _client_started = False
 _client_lock = asyncio.Lock()
 
 
+_warm_lock = asyncio.Lock()
+
+
+async def warm_client() -> None:
+    async with _warm_lock:
+        if _client_started:
+            return
+        while True:
+            try:
+                await client.start()
+                globals()['_client_started'] = True
+                return
+            except FloodWait as exc:
+                await asyncio.sleep(exc.value)
+            except Exception:
+                await asyncio.sleep(2)
+
+
 @app.on_event("startup")
 async def on_startup() -> None:
     await store.connect()
+    asyncio.create_task(warm_client())
 
 
 @app.on_event("shutdown")
