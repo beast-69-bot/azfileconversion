@@ -54,7 +54,7 @@ def is_video_document(message) -> bool:
     ext = Path(name).suffix.lower()
     return mime.startswith("video/") or ext in VIDEO_EXTS
 
-async def reupload_video_as_media(client: Client, message):
+async def reupload_video_as_media(client: Client, message, target_chat_id: int):
     if not message.document:
         return None
     caption = message.caption
@@ -64,7 +64,7 @@ async def reupload_video_as_media(client: Client, message):
         if not download_path:
             return None
         return await client.send_video(
-            chat_id=message.chat.id,
+            chat_id=target_chat_id,
             video=download_path,
             caption=caption,
         )
@@ -156,9 +156,9 @@ async def handle_channel_media(client: Client, message):
     logger.info("Media received chat_id=%s title=%s file_unique_id=%s", message.chat.id, message.chat.title, media.file_unique_id)
 
     reuploaded = False
-    if settings.reupload_video and is_video_document(message):
+    if settings.reupload_video and is_video_document(message) and settings.dump_chat_id:
         try:
-            new_message = await reupload_video_as_media(client, message)
+            new_message = await reupload_video_as_media(client, message, settings.dump_chat_id)
         except Exception as exc:
             logger.exception("Failed to reupload video: %s", exc)
             new_message = None
