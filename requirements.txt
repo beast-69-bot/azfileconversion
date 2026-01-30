@@ -4,3 +4,4 @@ pyrogram>=2.0.0
 python-dotenv>=1.0.0
 tgcrypto>=1.2.5
 redis>=5.0.0
+aiosqlite>=0.20.0
