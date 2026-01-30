@@ -111,6 +111,8 @@ async def telegram_stream(file_id: str, start: int, end: Optional[int]) -> Async
         limit = settings.chunk_size
         if remaining is not None:
             limit = min(limit, remaining)
+        # Telegram requires limit in range 1..524288
+        limit = max(1, min(limit, 524288))
         result = await client.invoke(GetFile(location=location, offset=offset, limit=limit))
         if not result.bytes:
             break
