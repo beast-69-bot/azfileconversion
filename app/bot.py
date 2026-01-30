@@ -54,7 +54,7 @@ def is_video_document(message) -> bool:
     ext = Path(name).suffix.lower()
     return mime.startswith("video/") or ext in VIDEO_EXTS
 
-async def reupload_video_as_media(client: Client, message, target_chat_id: int):
+async def reupload_video_as_media(client: Client, message, target_chat_id):
     if not message.document:
         return None
     caption = message.caption

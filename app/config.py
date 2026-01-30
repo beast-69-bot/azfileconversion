@@ -22,7 +22,7 @@ class Settings:
     bot_username: str
     direct_download: bool
     reupload_video: bool
-    dump_chat_id: int | None
+    dump_chat_id: int | str | None
 
 
 def _parse_admin_ids(value: str) -> set[int]:
@@ -52,13 +52,16 @@ def get_settings() -> Settings:
     bot_username = os.getenv("BOT_USERNAME", "").lstrip("@")
     direct_download = os.getenv("DIRECT_DOWNLOAD", "false").lower() in {"1", "true", "yes", "y"}
     reupload_video = os.getenv("REUPLOAD_VIDEO", "false").lower() in {"1", "true", "yes", "y"}
-    dump_chat_id = os.getenv("DUMP_CHAT_ID")
-    dump_chat_id_val: int | None = None
-    if dump_chat_id:
-        try:
-            dump_chat_id_val = int(dump_chat_id)
-        except ValueError:
-            dump_chat_id_val = None
+    dump_chat_id_raw = os.getenv("DUMP_CHAT_ID", "").strip()
+    dump_chat_id_val: int | str | None = None
+    if dump_chat_id_raw:
+        if dump_chat_id_raw.startswith("@"):
+            dump_chat_id_val = dump_chat_id_raw
+        else:
+            try:
+                dump_chat_id_val = int(dump_chat_id_raw)
+            except ValueError:
+                dump_chat_id_val = dump_chat_id_raw
 
     if not api_id or not api_hash or not bot_token:
         raise SystemExit("Missing API_ID, API_HASH, or BOT_TOKEN in environment.")
