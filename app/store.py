@@ -11,6 +11,7 @@ except Exception:
 
 @dataclass
 class FileRef:
+    file_id: str
     chat_id: int
     message_id: int
     file_unique_id: str
@@ -59,9 +60,8 @@ class TokenStore:
             if not raw:
                 return None
             data = json.loads(raw)
-            # Ignore old schema tokens that stored file_id
-            if "file_id" in data:
-                return None
+            if "file_id" not in data:
+                data["file_id"] = ""
             if "access" not in data:
                 data["access"] = "normal"
             return FileRef(**data)

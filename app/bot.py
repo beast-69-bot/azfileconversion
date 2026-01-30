@@ -80,6 +80,7 @@ async def handle_channel_media(client: Client, message):
     premium_token = secrets.token_urlsafe(24)
 
     base_ref = dict(
+        file_id=media.file_id,
         chat_id=message.chat.id,
         message_id=message.id,
         file_unique_id=media.file_unique_id,

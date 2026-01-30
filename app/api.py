@@ -109,8 +109,11 @@ async def fetch_message(chat_id: int, message_id: int):
     try:
         return await client.get_messages(chat_id, message_id)
     except Exception:
-        await client.get_chat(chat_id)
-        return await client.get_messages(chat_id, message_id)
+        try:
+            await client.get_chat(chat_id)
+            return await client.get_messages(chat_id, message_id)
+        except Exception:
+            return None
 
 
 @app.get("/stream/{token}")
@@ -122,7 +125,8 @@ async def stream(token: str, range: Optional[str] = Header(None)):
         raise HTTPException(status_code=404, detail="Invalid or expired token")
 
     message = await fetch_message(ref.chat_id, ref.message_id)
-    if not message or not message.media:
+    stream_target = message or ref.file_id
+    if not stream_target:
         raise HTTPException(status_code=404, detail="Message not found")
 
     start, end = parse_range(range, ref.file_size)
@@ -145,7 +149,7 @@ async def stream(token: str, range: Optional[str] = Header(None)):
         headers["Content-Length"] = str(total)
 
     return StreamingResponse(
-        telegram_stream(message, start, end),
+        telegram_stream(stream_target, start, end),
         status_code=status_code,
         headers=headers,
     )
@@ -162,7 +166,8 @@ async def download(token: str, range: Optional[str] = Header(None)):
         raise HTTPException(status_code=403, detail="Download is premium-only")
 
     message = await fetch_message(ref.chat_id, ref.message_id)
-    if not message or not message.media:
+    stream_target = message or ref.file_id
+    if not stream_target:
         raise HTTPException(status_code=404, detail="Message not found")
 
     start, end = parse_range(range, ref.file_size)
@@ -187,7 +192,7 @@ async def download(token: str, range: Optional[str] = Header(None)):
         headers["Content-Length"] = str(total)
 
     return StreamingResponse(
-        telegram_stream(message, start, end),
+        telegram_stream(stream_target, start, end),
         status_code=status_code,
         headers=headers,
     )
