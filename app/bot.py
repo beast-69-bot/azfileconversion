@@ -2,6 +2,8 @@
 import logging
 import secrets
 import time
+import tempfile
+from pathlib import Path
 
 from pyrogram import Client, filters
 from pyrogram.errors import FloodWait
@@ -25,6 +27,8 @@ app = Client(
     sleep_threshold=10000,
 )
 
+VIDEO_EXTS = {".mp4", ".mkv", ".mov", ".webm", ".avi", ".mpeg", ".mpg", ".m4v"}
+
 
 def build_link(token: str) -> str:
     return f"{settings.base_url}/player/{token}"
@@ -42,6 +46,28 @@ def parse_period(value: str) -> int | None:
         return None
     return int(value)
 
+def is_video_document(message) -> bool:
+    if not message.document:
+        return False
+    mime = (message.document.mime_type or "").lower()
+    name = message.document.file_name or ""
+    ext = Path(name).suffix.lower()
+    return mime.startswith("video/") or ext in VIDEO_EXTS
+
+async def reupload_video_as_media(client: Client, message):
+    if not message.document:
+        return None
+    caption = message.caption
+    with tempfile.TemporaryDirectory() as tmpdir:
+        target_path = Path(tmpdir) / (message.document.file_name or "video.mp4")
+        download_path = await message.download(file_name=str(target_path))
+        if not download_path:
+            return None
+        return await client.send_video(
+            chat_id=message.chat.id,
+            video=download_path,
+            caption=caption,
+        )
 
 async def send_premium_file(client: Client, user_id: int, ref: FileRef) -> None:
     try:
@@ -120,11 +146,26 @@ async def add_premium_user(client: Client, message):
 
 @app.on_message(filters.channel & (filters.document | filters.video | filters.audio))
 async def handle_channel_media(client: Client, message):
+    if message.outgoing:
+        return
+    original_message = message
     media = message.document or message.video or message.audio
     if not media:
         return
 
     logger.info("Media received chat_id=%s title=%s file_unique_id=%s", message.chat.id, message.chat.title, media.file_unique_id)
+
+    reuploaded = False
+    if settings.reupload_video and is_video_document(message):
+        try:
+            new_message = await reupload_video_as_media(client, message)
+        except Exception as exc:
+            logger.exception("Failed to reupload video: %s", exc)
+            new_message = None
+        if new_message and new_message.video:
+            media = new_message.video
+            message = new_message
+            reuploaded = True
 
     normal_token = secrets.token_urlsafe(24)
     premium_token = secrets.token_urlsafe(24)
@@ -154,14 +195,28 @@ async def handle_channel_media(client: Client, message):
 
     link = build_link(normal_token)
     premium_link = build_link(premium_token)
+    caption = (message.caption or "").strip()
+    link_text = f"Stream (Normal): {link}\nStream (Premium): {premium_link}"
+    if caption:
+        new_caption = f"{caption}\n\n{link_text}"
+    else:
+        new_caption = link_text
     try:
-        await client.send_message(
-            chat_id=message.chat.id,
-            text=(
-                f"Stream (Normal): {link}\n"
-                f"Stream (Premium): {premium_link}"
-            ),
-        )
+        if reuploaded:
+            try:
+                await client.edit_message_caption(
+                    chat_id=original_message.chat.id,
+                    message_id=original_message.id,
+                    caption=new_caption,
+                )
+            except Exception:
+                await client.send_message(chat_id=original_message.chat.id, text=link_text)
+        else:
+            await client.edit_message_caption(
+                chat_id=message.chat.id,
+                message_id=message.id,
+                caption=new_caption,
+            )
     except Exception as exc:
         logger.exception("Failed to send link: %s", exc)
 

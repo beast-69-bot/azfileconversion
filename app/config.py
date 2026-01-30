@@ -21,6 +21,7 @@ class Settings:
     public_stream: bool
     bot_username: str
     direct_download: bool
+    reupload_video: bool
 
 
 def _parse_admin_ids(value: str) -> set[int]:
@@ -49,6 +50,7 @@ def get_settings() -> Settings:
     public_stream = os.getenv("PUBLIC_STREAM", "true").lower() in {"1", "true", "yes", "y"}
     bot_username = os.getenv("BOT_USERNAME", "").lstrip("@")
     direct_download = os.getenv("DIRECT_DOWNLOAD", "false").lower() in {"1", "true", "yes", "y"}
+    reupload_video = os.getenv("REUPLOAD_VIDEO", "false").lower() in {"1", "true", "yes", "y"}
 
     if not api_id or not api_hash or not bot_token:
         raise SystemExit("Missing API_ID, API_HASH, or BOT_TOKEN in environment.")
@@ -71,4 +73,5 @@ def get_settings() -> Settings:
         public_stream=public_stream,
         bot_username=bot_username,
         direct_download=direct_download,
+        reupload_video=reupload_video,
     )
