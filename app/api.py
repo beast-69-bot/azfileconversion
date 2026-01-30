@@ -4,6 +4,7 @@ from typing import AsyncGenerator, Optional
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import HTMLResponse, StreamingResponse
 from pyrogram import Client
+from pyrogram.errors import FloodWait
 
 from app.config import get_settings
 from app.store import FileRef, TokenStore
@@ -19,13 +20,19 @@ client = Client(
     api_hash=settings.api_hash,
     bot_token=settings.bot_token,
     in_memory=True,
+    no_updates=True,
 )
 
 
 @app.on_event("startup")
 async def on_startup() -> None:
     await store.connect()
-    await client.start()
+    while True:
+        try:
+            await client.start()
+            break
+        except FloodWait as exc:
+            await asyncio.sleep(exc.value)
 
 
 @app.on_event("shutdown")

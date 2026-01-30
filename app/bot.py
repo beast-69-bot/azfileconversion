@@ -3,6 +3,7 @@ import secrets
 import time
 
 from pyrogram import Client, filters
+from pyrogram.errors import FloodWait
 
 from app.config import get_settings
 from app.store import FileRef, TokenStore
@@ -47,7 +48,12 @@ async def handle_channel_media(client: Client, message):
 
 async def runner() -> None:
     await store.connect()
-    await app.start()
+    while True:
+        try:
+            await app.start()
+            break
+        except FloodWait as exc:
+            await asyncio.sleep(exc.value)
     try:
         await asyncio.Event().wait()
     finally:
