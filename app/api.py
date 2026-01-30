@@ -123,6 +123,8 @@ async def stream(token: str, range: Optional[str] = Header(None)):
     ref = await store.get(token, settings.token_ttl_seconds)
     if not ref:
         raise HTTPException(status_code=404, detail="Invalid or expired token")
+    if ref.access == "normal" and not settings.public_stream:
+        raise HTTPException(status_code=403, detail="Streaming is premium-only")
 
     message = await fetch_message(ref.chat_id, ref.message_id)
     stream_target = message or ref.file_id
@@ -203,6 +205,30 @@ async def player(token: str):
     ref = await store.get(token, settings.token_ttl_seconds)
     if not ref:
         raise HTTPException(status_code=404, detail="Invalid or expired token")
+    if ref.access == "normal" and not settings.public_stream:
+        html = """
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Premium Required</title>
+    <style>
+      body { font-family: Arial, sans-serif; background: #0b1020; color: #fff; margin: 0; display: grid; place-items: center; height: 100vh; }
+      .card { width: min(640px, 95vw); background: #111b33; padding: 32px; border-radius: 16px; text-align: center; }
+      a { color: #8ab4ff; }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h2>Premium Required</h2>
+      <p>This stream is available for premium users only.</p>
+      <p>Please contact the admin to upgrade.</p>
+    </div>
+  </body>
+</html>
+"""
+        return HTMLResponse(content=html, status_code=403)
 
     media_tag = "video"
     if ref.media_type == "audio":

@@ -18,6 +18,7 @@ class Settings:
     chunk_size: int
     admin_ids: set[int]
     db_path: str
+    public_stream: bool
 
 
 def _parse_admin_ids(value: str) -> set[int]:
@@ -43,6 +44,7 @@ def get_settings() -> Settings:
     chunk_size = int(os.getenv("CHUNK_SIZE", "262144"))
     admin_ids = _parse_admin_ids(os.getenv("ADMIN_IDS", ""))
     db_path = os.getenv("DB_PATH", "data/premium.db")
+    public_stream = os.getenv("PUBLIC_STREAM", "true").lower() in {"1", "true", "yes", "y"}
 
     if not api_id or not api_hash or not bot_token:
         raise SystemExit("Missing API_ID, API_HASH, or BOT_TOKEN in environment.")
@@ -62,4 +64,5 @@ def get_settings() -> Settings:
         chunk_size=chunk_size,
         admin_ids=admin_ids,
         db_path=db_path,
+        public_stream=public_stream,
     )
