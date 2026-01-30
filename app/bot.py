@@ -1,4 +1,5 @@
 ﻿import asyncio
+import logging
 import secrets
 import time
 
@@ -10,6 +11,9 @@ from app.store import FileRef, TokenStore
 
 settings = get_settings()
 store = TokenStore(settings.redis_url)
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+logger = logging.getLogger("stream_bot")
 
 app = Client(
     "stream_bot",
@@ -30,6 +34,8 @@ async def handle_channel_media(client: Client, message):
     if not media:
         return
 
+    logger.info("Media received chat_id=%s title=%s file_unique_id=%s", message.chat.id, message.chat.title, media.file_unique_id)
+
     token = secrets.token_urlsafe(24)
     ref = FileRef(
         file_id=media.file_id,
@@ -43,7 +49,10 @@ async def handle_channel_media(client: Client, message):
     await store.set(token, ref, settings.token_ttl_seconds)
 
     link = build_link(token)
-    await client.send_message(chat_id=message.chat.id, text=f"Stream: {link}")
+    try:
+        await client.send_message(chat_id=message.chat.id, text=f"Stream: {link}")
+    except Exception as exc:
+        logger.exception("Failed to send link: %s", exc)
 
 
 async def runner() -> None:
@@ -51,8 +60,10 @@ async def runner() -> None:
     while True:
         try:
             await app.start()
+            logger.info("Bot started")
             break
         except FloodWait as exc:
+            logger.warning("FloodWait %s seconds", exc.value)
             await asyncio.sleep(exc.value)
     try:
         await asyncio.Event().wait()
