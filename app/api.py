@@ -1,9 +1,11 @@
 ﻿import asyncio
+import hashlib
+import hmac
 import mimetypes
 from typing import AsyncGenerator, Optional
 
-from fastapi import FastAPI, Header, HTTPException
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi import FastAPI, Form, Header, HTTPException, Request
+from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from pyrogram import Client
 from pyrogram.errors import FloodWait
 
@@ -124,6 +126,22 @@ def resolve_mime(ref: FileRef) -> str:
     return "application/octet-stream"
 
 
+def password_enabled() -> bool:
+    return bool(settings.stream_password)
+
+
+def password_cookie_value() -> str:
+    seed = f"azfileconversion:{settings.stream_password}".encode()
+    return hashlib.sha256(seed).hexdigest()
+
+
+def is_authed(request: Request) -> bool:
+    if not password_enabled():
+        return True
+    cookie = request.cookies.get("stream_auth", "")
+    return hmac.compare_digest(cookie, password_cookie_value())
+
+
 
 def supports_iter_download() -> bool:
     return hasattr(client, "iter_download")
@@ -179,7 +197,7 @@ async def fetch_message(chat_id: int, message_id: int):
 
 
 @app.get("/stream/{token}")
-async def stream(token: str, range: Optional[str] = Header(None)):
+async def stream(token: str, request: Request, range: Optional[str] = Header(None)):
     await ensure_client_started()
 
     ref = await store.get(token, settings.token_ttl_seconds)
@@ -187,6 +205,8 @@ async def stream(token: str, range: Optional[str] = Header(None)):
         raise HTTPException(status_code=404, detail="Invalid or expired token")
     if ref.access == "normal" and not settings.public_stream:
         raise HTTPException(status_code=403, detail="Streaming is premium-only")
+    if not is_authed(request):
+        raise HTTPException(status_code=401, detail="Password required")
 
     message = await fetch_message(ref.chat_id, ref.message_id)
     stream_target = message if (message and message.media) else ref.file_id
@@ -220,7 +240,7 @@ async def stream(token: str, range: Optional[str] = Header(None)):
 
 
 @app.get("/download/{token}")
-async def download(token: str, range: Optional[str] = Header(None)):
+async def download(token: str, request: Request, range: Optional[str] = Header(None)):
     await ensure_client_started()
 
     ref = await store.get(token, settings.token_ttl_seconds)
@@ -230,6 +250,8 @@ async def download(token: str, range: Optional[str] = Header(None)):
         raise HTTPException(status_code=403, detail="Download via bot only")
     if ref.access != "premium":
         raise HTTPException(status_code=403, detail="Download is premium-only")
+    if not is_authed(request):
+        raise HTTPException(status_code=401, detail="Password required")
 
     message = await fetch_message(ref.chat_id, ref.message_id)
     stream_target = message if (message and message.media) else ref.file_id
@@ -264,8 +286,39 @@ async def download(token: str, range: Optional[str] = Header(None)):
     )
 
 
+def password_form_html(token: str, error: str = "") -> str:
+    error_block = f"<p class=\"error\">{error}</p>" if error else ""
+    return f"""
+<!doctype html>
+<html>
+  <head>
+    <meta charset=\"utf-8\" />
+    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />
+    <title>Protected Stream</title>
+    <style>
+      body { font-family: Arial, sans-serif; background: #0b1020; color: #fff; margin: 0; display: grid; place-items: center; height: 100vh; }
+      .card { width: min(420px, 92vw); background: #111b33; padding: 28px; border-radius: 16px; text-align: center; }
+      input { width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid #2a3a5f; background: #0f1a33; color: #fff; }
+      button { margin-top: 12px; width: 100%; padding: 10px 12px; border: 0; border-radius: 10px; background: #7bdff2; color: #0b0f1a; font-weight: 700; cursor: pointer; }
+      .error { color: #ffb3b3; font-size: 13px; margin: 10px 0 0; }
+    </style>
+  </head>
+  <body>
+    <div class=\"card\">
+      <h2>Enter Password</h2>
+      <form method=\"post\" action=\"/player/{token}\">
+        <input type=\"password\" name=\"password\" placeholder=\"Password\" required />
+        <button type=\"submit\">Unlock Stream</button>
+      </form>
+      {error_block}
+    </div>
+  </body>
+</html>
+"""
+
+
 @app.get("/player/{token}")
-async def player(token: str):
+async def player(token: str, request: Request):
     ref = await store.get(token, settings.token_ttl_seconds)
     if not ref:
         raise HTTPException(status_code=404, detail="Invalid or expired token")
@@ -293,6 +346,9 @@ async def player(token: str):
 </html>
 """
         return HTMLResponse(content=html, status_code=403)
+
+    if password_enabled() and not is_authed(request):
+        return HTMLResponse(content=password_form_html(token), status_code=401)
 
     media_tag = "video"
     if ref.media_type == "audio":
@@ -470,3 +526,17 @@ async def player(token: str):
 """
 
     return HTMLResponse(content=html)
+
+
+@app.post("/player/{token}")
+async def player_password(token: str, password: str = Form(...)):
+    ref = await store.get(token, settings.token_ttl_seconds)
+    if not ref:
+        raise HTTPException(status_code=404, detail="Invalid or expired token")
+    if not password_enabled():
+        return RedirectResponse(url=f"/player/{token}", status_code=302)
+    if not hmac.compare_digest(password, settings.stream_password):
+        return HTMLResponse(content=password_form_html(token, "Invalid password."), status_code=401)
+    response = RedirectResponse(url=f"/player/{token}", status_code=302)
+    response.set_cookie("stream_auth", password_cookie_value(), httponly=True, max_age=60 * 60 * 12, samesite="lax")
+    return response
