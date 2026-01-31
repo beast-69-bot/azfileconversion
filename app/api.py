@@ -296,11 +296,11 @@ def password_form_html(token: str, error: str = "") -> str:
     <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />
     <title>Protected Stream</title>
     <style>
-      body { font-family: Arial, sans-serif; background: #0b1020; color: #fff; margin: 0; display: grid; place-items: center; height: 100vh; }
-      .card { width: min(420px, 92vw); background: #111b33; padding: 28px; border-radius: 16px; text-align: center; }
-      input { width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid #2a3a5f; background: #0f1a33; color: #fff; }
-      button { margin-top: 12px; width: 100%; padding: 10px 12px; border: 0; border-radius: 10px; background: #7bdff2; color: #0b0f1a; font-weight: 700; cursor: pointer; }
-      .error { color: #ffb3b3; font-size: 13px; margin: 10px 0 0; }
+      body {{ font-family: Arial, sans-serif; background: #0b1020; color: #fff; margin: 0; display: grid; place-items: center; height: 100vh; }}
+      .card {{ width: min(420px, 92vw); background: #111b33; padding: 28px; border-radius: 16px; text-align: center; }}
+      input {{ width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid #2a3a5f; background: #0f1a33; color: #fff; }}
+      button {{ margin-top: 12px; width: 100%; padding: 10px 12px; border: 0; border-radius: 10px; background: #7bdff2; color: #0b0f1a; font-weight: 700; cursor: pointer; }}
+      .error {{ color: #ffb3b3; font-size: 13px; margin: 10px 0 0; }}
     </style>
   </head>
   <body>
