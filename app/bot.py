@@ -13,7 +13,7 @@ from app.db import PremiumDB
 from app.store import FileRef, TokenStore
 
 settings = get_settings()
-store = TokenStore(settings.redis_url)
+store = TokenStore(settings.redis_url, history_limit=settings.history_limit)
 db = PremiumDB(settings.db_path)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -117,6 +117,46 @@ async def start_handler(client: Client, message):
         return
 
     await send_premium_file(client, user_id, ref)
+
+
+@app.on_message(filters.command("history") & filters.private)
+async def history_links(client: Client, message):
+    if not is_admin(message.from_user.id if message.from_user else None):
+        await message.reply_text("Not allowed.")
+        return
+
+    parts = (message.text or "").split()
+    limit = 20
+    if len(parts) >= 2:
+        try:
+            limit = max(1, min(int(parts[1]), 100))
+        except Exception:
+            limit = 20
+
+    tokens = await store.list_recent(limit * 2)
+    if not tokens:
+        await message.reply_text("No history yet.")
+        return
+
+    lines = ["Recent stream links:"]
+    shown = 0
+    for token in tokens:
+        ref = await store.get(token, settings.token_ttl_seconds)
+        if not ref:
+            continue
+        link = build_link(token)
+        name = ref.file_name or ref.file_unique_id or "file"
+        access = "Premium" if ref.access == "premium" else "Normal"
+        lines.append(f"{access}: {link}\n{name}")
+        shown += 1
+        if shown >= limit:
+            break
+
+    if shown == 0:
+        await message.reply_text("No active links found (expired or missing).")
+        return
+
+    await message.reply_text("\n\n".join(lines))
 
 
 @app.on_message(filters.command("add") & filters.private)

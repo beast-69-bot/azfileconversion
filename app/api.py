@@ -13,7 +13,7 @@ from app.config import get_settings
 from app.store import FileRef, TokenStore
 
 settings = get_settings()
-store = TokenStore(settings.redis_url)
+store = TokenStore(settings.redis_url, history_limit=settings.history_limit)
 
 app = FastAPI()
 

@@ -24,10 +24,13 @@ class FileRef:
 
 
 class TokenStore:
-    def __init__(self, redis_url: Optional[str] = None) -> None:
+    def __init__(self, redis_url: Optional[str] = None, history_limit: int = 200) -> None:
         self._redis_url = redis_url
         self._redis = None
         self._memory: dict[str, FileRef] = {}
+        self._history: list[str] = []
+        self._history_limit = max(history_limit, 1)
+        self._history_key = "history:tokens"
 
     async def connect(self) -> None:
         if self._redis_url and redis is not None:
@@ -52,8 +55,13 @@ class TokenStore:
                 await self._redis.setex(token, ttl_seconds, payload)
             else:
                 await self._redis.set(token, payload)
+            await self._redis.lpush(self._history_key, token)
+            await self._redis.ltrim(self._history_key, 0, self._history_limit - 1)
             return
         self._memory[token] = ref
+        self._history.insert(0, token)
+        if len(self._history) > self._history_limit:
+            self._history = self._history[: self._history_limit]
 
     async def get(self, token: str, ttl_seconds: int) -> Optional[FileRef]:
         if self._redis is not None:
@@ -73,3 +81,11 @@ class TokenStore:
             self._memory.pop(token, None)
             return None
         return ref
+
+
+    async def list_recent(self, limit: int) -> list[str]:
+        limit = max(int(limit), 1)
+        if self._redis is not None:
+            tokens = await self._redis.lrange(self._history_key, 0, limit - 1)
+            return [t for t in tokens if t]
+        return self._history[:limit]
