@@ -454,20 +454,17 @@ async def render_section(section_id: str, access_filter: str, request: Request) 
     per_page = max(6, min(per_page, 60))
 
     entries = []
+    entries_all = []
     base_url = str(request.base_url).rstrip("/")
     for token in tokens:
         ref = await store.get(token, settings.token_ttl_seconds)
         if not ref:
             continue
         ref_access = (ref.access or "normal").strip().lower()
-        if access_filter == "premium" and ref_access != "premium":
-            continue
-        if access_filter == "normal" and ref_access != "normal":
-            continue
         name = ref.file_name or ref.file_unique_id or "file"
         size_text = human_size(ref.file_size)
         views_total, views_unique = await store.get_views(token)
-        entries.append({
+        entry = {
             "token": token,
             "name": name,
             "size_text": size_text,
@@ -476,11 +473,21 @@ async def render_section(section_id: str, access_filter: str, request: Request) 
             "file_size": ref.file_size or 0,
             "views_total": views_total,
             "views_unique": views_unique,
-            "download_ok": bool(settings.direct_download and ref.access == "premium"),
+            "access": ref_access,
             "play_link": f"/player/{token}",
-            "download_link": f"/download/{token}",
             "copy_link": f"{base_url}/player/{token}",
-        })
+        }
+        entries_all.append(entry)
+        if access_filter == "premium" and ref_access != "premium":
+            continue
+        if access_filter == "normal" and ref_access != "normal":
+            continue
+        entries.append(entry)
+
+    fallback_all = False
+    if not entries and entries_all:
+        entries = entries_all
+        fallback_all = True
 
     empty_section = not entries
 
@@ -526,6 +533,7 @@ async def render_section(section_id: str, access_filter: str, request: Request) 
         badge = ""
         if max_views and item["views_total"] == max_views:
             badge = "<span class=\"badge\">Trending</span>"
+        access_badge = f"<span class=\\\"badge\\\">{item['access'].title()}</span>" if fallback_all else ""
         items.append(
             "<li class=\"card\">"
             "<div class=\"card-main\">"
@@ -535,6 +543,7 @@ async def render_section(section_id: str, access_filter: str, request: Request) 
             f"<span>{item['mime']}</span>"
             f"<span>{view_text}</span>"
             f"{badge}"
+            f"{access_badge}"
             "</div>"
             "</div>"
             "<div class=\"card-actions\">"
@@ -559,6 +568,7 @@ async def render_section(section_id: str, access_filter: str, request: Request) 
     skeleton_items = "".join(["<li class=\"card skeleton\"><div class=\"line w-60\"></div><div class=\"line w-40\"></div><div class=\"line w-30\"></div></li>" for _ in range(min(6, per_page))])
 
     title = f"Section ({access_filter.title()}): {section_id}"
+    access_label = "All" if fallback_all else access_filter.title()
     breadcrumb = f"<a href=\"{settings.base_url}\">Home</a> <span>→</span> <span>Section</span> <span>→</span> <span>{section_id}</span>"
 
     prev_link = build_query(page=page - 1) if page > 1 else ""
@@ -828,7 +838,7 @@ async def render_section(section_id: str, access_filter: str, request: Request) 
           <div class="title">__TITLE__</div>
           <div class="meta">
             <div class="chip">__TOTAL__ files</div>
-            <div class="chip">Access: __ACCESS__</div>
+            <div class="chip">Access: __ACCESS_LABEL__</div>
             <div class="chip">Page __PAGE__ of __PAGE_COUNT__</div>
           </div>
         </div>
@@ -895,6 +905,7 @@ async def render_section(section_id: str, access_filter: str, request: Request) 
             .replace("__BREADCRUMB__", breadcrumb)
             .replace("__TOTAL__", str(total_items))
             .replace("__ACCESS__", access_filter.title())
+            .replace("__ACCESS_LABEL__", access_label)
             .replace("__PAGE__", str(page))
             .replace("__PAGE_COUNT__", str(page_count))
             .replace("__SORT_OPTIONS__", "".join(sort_options))
