@@ -409,7 +409,9 @@ async def render_section(section_id: str, access_filter: str, request: Request) 
 
     tokens = await store.list_section(section_id, settings.history_limit)
     if not tokens:
-        raise HTTPException(status_code=404, detail="Section not found")
+        exists = await store.section_id_exists(section_id)
+        if not exists:
+            raise HTTPException(status_code=404, detail="Section not found")
 
     sort = (request.query_params.get("sort") or "newest").lower()
     try:
@@ -451,8 +453,7 @@ async def render_section(section_id: str, access_filter: str, request: Request) 
             "copy_link": f"{base_url}/player/{token}",
         })
 
-    if not entries:
-        raise HTTPException(status_code=404, detail="Section empty")
+    empty_section = not entries
 
     if sort == "name_asc":
         entries.sort(key=lambda item: item["name"].lower())
@@ -467,11 +468,11 @@ async def render_section(section_id: str, access_filter: str, request: Request) 
         sort = "newest"
 
     total_items = len(entries)
-    page_count = max(1, math.ceil(total_items / per_page))
+    page_count = max(1, math.ceil(total_items / per_page)) if total_items else 1
     page = min(page, page_count)
     start = (page - 1) * per_page
     end = start + per_page
-    page_entries = entries[start:end]
+    page_entries = entries[start:end] if total_items else []
 
     max_views = max((item["views_total"] for item in entries), default=0)
 
@@ -485,6 +486,10 @@ async def render_section(section_id: str, access_filter: str, request: Request) 
         return f"<option value=\"{value}\"{selected}>{label}</option>"
 
     items = []
+    if empty_section:
+        items.append(
+            "<li class=\"card empty\">No files yet. Upload to this section to see items here.</li>"
+        )
     for item in page_entries:
         view_text = f"👁 {item['views_total']}"
         if item["views_unique"]:
@@ -532,7 +537,7 @@ async def render_section(section_id: str, access_filter: str, request: Request) 
 
     prev_class = "page disabled" if not prev_link else "page"
     next_class = "page disabled" if not next_link else "page"
-    show_start = start + 1
+    show_start = 0 if total_items == 0 else start + 1
     show_end = min(end, total_items)
 
     html = """
@@ -659,6 +664,12 @@ async def render_section(section_id: str, access_filter: str, request: Request) 
         border: 1px solid var(--border);
         background: rgba(255,255,255,0.02);
         transition: transform 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+      }
+      .card.empty {
+        justify-content: center;
+        color: var(--muted);
+        font-size: 13px;
+        border-style: dashed;
       }
       .card:hover {
         transform: translateY(-1px);
