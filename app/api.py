@@ -544,6 +544,18 @@ async def render_section(section_id: str, access_filter: str, request: Request) 
             "</li>"
         )
 
+    if request.query_params.get("debug") == "2":
+        return JSONResponse(
+            {
+                "section_id": section_id,
+                "access_filter": access_filter,
+                "entries_len": len(entries),
+                "page_entries_len": len(page_entries),
+                "items_len": len(items),
+                "items_sample": items[:2],
+            }
+        )
+
     skeleton_items = "".join(["<li class=\"card skeleton\"><div class=\"line w-60\"></div><div class=\"line w-40\"></div><div class=\"line w-30\"></div></li>" for _ in range(min(6, per_page))])
 
     title = f"Section ({access_filter.title()}): {section_id}"
