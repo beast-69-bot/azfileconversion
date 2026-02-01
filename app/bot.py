@@ -136,8 +136,7 @@ async def add_section(client: Client, message):
         await message.reply_text("Section name already exists. Choose another name.")
         return
     link = f"{settings.base_url}/section/{section_id}"
-    premium_link = f"{settings.base_url}/section/{section_id}/premium"
-    await message.reply_text(f"Section set to: {section}\nNormal: {link}\nPremium: {premium_link}")
+    await message.reply_text(f"Section set to: {section}\nOpen: {link}")
 
 
 @app.on_message(filters.command("endsection") & filters.private)

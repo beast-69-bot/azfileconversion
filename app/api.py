@@ -622,6 +622,20 @@ async def render_section(section_id: str, access_filter: str, request: Request) 
         background: rgba(255,255,255,0.03);
       }
       .controls { display: flex; gap: 10px; align-items: center; }
+      .tabs { display: flex; gap: 8px; align-items: center; }
+      .tab {
+        text-decoration: none;
+        color: var(--text);
+        border: 1px solid var(--border);
+        padding: 6px 12px;
+        border-radius: 999px;
+        font-size: 12px;
+      }
+      .tab.active {
+        border-color: rgba(123, 223, 242, 0.6);
+        color: #7bdff2;
+        background: rgba(123, 223, 242, 0.12);
+      }
       .controls label { font-size: 12px; color: var(--muted); }
       select {
         background: rgba(255,255,255,0.04);
@@ -770,6 +784,10 @@ async def render_section(section_id: str, access_filter: str, request: Request) 
             <div class="chip">Page __PAGE__ of __PAGE_COUNT__</div>
           </div>
         </div>
+        <div class="tabs" role="tablist">
+          <a class="tab __TAB_NORMAL__" role="tab" href="__NORMAL_LINK__">Normal</a>
+          <a class="tab __TAB_PREMIUM__" role="tab" href="__PREMIUM_LINK__">Premium</a>
+        </div>
         <div class="controls">
           <label for="sort">Sort</label>
           <select id="sort" name="sort">
@@ -819,6 +837,11 @@ async def render_section(section_id: str, access_filter: str, request: Request) 
   </body>
 </html>
 """
+    normal_link = f"/section/{section_id}?access=normal"
+    premium_link = f"/section/{section_id}/premium"
+    tab_normal = "active" if access_filter == "normal" else ""
+    tab_premium = "active" if access_filter == "premium" else ""
+
     html = (html
             .replace("__TITLE__", title)
             .replace("__BREADCRUMB__", breadcrumb)
@@ -827,6 +850,10 @@ async def render_section(section_id: str, access_filter: str, request: Request) 
             .replace("__PAGE__", str(page))
             .replace("__PAGE_COUNT__", str(page_count))
             .replace("__SORT_OPTIONS__", "".join(sort_options))
+            .replace("__NORMAL_LINK__", normal_link)
+            .replace("__PREMIUM_LINK__", premium_link)
+            .replace("__TAB_NORMAL__", tab_normal)
+            .replace("__TAB_PREMIUM__", tab_premium)
             .replace("__SKELETON__", skeleton_items)
             .replace("__ITEMS__", "".join(items))
             .replace("__PREV_CLASS__", prev_class)
