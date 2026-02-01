@@ -290,7 +290,43 @@ async def download(token: str, request: Request, range: Optional[str] = Header(N
 
 
 
-async def render_section(section_id: str, access_filter: str) -> HTMLResponse:
+
+
+
+def section_password_form_html(section_id: str, access_filter: str, error: str = "") -> str:
+    error_block = f"<p class=\"error\">{error}</p>" if error else ""
+    return f"""
+<!doctype html>
+<html>
+  <head>
+    <meta charset=\"utf-8\" />
+    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />
+    <title>Protected Section</title>
+    <style>
+      body {{ font-family: Arial, sans-serif; background: #0b1020; color: #fff; margin: 0; display: grid; place-items: center; height: 100vh; }}
+      .card {{ width: min(420px, 92vw); background: #111b33; padding: 28px; border-radius: 16px; text-align: center; }}
+      input {{ width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid #2a3a5f; background: #0f1a33; color: #fff; }}
+      button {{ margin-top: 12px; width: 100%; padding: 10px 12px; border: 0; border-radius: 10px; background: #7bdff2; color: #0b0f1a; font-weight: 700; cursor: pointer; }}
+      .error {{ color: #ffb3b3; font-size: 13px; margin: 10px 0 0; }}
+    </style>
+  </head>
+  <body>
+    <div class=\"card\">
+      <h2>Enter Password</h2>
+      <form method=\"post\" action=\"/section/{section_id}/auth?access={access_filter}\">
+        <input type=\"password\" name=\"password\" placeholder=\"Password\" required />
+        <button type=\"submit\">Unlock Section</button>
+      </form>
+      {error_block}
+    </div>
+  </body>
+</html>
+"""
+
+async def render_section(section_id: str, access_filter: str, request: Request) -> HTMLResponse:
+    if password_enabled() and not is_authed(request):
+        return HTMLResponse(content=section_password_form_html(section_id, access_filter), status_code=401)
+
     tokens = await store.list_section(section_id, settings.history_limit)
     if not tokens:
         raise HTTPException(status_code=404, detail="Section not found")
@@ -337,13 +373,27 @@ async def render_section(section_id: str, access_filter: str) -> HTMLResponse:
 
 
 @app.get("/section/{section_id}")
-async def section_page(section_id: str):
-    return await render_section(section_id, "normal")
+async def section_page(section_id: str, request: Request):
+    return await render_section(section_id, "normal", request)
 
 
 @app.get("/section/{section_id}/premium")
-async def section_page_premium(section_id: str):
-    return await render_section(section_id, "premium")
+async def section_page_premium(section_id: str, request: Request):
+    return await render_section(section_id, "premium", request)
+
+
+
+
+@app.post("/section/{section_id}/auth")
+async def section_auth(section_id: str, request: Request, password: str = Form(...)):
+    access = request.query_params.get("access", "normal")
+    if not password_enabled():
+        return RedirectResponse(url=f"/section/{section_id}" if access != "premium" else f"/section/{section_id}/premium", status_code=302)
+    if not hmac.compare_digest(password, settings.stream_password):
+        return HTMLResponse(content=section_password_form_html(section_id, access, "Invalid password."), status_code=401)
+    response = RedirectResponse(url=f"/section/{section_id}" if access != "premium" else f"/section/{section_id}/premium", status_code=302)
+    response.set_cookie("stream_auth", password_cookie_value(), httponly=True, max_age=60 * 60 * 12, samesite="lax")
+    return response
 
 
 def password_form_html(token: str, error: str = "") -> str:
