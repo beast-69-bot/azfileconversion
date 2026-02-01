@@ -1321,8 +1321,8 @@ async def player(token: str, request: Request):
               <div class="chip">__FILE__</div>
               <div class="chip">__SIZE__</div>
               <div class="chip">__MIME__</div>
-              <div class="chip">?? __VIEWS__</div>
-              <div class="chip">? __LIKES__</div>
+              <div class="chip">Views __VIEWS__</div>
+              <div class="chip">Likes __LIKES__</div>
             </div>
           </div>
         </div>
@@ -1330,7 +1330,7 @@ async def player(token: str, request: Request):
           <a class="btn secondary" href="/stream/__TOKEN__">Direct stream</a>
           __DOWNLOAD_BUTTON__
           <button id="like-btn" class="btn ghost __LIKE_ACTIVE__" data-liked="__LIKED__" data-token="__TOKEN__">
-            ? <span id="like-count">__LIKES__</span>
+            Like <span id="like-count">__LIKES__</span>
           </button>
         </div>
         <div class="hint">If playback stalls, try refreshing once. Some files need a few seconds to start.</div>
