@@ -133,7 +133,8 @@ async def add_section(client: Client, message):
     section = parts[1].strip()
     section_id = await store.set_section(section)
     link = f"{settings.base_url}/section/{section_id}" if section_id else ""
-    await message.reply_text(f"Section set to: {section}\nLink: {link}")
+    premium_link = f"{settings.base_url}/section/{section_id}/premium" if section_id else ""
+    await message.reply_text(f"Section set to: {section}\nNormal: {link}\nPremium: {premium_link}")
 
 
 @app.on_message(filters.command("endsection") & filters.private)
@@ -259,7 +260,6 @@ async def handle_private_media(client: Client, message):
     premium_link = build_link(premium_token)
     link_text = f"Stream (Normal): {link}\nStream (Premium): {premium_link}\nSection: {section_name}"
     await message.reply_text(link_text)
-
 
 @app.on_message(filters.channel & (filters.document | filters.video | filters.audio))
 async def handle_channel_media(client: Client, message):

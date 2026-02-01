@@ -288,21 +288,29 @@ async def download(token: str, request: Request, range: Optional[str] = Header(N
 
 
 
-@app.get("/section/{section_id}")
-async def section_page(section_id: str):
+
+
+async def render_section(section_id: str, access_filter: str) -> HTMLResponse:
     tokens = await store.list_section(section_id, settings.history_limit)
     if not tokens:
         raise HTTPException(status_code=404, detail="Section not found")
 
     items = []
+    title = f"Section ({access_filter.title()}): {section_id}"
     for token in tokens:
         ref = await store.get(token, settings.token_ttl_seconds)
         if not ref:
             continue
+        if access_filter == "premium" and ref.access != "premium":
+            continue
+        if access_filter == "normal" and ref.access != "normal":
+            continue
         name = ref.file_name or ref.file_unique_id or "file"
         items.append(f"<li><a href=\"/player/{token}\">{name}</a></li>")
 
-    title = f"Section: {section_id}"
+    if not items:
+        raise HTTPException(status_code=404, detail="Section empty")
+
     html = f"""
 <!doctype html>
 <html>
@@ -326,6 +334,16 @@ async def section_page(section_id: str):
 </html>
 """
     return HTMLResponse(content=html)
+
+
+@app.get("/section/{section_id}")
+async def section_page(section_id: str):
+    return await render_section(section_id, "normal")
+
+
+@app.get("/section/{section_id}/premium")
+async def section_page_premium(section_id: str):
+    return await render_section(section_id, "premium")
 
 
 def password_form_html(token: str, error: str = "") -> str:
