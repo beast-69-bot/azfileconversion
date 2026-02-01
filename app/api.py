@@ -458,7 +458,7 @@ async def render_section(section_id: str, access_filter: str, request: Request) 
     base_url = str(request.base_url).rstrip("/")
     for token in tokens:
         ref = await store.get(token, settings.token_ttl_seconds)
-        if not ref:
+        if ref is None:
             continue
         ref_access = (ref.access or "normal").strip().lower()
         name = ref.file_name or ref.file_unique_id or "file"
@@ -478,11 +478,11 @@ async def render_section(section_id: str, access_filter: str, request: Request) 
             "copy_link": f"{base_url}/player/{token}",
         }
         entries_all.append(entry)
-        if access_filter == "premium" and ref_access != "premium":
-            continue
-        if access_filter == "normal" and ref_access != "normal":
-            continue
-        entries.append(entry)
+        if (
+            (access_filter == "premium" and ref_access == "premium")
+            or (access_filter == "normal" and ref_access == "normal")
+        ):
+            entries.append(entry)
 
     fallback_all = False
     if not entries and entries_all:
