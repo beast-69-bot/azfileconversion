@@ -410,6 +410,30 @@ async def render_section(section_id: str, access_filter: str, request: Request) 
     if settings.redis_url and getattr(store, "_redis", None) is None:
         await store.connect()
 
+    if request.query_params.get("debug") == "1":
+        tokens = await store.list_section(section_id, settings.history_limit)
+        present = 0
+        filtered = 0
+        for token in tokens:
+            ref = await store.get(token, settings.token_ttl_seconds)
+            if not ref:
+                continue
+            present += 1
+            if access_filter == "premium" and ref.access != "premium":
+                continue
+            if access_filter == "normal" and ref.access != "normal":
+                continue
+            filtered += 1
+        return JSONResponse(
+            {
+                "section_id": section_id,
+                "access_filter": access_filter,
+                "tokens_total": len(tokens),
+                "tokens_present": present,
+                "tokens_filtered": filtered,
+            }
+        )
+
     tokens = await store.list_section(section_id, settings.history_limit)
     if not tokens:
         exists = await store.section_id_exists(section_id)
