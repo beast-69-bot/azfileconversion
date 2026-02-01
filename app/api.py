@@ -303,16 +303,83 @@ def section_password_form_html(section_id: str, access_filter: str, error: str =
     <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />
     <title>Protected Section</title>
     <style>
-      body {{ font-family: Arial, sans-serif; background: #0b1020; color: #fff; margin: 0; display: grid; place-items: center; height: 100vh; }}
-      .card {{ width: min(420px, 92vw); background: #111b33; padding: 28px; border-radius: 16px; text-align: center; }}
-      input {{ width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid #2a3a5f; background: #0f1a33; color: #fff; }}
-      button {{ margin-top: 12px; width: 100%; padding: 10px 12px; border: 0; border-radius: 10px; background: #7bdff2; color: #0b0f1a; font-weight: 700; cursor: pointer; }}
-      .error {{ color: #ffb3b3; font-size: 13px; margin: 10px 0 0; }}
+      @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+      :root {{
+        --bg-1: #0b0f1a;
+        --bg-2: #101a2c;
+        --accent: #7bdff2;
+        --accent-2: #f2a07b;
+        --card: rgba(15, 22, 36, 0.92);
+        --border: rgba(255, 255, 255, 0.08);
+        --text: #e9eef8;
+        --muted: #9fb0c9;
+      }}
+      * {{ box-sizing: border-box; }}
+      body {{
+        margin: 0;
+        font-family: 'Space Grotesk', system-ui, sans-serif;
+        color: var(--text);
+        display: grid;
+        place-items: center;
+        min-height: 100vh;
+        background:
+          radial-gradient(900px 420px at 20% 0%, rgba(123, 223, 242, 0.14), transparent 60%),
+          radial-gradient(700px 520px at 90% 20%, rgba(242, 160, 123, 0.18), transparent 60%),
+          linear-gradient(135deg, var(--bg-1), var(--bg-2));
+      }}
+      body::before {{
+        content: '';
+        position: fixed;
+        inset: 0;
+        background: repeating-linear-gradient(
+          115deg,
+          rgba(255,255,255,0.03) 0px,
+          rgba(255,255,255,0.03) 1px,
+          transparent 1px,
+          transparent 6px
+        );
+        opacity: 0.35;
+        pointer-events: none;
+      }}
+      .card {{
+        width: min(460px, 92vw);
+        background: var(--card);
+        padding: 30px;
+        border-radius: 20px;
+        text-align: center;
+        border: 1px solid var(--border);
+        box-shadow: 0 20px 60px rgba(0,0,0,0.35);
+        backdrop-filter: blur(12px);
+      }}
+      h2 {{ margin: 0 0 10px; font-size: 22px; }}
+      p {{ color: var(--muted); margin: 0 0 16px; font-size: 14px; }}
+      input {{
+        width: 100%;
+        padding: 12px 14px;
+        border-radius: 12px;
+        border: 1px solid var(--border);
+        background: rgba(255,255,255,0.04);
+        color: var(--text);
+        font-size: 14px;
+      }}
+      button {{
+        margin-top: 14px;
+        width: 100%;
+        padding: 12px 14px;
+        border: 0;
+        border-radius: 12px;
+        background: linear-gradient(135deg, var(--accent), #b9f3ff);
+        color: #0b0f1a;
+        font-weight: 700;
+        cursor: pointer;
+      }}
+      .error {{ color: #ffb3b3; font-size: 13px; margin: 12px 0 0; }}
     </style>
   </head>
   <body>
     <div class=\"card\">
-      <h2>Enter Password</h2>
+      <h2>Section Locked</h2>
+      <p>Enter the password to unlock this section.</p>
       <form method=\"post\" action=\"/section/{section_id}/auth?access={access_filter}\">
         <input type=\"password\" name=\"password\" placeholder=\"Password\" required />
         <button type=\"submit\">Unlock Section</button>
@@ -342,7 +409,16 @@ async def render_section(section_id: str, access_filter: str, request: Request) 
         if access_filter == "normal" and ref.access != "normal":
             continue
         name = ref.file_name or ref.file_unique_id or "file"
-        items.append(f"<li><a href=\"/player/{token}\">{name}</a></li>")
+        size_text = human_size(ref.file_size)
+        items.append(
+            f"<li class=\"item\">"
+            f"<div class=\"file\">"
+            f"<div class=\"file-name\">{name}</div>"
+            f"<div class=\"file-sub\">{size_text} · {resolve_mime(ref)}</div>"
+            f"</div>"
+            f"<a class=\"open\" href=\"/player/{token}\">Open</a>"
+            f"</li>"
+        )
 
     if not items:
         raise HTTPException(status_code=404, detail="Section empty")
@@ -355,17 +431,158 @@ async def render_section(section_id: str, access_filter: str, request: Request) 
     <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />
     <title>{title}</title>
     <style>
-      body {{ font-family: Arial, sans-serif; background: #0b1020; color: #fff; margin: 0; padding: 24px; }}
-      a {{ color: #8ab4ff; text-decoration: none; }}
-      ul {{ list-style: none; padding: 0; }}
-      li {{ padding: 10px 0; border-bottom: 1px solid #1f2b44; }}
+      @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+      :root {{
+        --bg-1: #0b0f1a;
+        --bg-2: #111a2b;
+        --accent: #7bdff2;
+        --accent-2: #f2a07b;
+        --card: rgba(15, 22, 36, 0.92);
+        --border: rgba(255, 255, 255, 0.08);
+        --text: #e9eef8;
+        --muted: #9fb0c9;
+      }}
+      * {{ box-sizing: border-box; }}
+      body {{
+        margin: 0;
+        font-family: 'Space Grotesk', system-ui, sans-serif;
+        color: var(--text);
+        min-height: 100vh;
+        background:
+          radial-gradient(1100px 540px at 10% 0%, rgba(123, 223, 242, 0.12), transparent 60%),
+          radial-gradient(900px 700px at 90% 20%, rgba(242, 160, 123, 0.16), transparent 60%),
+          linear-gradient(135deg, var(--bg-1), var(--bg-2));
+        padding: 32px 24px 60px;
+      }}
+      body::before {{
+        content: '';
+        position: fixed;
+        inset: 0;
+        background: repeating-linear-gradient(
+          115deg,
+          rgba(255,255,255,0.03) 0px,
+          rgba(255,255,255,0.03) 1px,
+          transparent 1px,
+          transparent 6px
+        );
+        opacity: 0.35;
+        pointer-events: none;
+      }}
+      .shell {{
+        width: min(1080px, 94vw);
+        margin: 0 auto;
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 24px;
+        padding: 28px;
+        box-shadow: 0 20px 60px rgba(0,0,0,0.35);
+        backdrop-filter: blur(12px);
+      }}
+      .header {{
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 18px;
+      }}
+      .title {{
+        font-size: 22px;
+        font-weight: 700;
+      }}
+      .meta {{
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }}
+      .chip {{
+        font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, monospace;
+        font-size: 12px;
+        color: var(--muted);
+        padding: 6px 10px;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        background: rgba(255,255,255,0.03);
+      }}
+      .list {{
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        display: grid;
+        gap: 12px;
+      }}
+      .item {{
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 14px 16px;
+        border-radius: 14px;
+        border: 1px solid var(--border);
+        background: rgba(255,255,255,0.02);
+        transition: transform 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+      }}
+      .item:hover {{
+        transform: translateY(-1px);
+        border-color: rgba(123, 223, 242, 0.4);
+        box-shadow: 0 10px 24px rgba(0,0,0,0.2);
+      }}
+      .file {{
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        min-width: 0;
+      }}
+      .file-name {{
+        font-size: 15px;
+        font-weight: 600;
+        color: var(--text);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 640px;
+      }}
+      .file-sub {{
+        font-size: 12px;
+        color: var(--muted);
+      }}
+      .open {{
+        text-decoration: none;
+        color: #0b0f1a;
+        background: linear-gradient(135deg, var(--accent), #b9f3ff);
+        padding: 8px 12px;
+        border-radius: 10px;
+        font-weight: 600;
+        white-space: nowrap;
+      }}
+      .hint {{
+        margin-top: 18px;
+        font-size: 12px;
+        color: var(--muted);
+      }}
+      @media (max-width: 720px) {{
+        .shell {{ padding: 20px; }}
+        .file-name {{ max-width: 320px; }}
+        .item {{ flex-direction: column; align-items: flex-start; }}
+      }}
     </style>
   </head>
   <body>
-    <h2>{title}</h2>
-    <ul>
-      {"".join(items)}
-    </ul>
+    <div class="shell">
+      <div class="header">
+        <div>
+          <div class="title">{title}</div>
+          <div class="meta">
+            <div class="chip">Items: {len(items)}</div>
+            <div class="chip">Access: {access_filter.title()}</div>
+          </div>
+        </div>
+      </div>
+      <ul class="list">
+        {"".join(items)}
+      </ul>
+      <div class="hint">Tip: If a file does not open, refresh once or try again later.</div>
+    </div>
   </body>
 </html>
 """
