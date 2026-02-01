@@ -1328,6 +1328,7 @@ async def player(token: str, request: Request):
         </div>
         <div class="actions">
           <a class="btn secondary" href="/stream/__TOKEN__">Direct stream</a>
+          __DOWNLOAD_BUTTON__
           <button id="like-btn" class="btn ghost __LIKE_ACTIVE__" data-liked="__LIKED__" data-token="__TOKEN__">
             ? <span id="like-count">__LIKES__</span>
           </button>
@@ -1372,6 +1373,10 @@ async def player(token: str, request: Request):
 """
 
 
+    download_button = ""
+    if ref.access == "premium" and settings.bot_username:
+        download_button = f'<a class="btn" href="/player/{token}/download">Download</a>'
+
     html = (html
             .replace("__TOKEN__", token)
             .replace("__FILE__", file_name)
@@ -1382,6 +1387,7 @@ async def player(token: str, request: Request):
             .replace("__LIKES__", str(likes_total))
             .replace("__LIKED__", "true" if liked else "false")
             .replace("__LIKE_ACTIVE__", "active" if liked else "")
+            .replace("__DOWNLOAD_BUTTON__", download_button)
     )
     response = HTMLResponse(content=html)
     if not viewer_cookie:
