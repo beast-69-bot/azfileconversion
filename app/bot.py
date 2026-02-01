@@ -131,8 +131,9 @@ async def add_section(client: Client, message):
         return
 
     section = parts[1].strip()
-    await store.set_section(section)
-    await message.reply_text(f"Section set to: {section}")
+    section_id = await store.set_section(section)
+    link = f"{settings.base_url}/section/{section_id}" if section_id else ""
+    await message.reply_text(f"Section set to: {section}\nLink: {link}")
 
 
 @app.on_message(filters.command("endsection") & filters.private)
@@ -173,7 +174,7 @@ async def history_links(client: Client, message):
         link = build_link(token)
         name = ref.file_name or ref.file_unique_id or "file"
         access = "Premium" if ref.access == "premium" else "Normal"
-        section = ref.section or "-"
+        section = ref.section_name or "-"
         lines.append(f"{access} [{section}]: {link}\n{name}")
         shown += 1
         if shown >= limit:
@@ -211,6 +212,55 @@ async def add_premium_user(client: Client, message):
         await message.reply_text(f"Added {user_id} premium for {period} days.")
 
 
+@app.on_message(filters.private & (filters.document | filters.video | filters.audio))
+async def handle_private_media(client: Client, message):
+    if not is_admin(message.from_user.id if message.from_user else None):
+        await message.reply_text("Not allowed.")
+        return
+
+    media = message.document or message.video or message.audio
+    if not media:
+        return
+
+    section_id, section_name = await store.get_section()
+    if not section_id:
+        await message.reply_text("Set a section first using /addsection <name>.")
+        return
+
+    normal_token = secrets.token_urlsafe(24)
+    premium_token = secrets.token_urlsafe(24)
+
+    base_ref = dict(
+        file_id=media.file_id,
+        chat_id=message.chat.id,
+        message_id=message.id,
+        file_unique_id=media.file_unique_id,
+        file_name=getattr(media, "file_name", None),
+        mime_type=media.mime_type,
+        file_size=media.file_size,
+        media_type=message.media.value,
+        created_at=time.time(),
+        section_id=section_id,
+        section_name=section_name,
+    )
+
+    await store.set(
+        normal_token,
+        FileRef(**base_ref, access="normal"),
+        settings.token_ttl_seconds,
+    )
+    await store.set(
+        premium_token,
+        FileRef(**base_ref, access="premium"),
+        settings.token_ttl_seconds,
+    )
+
+    link = build_link(normal_token)
+    premium_link = build_link(premium_token)
+    link_text = f"Stream (Normal): {link}\nStream (Premium): {premium_link}\nSection: {section_name}"
+    await message.reply_text(link_text)
+
+
 @app.on_message(filters.channel & (filters.document | filters.video | filters.audio))
 async def handle_channel_media(client: Client, message):
     if message.outgoing:
@@ -237,6 +287,8 @@ async def handle_channel_media(client: Client, message):
     normal_token = secrets.token_urlsafe(24)
     premium_token = secrets.token_urlsafe(24)
 
+    section_id, section_name = await store.get_section()
+
     base_ref = dict(
         file_id=media.file_id,
         chat_id=message.chat.id,
@@ -247,7 +299,8 @@ async def handle_channel_media(client: Client, message):
         file_size=media.file_size,
         media_type=message.media.value,
         created_at=time.time(),
-        section=await store.get_section(),
+        section_id=section_id,
+        section_name=section_name,
     )
 
     await store.set(

@@ -286,6 +286,48 @@ async def download(token: str, request: Request, range: Optional[str] = Header(N
     )
 
 
+
+
+@app.get("/section/{section_id}")
+async def section_page(section_id: str):
+    tokens = await store.list_section(section_id, settings.history_limit)
+    if not tokens:
+        raise HTTPException(status_code=404, detail="Section not found")
+
+    items = []
+    for token in tokens:
+        ref = await store.get(token, settings.token_ttl_seconds)
+        if not ref:
+            continue
+        name = ref.file_name or ref.file_unique_id or "file"
+        items.append(f"<li><a href=\"/player/{token}\">{name}</a></li>")
+
+    title = f"Section: {section_id}"
+    html = f"""
+<!doctype html>
+<html>
+  <head>
+    <meta charset=\"utf-8\" />
+    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />
+    <title>{title}</title>
+    <style>
+      body {{ font-family: Arial, sans-serif; background: #0b1020; color: #fff; margin: 0; padding: 24px; }}
+      a {{ color: #8ab4ff; text-decoration: none; }}
+      ul {{ list-style: none; padding: 0; }}
+      li {{ padding: 10px 0; border-bottom: 1px solid #1f2b44; }}
+    </style>
+  </head>
+  <body>
+    <h2>{title}</h2>
+    <ul>
+      {"".join(items)}
+    </ul>
+  </body>
+</html>
+"""
+    return HTMLResponse(content=html)
+
+
 def password_form_html(token: str, error: str = "") -> str:
     error_block = f"<p class=\"error\">{error}</p>" if error else ""
     return f"""

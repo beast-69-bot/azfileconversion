@@ -21,7 +21,23 @@ class FileRef:
     media_type: str
     access: str
     created_at: float
-    section: Optional[str] = None
+    section_id: Optional[str] = None
+    section_name: Optional[str] = None
+
+
+def _slugify(value: str) -> str:
+    cleaned = []
+    last_dash = False
+    for ch in value.strip().lower():
+        if ch.isalnum():
+            cleaned.append(ch)
+            last_dash = False
+        else:
+            if not last_dash:
+                cleaned.append("-")
+                last_dash = True
+    slug = "".join(cleaned).strip("-")
+    return slug or "section"
 
 
 class TokenStore:
@@ -30,10 +46,13 @@ class TokenStore:
         self._redis = None
         self._memory: dict[str, FileRef] = {}
         self._history: list[str] = []
+        self._sections: dict[str, list[str]] = {}
         self._history_limit = max(history_limit, 1)
         self._history_key = "history:tokens"
         self._section_key = "section:current"
+        self._section_name_key = "section:current:name"
         self._current_section: Optional[str] = None
+        self._current_section_name: Optional[str] = None
 
     async def connect(self) -> None:
         if self._redis_url and redis is not None:
@@ -60,11 +79,20 @@ class TokenStore:
                 await self._redis.set(token, payload)
             await self._redis.lpush(self._history_key, token)
             await self._redis.ltrim(self._history_key, 0, self._history_limit - 1)
+            if ref.section_id:
+                section_key = f"section:{ref.section_id}"
+                await self._redis.lpush(section_key, token)
+                await self._redis.ltrim(section_key, 0, self._history_limit - 1)
             return
         self._memory[token] = ref
         self._history.insert(0, token)
         if len(self._history) > self._history_limit:
             self._history = self._history[: self._history_limit]
+        if ref.section_id:
+            items = self._sections.setdefault(ref.section_id, [])
+            items.insert(0, token)
+            if len(items) > self._history_limit:
+                self._sections[ref.section_id] = items[: self._history_limit]
 
     async def get(self, token: str, ttl_seconds: int) -> Optional[FileRef]:
         if self._redis is not None:
@@ -76,8 +104,10 @@ class TokenStore:
                 data["file_id"] = ""
             if "access" not in data:
                 data["access"] = "normal"
-            if "section" not in data:
-                data["section"] = None
+            if "section_id" not in data:
+                data["section_id"] = None
+            if "section_name" not in data:
+                data["section_name"] = None
             return FileRef(**data)
         ref = self._memory.get(token)
         if not ref:
@@ -96,17 +126,34 @@ class TokenStore:
         return self._history[:limit]
 
 
-    async def set_section(self, section: Optional[str]) -> None:
+    async def set_section(self, section_name: Optional[str]) -> Optional[str]:
+        if section_name:
+            section_id = _slugify(section_name)
+        else:
+            section_id = None
         if self._redis is not None:
-            if section:
-                await self._redis.set(self._section_key, section)
+            if section_id:
+                await self._redis.set(self._section_key, section_id)
+                await self._redis.set(self._section_name_key, section_name or "")
             else:
                 await self._redis.delete(self._section_key)
-            return
-        self._current_section = section
+                await self._redis.delete(self._section_name_key)
+            return section_id
+        self._current_section = section_id
+        self._current_section_name = section_name
+        return section_id
 
-    async def get_section(self) -> Optional[str]:
+    async def get_section(self) -> tuple[Optional[str], Optional[str]]:
         if self._redis is not None:
-            value = await self._redis.get(self._section_key)
-            return value or None
-        return self._current_section
+            section_id = await self._redis.get(self._section_key)
+            section_name = await self._redis.get(self._section_name_key)
+            return (section_id or None, section_name or None)
+        return (self._current_section, self._current_section_name)
+
+
+    async def list_section(self, section_id: str, limit: int) -> list[str]:
+        limit = max(int(limit), 1)
+        if self._redis is not None:
+            tokens = await self._redis.lrange(f"section:{section_id}", 0, limit - 1)
+            return [t for t in tokens if t]
+        return self._sections.get(section_id, [])[:limit]
