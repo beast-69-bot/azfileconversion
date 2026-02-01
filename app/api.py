@@ -404,6 +404,7 @@ def section_password_form_html(section_id: str, access_filter: str, error: str =
 """
 
 async def render_section(section_id: str, access_filter: str, request: Request) -> HTMLResponse:
+    access_filter = (access_filter or "normal").strip().lower()
     if password_enabled() and not is_authed(request):
         return HTMLResponse(content=section_password_form_html(section_id, access_filter), status_code=401)
 
@@ -458,9 +459,10 @@ async def render_section(section_id: str, access_filter: str, request: Request) 
         ref = await store.get(token, settings.token_ttl_seconds)
         if not ref:
             continue
-        if access_filter == "premium" and ref.access != "premium":
+        ref_access = (ref.access or "normal").strip().lower()
+        if access_filter == "premium" and ref_access != "premium":
             continue
-        if access_filter == "normal" and ref.access != "normal":
+        if access_filter == "normal" and ref_access != "normal":
             continue
         name = ref.file_name or ref.file_unique_id or "file"
         size_text = human_size(ref.file_size)
