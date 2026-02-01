@@ -1400,8 +1400,6 @@ async def player_download(token: str, request: Request):
     ref = await store.get(token, settings.token_ttl_seconds)
     if not ref:
         raise HTTPException(status_code=404, detail="Invalid or expired token")
-    if password_enabled() and not is_authed(request):
-        return RedirectResponse(url=f"/player/{token}", status_code=302)
     if ref.access != "premium":
         raise HTTPException(status_code=403, detail="Premium required")
     if settings.direct_download:
