@@ -119,6 +119,32 @@ async def start_handler(client: Client, message):
     await send_premium_file(client, user_id, ref)
 
 
+@app.on_message(filters.command("addsection") & filters.private)
+async def add_section(client: Client, message):
+    if not is_admin(message.from_user.id if message.from_user else None):
+        await message.reply_text("Not allowed.")
+        return
+
+    parts = (message.text or "").split(maxsplit=1)
+    if len(parts) < 2 or not parts[1].strip():
+        await message.reply_text("Usage: /addsection <name>")
+        return
+
+    section = parts[1].strip()
+    await store.set_section(section)
+    await message.reply_text(f"Section set to: {section}")
+
+
+@app.on_message(filters.command("endsection") & filters.private)
+async def end_section(client: Client, message):
+    if not is_admin(message.from_user.id if message.from_user else None):
+        await message.reply_text("Not allowed.")
+        return
+
+    await store.set_section(None)
+    await message.reply_text("Section cleared.")
+
+
 @app.on_message(filters.command("history") & filters.private)
 async def history_links(client: Client, message):
     if not is_admin(message.from_user.id if message.from_user else None):
@@ -147,7 +173,8 @@ async def history_links(client: Client, message):
         link = build_link(token)
         name = ref.file_name or ref.file_unique_id or "file"
         access = "Premium" if ref.access == "premium" else "Normal"
-        lines.append(f"{access}: {link}\n{name}")
+        section = ref.section or "-"
+        lines.append(f"{access} [{section}]: {link}\n{name}")
         shown += 1
         if shown >= limit:
             break
@@ -220,6 +247,7 @@ async def handle_channel_media(client: Client, message):
         file_size=media.file_size,
         media_type=message.media.value,
         created_at=time.time(),
+        section=await store.get_section(),
     )
 
     await store.set(

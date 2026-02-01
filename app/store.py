@@ -21,6 +21,7 @@ class FileRef:
     media_type: str
     access: str
     created_at: float
+    section: Optional[str] = None
 
 
 class TokenStore:
@@ -31,6 +32,8 @@ class TokenStore:
         self._history: list[str] = []
         self._history_limit = max(history_limit, 1)
         self._history_key = "history:tokens"
+        self._section_key = "section:current"
+        self._current_section: Optional[str] = None
 
     async def connect(self) -> None:
         if self._redis_url and redis is not None:
@@ -73,6 +76,8 @@ class TokenStore:
                 data["file_id"] = ""
             if "access" not in data:
                 data["access"] = "normal"
+            if "section" not in data:
+                data["section"] = None
             return FileRef(**data)
         ref = self._memory.get(token)
         if not ref:
@@ -89,3 +94,19 @@ class TokenStore:
             tokens = await self._redis.lrange(self._history_key, 0, limit - 1)
             return [t for t in tokens if t]
         return self._history[:limit]
+
+
+    async def set_section(self, section: Optional[str]) -> None:
+        if self._redis is not None:
+            if section:
+                await self._redis.set(self._section_key, section)
+            else:
+                await self._redis.delete(self._section_key)
+            return
+        self._current_section = section
+
+    async def get_section(self) -> Optional[str]:
+        if self._redis is not None:
+            value = await self._redis.get(self._section_key)
+            return value or None
+        return self._current_section
