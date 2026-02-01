@@ -407,6 +407,9 @@ async def render_section(section_id: str, access_filter: str, request: Request) 
     if password_enabled() and not is_authed(request):
         return HTMLResponse(content=section_password_form_html(section_id, access_filter), status_code=401)
 
+    if settings.redis_url and getattr(store, "_redis", None) is None:
+        await store.connect()
+
     tokens = await store.list_section(section_id, settings.history_limit)
     if not tokens:
         exists = await store.section_id_exists(section_id)
