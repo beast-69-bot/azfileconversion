@@ -497,9 +497,6 @@ async def render_section(section_id: str, access_filter: str, request: Request) 
         badge = ""
         if max_views and item["views_total"] == max_views:
             badge = "<span class=\"badge\">Trending</span>"
-        download_button = "<button class=\"btn ghost disabled\" disabled>Download</button>"
-        if item["download_ok"]:
-            download_button = f"<a class=\"btn ghost\" href=\"{item['download_link']}\">Download</a>"
         items.append(
             "<li class=\"card\">"
             "<div class=\"card-main\">"
@@ -513,7 +510,6 @@ async def render_section(section_id: str, access_filter: str, request: Request) 
             "</div>"
             "<div class=\"card-actions\">"
             f"<a class=\"btn\" href=\"{item['play_link']}\">Play</a>"
-            f"{download_button}"
             f"<button class=\"btn ghost copy\" data-copy=\"{item['copy_link']}\">Copy Link</button>"
             "</div>"
             "</li>"
@@ -1061,18 +1057,6 @@ async def player(token: str, request: Request):
     views_total, _ = await store.get_views(token)
     likes_total, liked = await store.get_likes(token, viewer_id)
 
-    download_enabled = ref.access == "premium" and (settings.direct_download or settings.bot_username)
-    download_href = f"/player/{token}/download" if download_enabled else "#"
-    download_label = "Download" if download_enabled else "Download locked"
-    if ref.access != "premium":
-        download_note = "Premium required for downloads."
-    elif settings.direct_download:
-        download_note = "Direct download enabled."
-    elif settings.bot_username:
-        download_note = "Download opens in Telegram bot."
-    else:
-        download_note = "Download not available."
-
     html = """
 <!doctype html>
 <html>
@@ -1219,11 +1203,6 @@ async def player(token: str, request: Request):
         color: var(--muted);
         margin-top: 10px;
       }
-      .download-note {
-        font-size: 12px;
-        color: var(--muted);
-        margin-top: 4px;
-      }
       @keyframes float-in {
         from { opacity: 0; transform: translateY(10px); }
         to { opacity: 1; transform: translateY(0); }
@@ -1257,12 +1236,10 @@ async def player(token: str, request: Request):
       </div>
       <div class="actions">
         <a class="btn secondary" href="/stream/__TOKEN__">Direct stream</a>
-        <a class="btn" href="__DOWNLOAD_HREF__" aria-disabled="__DOWNLOAD_DISABLED__">__DOWNLOAD_LABEL__</a>
         <button id="like-btn" class="btn ghost __LIKE_ACTIVE__" data-liked="__LIKED__" data-token="__TOKEN__">
           ❤ <span id="like-count">__LIKES__</span>
         </button>
       </div>
-      <div class="download-note">__DOWNLOAD_NOTE__</div>
       <div class="hint">If playback stalls, try refreshing once. Some files need a few seconds to start.</div>
     </div>
     <script>
@@ -1307,10 +1284,6 @@ async def player(token: str, request: Request):
             .replace("__LIKES__", str(likes_total))
             .replace("__LIKED__", "true" if liked else "false")
             .replace("__LIKE_ACTIVE__", "active" if liked else "")
-            .replace("__DOWNLOAD_HREF__", download_href)
-            .replace("__DOWNLOAD_LABEL__", download_label)
-            .replace("__DOWNLOAD_DISABLED__", "false" if download_enabled else "true")
-            .replace("__DOWNLOAD_NOTE__", download_note)
     )
     response = HTMLResponse(content=html)
     if not viewer_cookie:
