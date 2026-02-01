@@ -3,6 +3,7 @@ import hashlib
 import hmac
 import math
 import mimetypes
+import secrets
 from typing import AsyncGenerator, Optional
 from urllib.parse import urlencode
 
@@ -138,6 +139,9 @@ def password_cookie_value() -> str:
 
 
 def viewer_fingerprint(request: Request) -> str:
+    cookie_id = request.cookies.get("stream_viewer_id")
+    if cookie_id:
+        return cookie_id
     client_host = request.client.host if request.client else "unknown"
     agent = request.headers.get("user-agent", "unknown")
     raw = f"{client_host}:{agent}".encode()
@@ -923,7 +927,8 @@ async def player(token: str, request: Request):
     if password_enabled() and not is_authed(request):
         return HTMLResponse(content=password_form_html(token), status_code=401)
 
-    viewer_id = viewer_fingerprint(request)
+    viewer_cookie = request.cookies.get("stream_viewer_id")
+    viewer_id = viewer_cookie or secrets.token_hex(16)
     await store.increment_view(token, viewer_id, settings.token_ttl_seconds)
 
     media_tag = "video"
@@ -1101,7 +1106,10 @@ async def player(token: str, request: Request):
 </html>
 """
 
-    return HTMLResponse(content=html)
+    response = HTMLResponse(content=html)
+    if not viewer_cookie:
+        response.set_cookie("stream_viewer_id", viewer_id, httponly=True, max_age=60 * 60 * 24 * 30, samesite="lax")
+    return response
 
 
 @app.post("/player/{token}")
