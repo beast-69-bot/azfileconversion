@@ -1,8 +1,10 @@
 ﻿import asyncio
 import hashlib
 import hmac
+import math
 import mimetypes
 from typing import AsyncGenerator, Optional
+from urllib.parse import urlencode
 
 from fastapi import FastAPI, Form, Header, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
@@ -133,6 +135,13 @@ def password_enabled() -> bool:
 def password_cookie_value() -> str:
     seed = f"azfileconversion:{settings.stream_password}".encode()
     return hashlib.sha256(seed).hexdigest()
+
+
+def viewer_fingerprint(request: Request) -> str:
+    client_host = request.client.host if request.client else "unknown"
+    agent = request.headers.get("user-agent", "unknown")
+    raw = f"{client_host}:{agent}".encode()
+    return hashlib.sha256(raw).hexdigest()
 
 
 def is_authed(request: Request) -> bool:
@@ -398,8 +407,20 @@ async def render_section(section_id: str, access_filter: str, request: Request) 
     if not tokens:
         raise HTTPException(status_code=404, detail="Section not found")
 
-    items = []
-    title = f"Section ({access_filter.title()}): {section_id}"
+    sort = (request.query_params.get("sort") or "newest").lower()
+    try:
+        page = int(request.query_params.get("page", "1"))
+    except ValueError:
+        page = 1
+    try:
+        per_page = int(request.query_params.get("per_page", "24"))
+    except ValueError:
+        per_page = 24
+    page = max(page, 1)
+    per_page = max(6, min(per_page, 60))
+
+    entries = []
+    base_url = str(request.base_url).rstrip("/")
     for token in tokens:
         ref = await store.get(token, settings.token_ttl_seconds)
         if not ref:
@@ -410,29 +431,116 @@ async def render_section(section_id: str, access_filter: str, request: Request) 
             continue
         name = ref.file_name or ref.file_unique_id or "file"
         size_text = human_size(ref.file_size)
-        items.append(
-            f"<li class=\"item\">"
-            f"<div class=\"file\">"
-            f"<div class=\"file-name\">{name}</div>"
-            f"<div class=\"file-sub\">{size_text} · {resolve_mime(ref)}</div>"
-            f"</div>"
-            f"<a class=\"open\" href=\"/player/{token}\">Open</a>"
-            f"</li>"
-        )
+        views_total, views_unique = await store.get_views(token)
+        entries.append({
+            "token": token,
+            "name": name,
+            "size_text": size_text,
+            "mime": resolve_mime(ref),
+            "created_at": ref.created_at,
+            "file_size": ref.file_size or 0,
+            "views_total": views_total,
+            "views_unique": views_unique,
+            "download_ok": bool(settings.direct_download and ref.access == "premium"),
+            "play_link": f"/player/{token}",
+            "download_link": f"/download/{token}",
+            "copy_link": f"{base_url}/player/{token}",
+        })
 
-    if not items:
+    if not entries:
         raise HTTPException(status_code=404, detail="Section empty")
 
-    html = f"""
+    if sort == "name_asc":
+        entries.sort(key=lambda item: item["name"].lower())
+    elif sort == "name_desc":
+        entries.sort(key=lambda item: item["name"].lower(), reverse=True)
+    elif sort == "oldest":
+        entries.sort(key=lambda item: item["created_at"])
+    elif sort == "size":
+        entries.sort(key=lambda item: item["file_size"], reverse=True)
+    else:
+        entries.sort(key=lambda item: item["created_at"], reverse=True)
+        sort = "newest"
+
+    total_items = len(entries)
+    page_count = max(1, math.ceil(total_items / per_page))
+    page = min(page, page_count)
+    start = (page - 1) * per_page
+    end = start + per_page
+    page_entries = entries[start:end]
+
+    max_views = max((item["views_total"] for item in entries), default=0)
+
+    def build_query(**overrides: str) -> str:
+        current = dict(request.query_params)
+        current.update({k: str(v) for k, v in overrides.items() if v is not None})
+        return "?" + urlencode(current)
+
+    def sort_option(value: str, label: str) -> str:
+        selected = " selected" if sort == value else ""
+        return f"<option value=\"{value}\"{selected}>{label}</option>"
+
+    items = []
+    for item in page_entries:
+        view_text = f"👁 {item['views_total']}"
+        if item["views_unique"]:
+            view_text = f"{view_text} · {item['views_unique']} unique"
+        badge = ""
+        if max_views and item["views_total"] == max_views:
+            badge = "<span class=\"badge\">Trending</span>"
+        download_button = "<button class=\"btn ghost disabled\" disabled>Download</button>"
+        if item["download_ok"]:
+            download_button = f"<a class=\"btn ghost\" href=\"{item['download_link']}\">Download</a>"
+        items.append(
+            "<li class=\"card\">"
+            "<div class=\"card-main\">"
+            f"<div class=\"file-name\" title=\"{item['name']}\">{item['name']}</div>"
+            "<div class=\"file-meta\">"
+            f"<span>{item['size_text']}</span>"
+            f"<span>{item['mime']}</span>"
+            f"<span>{view_text}</span>"
+            f"{badge}"
+            "</div>"
+            "</div>"
+            "<div class=\"card-actions\">"
+            f"<a class=\"btn\" href=\"{item['play_link']}\">Play</a>"
+            f"{download_button}"
+            f"<button class=\"btn ghost copy\" data-copy=\"{item['copy_link']}\">Copy Link</button>"
+            "</div>"
+            "</li>"
+        )
+
+    skeleton_items = "".join(["<li class=\"card skeleton\"><div class=\"line w-60\"></div><div class=\"line w-40\"></div><div class=\"line w-30\"></div></li>" for _ in range(min(6, per_page))])
+
+    title = f"Section ({access_filter.title()}): {section_id}"
+    breadcrumb = f"<a href=\"{settings.base_url}\">Home</a> <span>→</span> <span>Section</span> <span>→</span> <span>{section_id}</span>"
+
+    prev_link = build_query(page=page - 1) if page > 1 else ""
+    next_link = build_query(page=page + 1) if page < page_count else ""
+
+    sort_options = [
+        sort_option("name_asc", "Name A-Z"),
+        sort_option("name_desc", "Name Z-A"),
+        sort_option("newest", "Newest"),
+        sort_option("oldest", "Oldest"),
+        sort_option("size", "Size"),
+    ]
+
+    prev_class = "page disabled" if not prev_link else "page"
+    next_class = "page disabled" if not next_link else "page"
+    show_start = start + 1
+    show_end = min(end, total_items)
+
+    html = """
 <!doctype html>
 <html>
   <head>
-    <meta charset=\"utf-8\" />
-    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />
-    <title>{title}</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>__TITLE__</title>
     <style>
       @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
-      :root {{
+      :root {
         --bg-1: #0b0f1a;
         --bg-2: #111a2b;
         --accent: #7bdff2;
@@ -441,9 +549,10 @@ async def render_section(section_id: str, access_filter: str, request: Request) 
         --border: rgba(255, 255, 255, 0.08);
         --text: #e9eef8;
         --muted: #9fb0c9;
-      }}
-      * {{ box-sizing: border-box; }}
-      body {{
+        --shadow: 0 20px 60px rgba(0,0,0,0.35);
+      }
+      * { box-sizing: border-box; }
+      body {
         margin: 0;
         font-family: 'Space Grotesk', system-ui, sans-serif;
         color: var(--text);
@@ -452,9 +561,9 @@ async def render_section(section_id: str, access_filter: str, request: Request) 
           radial-gradient(1100px 540px at 10% 0%, rgba(123, 223, 242, 0.12), transparent 60%),
           radial-gradient(900px 700px at 90% 20%, rgba(242, 160, 123, 0.16), transparent 60%),
           linear-gradient(135deg, var(--bg-1), var(--bg-2));
-        padding: 32px 24px 60px;
-      }}
-      body::before {{
+        padding: 28px 18px 60px;
+      }
+      body::before {
         content: '';
         position: fixed;
         inset: 0;
@@ -467,35 +576,39 @@ async def render_section(section_id: str, access_filter: str, request: Request) 
         );
         opacity: 0.35;
         pointer-events: none;
-      }}
-      .shell {{
-        width: min(1080px, 94vw);
+      }
+      .shell {
+        width: min(1080px, 96vw);
         margin: 0 auto;
         background: var(--card);
         border: 1px solid var(--border);
         border-radius: 24px;
-        padding: 28px;
-        box-shadow: 0 20px 60px rgba(0,0,0,0.35);
+        padding: 24px;
+        box-shadow: var(--shadow);
         backdrop-filter: blur(12px);
-      }}
-      .header {{
+      }
+      .breadcrumb {
+        font-size: 13px;
+        color: var(--muted);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-bottom: 16px;
+      }
+      .breadcrumb a { color: var(--accent); text-decoration: none; }
+      .breadcrumb span { color: var(--muted); }
+      .header {
         display: flex;
         flex-wrap: wrap;
         align-items: center;
         justify-content: space-between;
         gap: 16px;
         margin-bottom: 18px;
-      }}
-      .title {{
-        font-size: 22px;
-        font-weight: 700;
-      }}
-      .meta {{
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-      }}
-      .chip {{
+      }
+      .title { font-size: 22px; font-weight: 700; }
+      .meta { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+      .chip {
         font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, monospace;
         font-size: 12px;
         color: var(--muted);
@@ -503,89 +616,222 @@ async def render_section(section_id: str, access_filter: str, request: Request) 
         border-radius: 999px;
         border: 1px solid var(--border);
         background: rgba(255,255,255,0.03);
-      }}
-      .list {{
-        list-style: none;
-        padding: 0;
-        margin: 0;
-        display: grid;
-        gap: 12px;
-      }}
-      .item {{
+      }
+      .controls { display: flex; gap: 10px; align-items: center; }
+      .controls label { font-size: 12px; color: var(--muted); }
+      select {
+        background: rgba(255,255,255,0.04);
+        color: var(--text);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 8px 12px;
+        font-size: 13px;
+        font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, monospace;
+      }
+      select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+      .list { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; }
+      .card {
         display: flex;
+        flex-wrap: wrap;
         align-items: center;
         justify-content: space-between;
         gap: 12px;
-        padding: 14px 16px;
-        border-radius: 14px;
+        padding: 16px 18px;
+        border-radius: 16px;
         border: 1px solid var(--border);
         background: rgba(255,255,255,0.02);
         transition: transform 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
-      }}
-      .item:hover {{
+      }
+      .card:hover {
         transform: translateY(-1px);
-        border-color: rgba(123, 223, 242, 0.4);
-        box-shadow: 0 10px 24px rgba(0,0,0,0.2);
-      }}
-      .file {{
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
-        min-width: 0;
-      }}
-      .file-name {{
-        font-size: 15px;
+        border-color: rgba(123, 223, 242, 0.35);
+        box-shadow: 0 14px 30px rgba(0,0,0,0.25);
+      }
+      .card:focus-within { border-color: rgba(123, 223, 242, 0.6); }
+      .card-main { min-width: 0; }
+      .file-name {
+        font-size: 16px;
         font-weight: 600;
         color: var(--text);
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
-        max-width: 640px;
-      }}
-      .file-sub {{
+        max-width: 560px;
+      }
+      .file-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
         font-size: 12px;
         color: var(--muted);
-      }}
-      .open {{
+        margin-top: 6px;
+      }
+      .badge {
+        background: rgba(242, 160, 123, 0.2);
+        color: #f2a07b;
+        border: 1px solid rgba(242, 160, 123, 0.4);
+        padding: 2px 8px;
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 600;
+      }
+      .card-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+      .btn {
         text-decoration: none;
         color: #0b0f1a;
         background: linear-gradient(135deg, var(--accent), #b9f3ff);
         padding: 8px 12px;
         border-radius: 10px;
         font-weight: 600;
-        white-space: nowrap;
-      }}
-      .hint {{
+        border: none;
+        cursor: pointer;
+        transition: transform 120ms ease, box-shadow 120ms ease;
+      }
+      .btn:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 8px 18px rgba(123, 223, 242, 0.18);
+      }
+      .btn.ghost:hover { border-color: rgba(123, 223, 242, 0.4); }
+      .btn.disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+        box-shadow: none;
+      }
+      .btn.disabled:hover {
+        transform: none;
+        box-shadow: none;
+      }
+      .btn.ghost {
+        background: transparent;
+        color: var(--text);
+        border: 1px solid var(--border);
+      }
+      .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+      a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+      .pagination {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
         margin-top: 18px;
-        font-size: 12px;
-        color: var(--muted);
-      }}
-      @media (max-width: 720px) {{
-        .shell {{ padding: 20px; }}
-        .file-name {{ max-width: 320px; }}
-        .item {{ flex-direction: column; align-items: flex-start; }}
-      }}
+      }
+      .page {
+        text-decoration: none;
+        color: var(--text);
+        border: 1px solid var(--border);
+        padding: 8px 12px;
+        border-radius: 10px;
+      }
+      .page:hover { border-color: rgba(123, 223, 242, 0.35); }
+      .page.disabled { opacity: 0.45; pointer-events: none; }
+      .hint { margin-top: 16px; font-size: 12px; color: var(--muted); }
+      .skeleton {
+        border-style: dashed;
+        background: rgba(255,255,255,0.02);
+        position: relative;
+        overflow: hidden;
+      }
+      .skeleton .line {
+        height: 10px;
+        border-radius: 999px;
+        background: rgba(255,255,255,0.12);
+        margin: 6px 0;
+      }
+      .skeleton .w-60 { width: 60%; }
+      .skeleton .w-40 { width: 40%; }
+      .skeleton .w-30 { width: 30%; }
+      .content { opacity: 1; transition: opacity 200ms ease; }
+      body.is-loading .content { opacity: 0; height: 0; overflow: hidden; }
+      body.is-loading .skeleton-list { display: grid; }
+      .skeleton-list { display: none; list-style: none; padding: 0; margin: 0; gap: 12px; }
+      @media (max-width: 720px) {
+        .shell { padding: 18px; }
+        .file-name { max-width: 280px; }
+        .card { flex-direction: column; align-items: flex-start; }
+        .card-actions { width: 100%; }
+        .card-actions .btn { flex: 1; text-align: center; }
+        .pagination { flex-direction: column; align-items: stretch; }
+      }
     </style>
   </head>
-  <body>
+  <body class="is-loading">
     <div class="shell">
+      <nav class="breadcrumb" aria-label="Breadcrumb">__BREADCRUMB__</nav>
       <div class="header">
         <div>
-          <div class="title">{title}</div>
+          <div class="title">__TITLE__</div>
           <div class="meta">
-            <div class="chip">Items: {len(items)}</div>
-            <div class="chip">Access: {access_filter.title()}</div>
+            <div class="chip">__TOTAL__ files</div>
+            <div class="chip">Access: __ACCESS__</div>
+            <div class="chip">Page __PAGE__ of __PAGE_COUNT__</div>
           </div>
         </div>
+        <div class="controls">
+          <label for="sort">Sort</label>
+          <select id="sort" name="sort">
+            __SORT_OPTIONS__
+          </select>
+        </div>
       </div>
-      <ul class="list">
-        {"".join(items)}
-      </ul>
+      <ul class="skeleton-list">__SKELETON__</ul>
+      <div class="content">
+        <ul class="list">
+          __ITEMS__
+        </ul>
+      </div>
+      <div class="pagination">
+        <a class="__PREV_CLASS__" href="__PREV_HREF__">Prev</a>
+        <div class="chip">Showing __SHOW_START__-__SHOW_END__ of __TOTAL__</div>
+        <a class="__NEXT_CLASS__" href="__NEXT_HREF__">Next</a>
+      </div>
       <div class="hint">Tip: If a file does not open, refresh once or try again later.</div>
     </div>
+    <script>
+      const sortSelect = document.getElementById('sort');
+      if (sortSelect) {
+        sortSelect.addEventListener('change', () => {
+          const url = new URL(window.location.href);
+          url.searchParams.set('sort', sortSelect.value);
+          url.searchParams.set('page', '1');
+          window.location.href = url.toString();
+        });
+      }
+      document.querySelectorAll('[data-copy]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const link = btn.getAttribute('data-copy');
+          if (!link) return;
+          try {
+            await navigator.clipboard.writeText(link);
+            const original = btn.textContent;
+            btn.textContent = 'Copied';
+            setTimeout(() => (btn.textContent = original), 1200);
+          } catch (err) {
+            window.prompt('Copy link', link);
+          }
+        });
+      });
+      document.body.classList.remove('is-loading');
+    </script>
   </body>
 </html>
 """
+    html = (html
+            .replace("__TITLE__", title)
+            .replace("__BREADCRUMB__", breadcrumb)
+            .replace("__TOTAL__", str(total_items))
+            .replace("__ACCESS__", access_filter.title())
+            .replace("__PAGE__", str(page))
+            .replace("__PAGE_COUNT__", str(page_count))
+            .replace("__SORT_OPTIONS__", "".join(sort_options))
+            .replace("__SKELETON__", skeleton_items)
+            .replace("__ITEMS__", "".join(items))
+            .replace("__PREV_CLASS__", prev_class)
+            .replace("__NEXT_CLASS__", next_class)
+            .replace("__PREV_HREF__", prev_link or "#")
+            .replace("__NEXT_HREF__", next_link or "#")
+            .replace("__SHOW_START__", str(show_start))
+            .replace("__SHOW_END__", str(show_end))
+    )
     return HTMLResponse(content=html)
 
 
@@ -676,6 +922,9 @@ async def player(token: str, request: Request):
 
     if password_enabled() and not is_authed(request):
         return HTMLResponse(content=password_form_html(token), status_code=401)
+
+    viewer_id = viewer_fingerprint(request)
+    await store.increment_view(token, viewer_id, settings.token_ttl_seconds)
 
     media_tag = "video"
     if ref.media_type == "audio":
@@ -867,3 +1116,5 @@ async def player_password(token: str, password: str = Form(...)):
     response = RedirectResponse(url=f"/player/{token}", status_code=302)
     response.set_cookie("stream_auth", password_cookie_value(), httponly=True, max_age=60 * 60 * 12, samesite="lax")
     return response
+
+

@@ -53,6 +53,8 @@ class TokenStore:
         self._sections: dict[str, list[str]] = {}
         self._section_registry: dict[str, str] = {}
         self._section_registry_id: dict[str, str] = {}
+        self._view_counts: dict[str, int] = {}
+        self._unique_viewers: dict[str, set[str]] = {}
         self._history_limit = max(history_limit, 1)
         self._history_key = "history:tokens"
         self._section_key = "section:current"
@@ -132,6 +134,43 @@ class TokenStore:
             tokens = await self._redis.lrange(self._history_key, 0, limit - 1)
             return [t for t in tokens if t]
         return self._history[:limit]
+
+    async def increment_view(self, token: str, viewer_id: Optional[str], ttl_seconds: int) -> tuple[int, int]:
+        if self._redis is not None:
+            count_key = f"views:count:{token}"
+            unique_key = f"views:unique:{token}"
+            total = await self._redis.incr(count_key)
+            if ttl_seconds and ttl_seconds > 0:
+                await self._redis.expire(count_key, ttl_seconds)
+            unique = 0
+            if viewer_id:
+                await self._redis.sadd(unique_key, viewer_id)
+                if ttl_seconds and ttl_seconds > 0:
+                    await self._redis.expire(unique_key, ttl_seconds)
+                unique = await self._redis.scard(unique_key)
+            return int(total), int(unique)
+
+        total = self._view_counts.get(token, 0) + 1
+        self._view_counts[token] = total
+        unique = 0
+        if viewer_id:
+            viewers = self._unique_viewers.setdefault(token, set())
+            viewers.add(viewer_id)
+            unique = len(viewers)
+        return total, unique
+
+    async def get_views(self, token: str) -> tuple[int, int]:
+        if self._redis is not None:
+            count_key = f"views:count:{token}"
+            unique_key = f"views:unique:{token}"
+            total_raw = await self._redis.get(count_key)
+            total = int(total_raw or 0)
+            unique = await self._redis.scard(unique_key)
+            return total, int(unique)
+
+        total = self._view_counts.get(token, 0)
+        unique = len(self._unique_viewers.get(token, set()))
+        return total, unique
 
 
     async def set_section(self, section_name: Optional[str]) -> Optional[str]:
