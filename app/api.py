@@ -877,9 +877,92 @@ async def render_section(section_id: str, access_filter: str, request: Request) 
     return HTMLResponse(content=html)
 
 
+def section_picker_html(section_id: str) -> str:
+    return f"""
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Section: {section_id}</title>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap');
+      :root {{
+        --bg-1: #0b0f1a;
+        --bg-2: #111a2b;
+        --accent: #7bdff2;
+        --accent-2: #f2a07b;
+        --card: rgba(15, 22, 36, 0.92);
+        --border: rgba(255, 255, 255, 0.08);
+        --text: #e9eef8;
+        --muted: #9fb0c9;
+      }}
+      * {{ box-sizing: border-box; }}
+      body {{
+        margin: 0;
+        font-family: 'Space Grotesk', system-ui, sans-serif;
+        color: var(--text);
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        background:
+          radial-gradient(900px 420px at 10% 0%, rgba(123, 223, 242, 0.12), transparent 60%),
+          radial-gradient(700px 520px at 90% 20%, rgba(242, 160, 123, 0.16), transparent 60%),
+          linear-gradient(135deg, var(--bg-1), var(--bg-2));
+      }}
+      .card {{
+        width: min(520px, 92vw);
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 20px;
+        padding: 28px;
+        box-shadow: 0 20px 60px rgba(0,0,0,0.35);
+        text-align: center;
+      }}
+      h2 {{ margin: 0 0 8px; }}
+      p {{ margin: 0 0 18px; color: var(--muted); font-size: 14px; }}
+      .actions {{
+        display: grid;
+        gap: 12px;
+        margin-top: 10px;
+      }}
+      .btn {{
+        text-decoration: none;
+        color: #0b0f1a;
+        background: linear-gradient(135deg, var(--accent), #b9f3ff);
+        padding: 12px 16px;
+        border-radius: 12px;
+        font-weight: 600;
+      }}
+      .btn.secondary {{
+        background: transparent;
+        color: var(--text);
+        border: 1px solid var(--border);
+      }}
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h2>Section: {section_id}</h2>
+      <p>Select access type</p>
+      <div class="actions">
+        <a class="btn" href="/section/{section_id}?access=normal">Normal</a>
+        <a class="btn secondary" href="/section/{section_id}/premium">Premium</a>
+      </div>
+    </div>
+  </body>
+</html>
+"""
+
+
 @app.get("/section/{section_id}")
 async def section_page(section_id: str, request: Request):
-    return await render_section(section_id, "normal", request)
+    access = (request.query_params.get("access") or "").lower()
+    if access == "premium":
+        return await render_section(section_id, "premium", request)
+    if access == "normal":
+        return await render_section(section_id, "normal", request)
+    return HTMLResponse(content=section_picker_html(section_id))
 
 
 @app.get("/section/{section_id}/premium")
