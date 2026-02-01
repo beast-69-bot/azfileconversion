@@ -8,7 +8,7 @@ from typing import AsyncGenerator, Optional
 from urllib.parse import urlencode
 
 from fastapi import FastAPI, Form, Header, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from pyrogram import Client
 from pyrogram.errors import FloodWait
 
@@ -937,12 +937,22 @@ async def player(token: str, request: Request):
 
     file_name = ref.file_name or "Unknown file"
     size_text = human_size(ref.file_size)
-    download_block = ""
-    if ref.access == "premium" and settings.bot_username:
-        download_link = f"https://t.me/{settings.bot_username}?start=dl_{token}"
-        download_block = f'<p><a href="{download_link}">Download</a></p>'
+    views_total, _ = await store.get_views(token)
+    likes_total, liked = await store.get_likes(token, viewer_id)
 
-    html = f"""
+    download_enabled = ref.access == "premium" and (settings.direct_download or settings.bot_username)
+    download_href = f"/player/{token}/download" if download_enabled else "#"
+    download_label = "Download" if download_enabled else "Download locked"
+    if ref.access != "premium":
+        download_note = "Premium required for downloads."
+    elif settings.direct_download:
+        download_note = "Direct download enabled."
+    elif settings.bot_username:
+        download_note = "Download opens in Telegram bot."
+    else:
+        download_note = "Download not available."
+
+    html = """
 <!doctype html>
 <html>
   <head>
@@ -951,18 +961,18 @@ async def player(token: str, request: Request):
     <title>Stream</title>
     <style>
       @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
-      :root {{
+      :root {
         --bg-1: #0b0f1a;
         --bg-2: #111a2b;
         --accent: #7bdff2;
         --accent-2: #f2a07b;
-        --card: rgba(15, 22, 36, 0.9);
+        --card: rgba(15, 22, 36, 0.92);
         --border: rgba(255, 255, 255, 0.08);
         --text: #e9eef8;
         --muted: #9fb0c9;
-      }}
-      * {{ box-sizing: border-box; }}
-      body {{
+      }
+      * { box-sizing: border-box; }
+      body {
         margin: 0;
         font-family: 'Space Grotesk', system-ui, sans-serif;
         color: var(--text);
@@ -974,8 +984,8 @@ async def player(token: str, request: Request):
           radial-gradient(900px 600px at 90% 10%, rgba(242, 160, 123, 0.14), transparent 60%),
           linear-gradient(135deg, var(--bg-1), var(--bg-2));
         overflow: hidden;
-      }}
-      body::before {{
+      }
+      body::before {
         content: '';
         position: fixed;
         inset: 0;
@@ -988,8 +998,8 @@ async def player(token: str, request: Request):
         );
         pointer-events: none;
         opacity: 0.35;
-      }}
-      .shell {{
+      }
+      .shell {
         width: min(1024px, 94vw);
         padding: 28px;
         border-radius: 24px;
@@ -998,26 +1008,27 @@ async def player(token: str, request: Request):
         box-shadow: 0 20px 60px rgba(0,0,0,0.35);
         backdrop-filter: blur(12px);
         animation: float-in 600ms ease-out;
-      }}
-      .header {{
+      }
+      .header {
         display: flex;
         align-items: center;
         justify-content: space-between;
         gap: 16px;
         margin-bottom: 18px;
-      }}
-      .title {{
+        flex-wrap: wrap;
+      }
+      .title {
         font-size: 20px;
         font-weight: 700;
         letter-spacing: 0.3px;
-      }}
-      .meta {{
+      }
+      .meta {
         display: flex;
         flex-wrap: wrap;
         gap: 10px;
         margin-top: 6px;
-      }}
-      .chip {{
+      }
+      .chip {
         font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, monospace;
         font-size: 12px;
         color: var(--muted);
@@ -1025,58 +1036,83 @@ async def player(token: str, request: Request):
         border-radius: 999px;
         border: 1px solid var(--border);
         background: rgba(255,255,255,0.03);
-      }}
-      .player {{
+      }
+      .player {
         width: 100%;
         border-radius: 18px;
         overflow: hidden;
         border: 1px solid var(--border);
         background: #000;
-      }}
-      {media_tag} {{
+      }
+      __MEDIA_TAG__ {
         width: 100%;
         height: auto;
         display: block;
         background: #000;
-      }}
-      .actions {{
+      }
+      .actions {
         display: flex;
         flex-wrap: wrap;
         gap: 12px;
         margin-top: 16px;
         align-items: center;
-      }}
-      .btn {{
+      }
+      .btn {
         text-decoration: none;
         color: #0b0f1a;
         background: linear-gradient(135deg, var(--accent), #b9f3ff);
         padding: 10px 16px;
         border-radius: 12px;
         font-weight: 600;
+        border: none;
+        cursor: pointer;
         transition: transform 120ms ease, box-shadow 120ms ease;
-      }}
-      .btn.secondary {{
+      }
+      .btn.secondary {
         background: transparent;
         color: var(--text);
         border: 1px solid var(--border);
-      }}
-      .btn:hover {{
+      }
+      .btn.ghost {
+        background: transparent;
+        color: var(--text);
+        border: 1px solid var(--border);
+      }
+      .btn.ghost.active {
+        border-color: rgba(242, 160, 123, 0.7);
+        color: #f2a07b;
+        background: rgba(242, 160, 123, 0.08);
+      }
+      .btn[aria-disabled="true"] {
+        opacity: 0.5;
+        cursor: not-allowed;
+        pointer-events: none;
+      }
+      .btn:hover {
         transform: translateY(-1px);
         box-shadow: 0 8px 20px rgba(123, 223, 242, 0.2);
-      }}
-      .hint {{
+      }
+      .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+      .hint {
         font-size: 12px;
         color: var(--muted);
         margin-top: 10px;
-      }}
-      @keyframes float-in {{
-        from {{ opacity: 0; transform: translateY(10px); }}
-        to {{ opacity: 1; transform: translateY(0); }}
-      }}
-      @media (max-width: 600px) {{
-        .shell {{ padding: 18px; }}
-        .title {{ font-size: 18px; }}
-      }}
+      }
+      .download-note {
+        font-size: 12px;
+        color: var(--muted);
+        margin-top: 4px;
+      }
+      @keyframes float-in {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      @media (max-width: 600px) {
+        .shell { padding: 18px; }
+        .title { font-size: 18px; }
+        .actions { flex-direction: column; align-items: stretch; }
+        .actions .btn { width: 100%; text-align: center; }
+      }
     </style>
   </head>
   <body>
@@ -1085,28 +1121,113 @@ async def player(token: str, request: Request):
         <div>
           <div class="title">Streaming</div>
           <div class="meta">
-            <div class="chip">{file_name}</div>
-            <div class="chip">{size_text}</div>
-            <div class="chip">{resolve_mime(ref)}</div>
+            <div class="chip">__FILE__</div>
+            <div class="chip">__SIZE__</div>
+            <div class="chip">__MIME__</div>
+            <div class="chip">👁 __VIEWS__</div>
+            <div class="chip">❤ __LIKES__</div>
           </div>
         </div>
       </div>
       <div class="player">
-        <{media_tag} controls autoplay preload="auto" controlsList="nodownload">
-          <source src="/stream/{token}" type="{resolve_mime(ref)}" />
-        </{media_tag}>
+        <__MEDIA_TAG__ controls autoplay preload="auto" controlsList="nodownload">
+          <source src="/stream/__TOKEN__" type="__MIME__" />
+        </__MEDIA_TAG__>
       </div>
       <div class="actions">
-        <a class="btn secondary" href="/stream/{token}">Direct stream</a>
-        {download_block}
+        <a class="btn secondary" href="/stream/__TOKEN__">Direct stream</a>
+        <a class="btn" href="__DOWNLOAD_HREF__" aria-disabled="__DOWNLOAD_DISABLED__">__DOWNLOAD_LABEL__</a>
+        <button id="like-btn" class="btn ghost __LIKE_ACTIVE__" data-liked="__LIKED__" data-token="__TOKEN__">
+          ❤ <span id="like-count">__LIKES__</span>
+        </button>
       </div>
+      <div class="download-note">__DOWNLOAD_NOTE__</div>
       <div class="hint">If playback stalls, try refreshing once. Some files need a few seconds to start.</div>
     </div>
+    <script>
+      const likeBtn = document.getElementById('like-btn');
+      const likeCount = document.getElementById('like-count');
+      if (likeBtn) {
+        likeBtn.addEventListener('click', async () => {
+          const token = likeBtn.dataset.token;
+          const liked = likeBtn.dataset.liked === 'true';
+          const action = liked ? 'unlike' : 'like';
+          likeBtn.disabled = true;
+          try {
+            const res = await fetch(`/player/${token}/like`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ action })
+            });
+            if (res.ok) {
+              const data = await res.json();
+              likeBtn.dataset.liked = data.liked ? 'true' : 'false';
+              likeBtn.classList.toggle('active', data.liked);
+              likeCount.textContent = data.total;
+            }
+          } finally {
+            likeBtn.disabled = false;
+          }
+        });
+      }
+    </script>
   </body>
 </html>
 """
 
+
+    html = (html
+            .replace("__TOKEN__", token)
+            .replace("__FILE__", file_name)
+            .replace("__SIZE__", size_text)
+            .replace("__MIME__", resolve_mime(ref))
+            .replace("__MEDIA_TAG__", media_tag)
+            .replace("__VIEWS__", str(views_total))
+            .replace("__LIKES__", str(likes_total))
+            .replace("__LIKED__", "true" if liked else "false")
+            .replace("__LIKE_ACTIVE__", "active" if liked else "")
+            .replace("__DOWNLOAD_HREF__", download_href)
+            .replace("__DOWNLOAD_LABEL__", download_label)
+            .replace("__DOWNLOAD_DISABLED__", "false" if download_enabled else "true")
+            .replace("__DOWNLOAD_NOTE__", download_note)
+    )
     response = HTMLResponse(content=html)
+    if not viewer_cookie:
+        response.set_cookie("stream_viewer_id", viewer_id, httponly=True, max_age=60 * 60 * 24 * 30, samesite="lax")
+    return response
+
+
+@app.get("/player/{token}/download")
+async def player_download(token: str, request: Request):
+    ref = await store.get(token, settings.token_ttl_seconds)
+    if not ref:
+        raise HTTPException(status_code=404, detail="Invalid or expired token")
+    if password_enabled() and not is_authed(request):
+        return RedirectResponse(url=f"/player/{token}", status_code=302)
+    if ref.access != "premium":
+        raise HTTPException(status_code=403, detail="Premium required")
+    if settings.direct_download:
+        return RedirectResponse(url=f"/download/{token}", status_code=302)
+    if settings.bot_username:
+        return RedirectResponse(url=f"https://t.me/{settings.bot_username}?start=dl_{token}", status_code=302)
+    return HTMLResponse(content="Download unavailable.", status_code=404)
+
+
+@app.post("/player/{token}/like")
+async def player_like(token: str, request: Request):
+    ref = await store.get(token, settings.token_ttl_seconds)
+    if not ref:
+        raise HTTPException(status_code=404, detail="Invalid or expired token")
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {}
+    action = str(payload.get("action", "like")).lower()
+    liked = action == "like"
+    viewer_cookie = request.cookies.get("stream_viewer_id")
+    viewer_id = viewer_cookie or secrets.token_hex(16)
+    total, user_liked = await store.set_like(token, viewer_id, liked)
+    response = JSONResponse({"total": total, "liked": user_liked})
     if not viewer_cookie:
         response.set_cookie("stream_viewer_id", viewer_id, httponly=True, max_age=60 * 60 * 24 * 30, samesite="lax")
     return response

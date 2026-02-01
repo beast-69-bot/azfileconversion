@@ -55,6 +55,8 @@ class TokenStore:
         self._section_registry_id: dict[str, str] = {}
         self._view_counts: dict[str, int] = {}
         self._unique_viewers: dict[str, set[str]] = {}
+        self._like_counts: dict[str, int] = {}
+        self._like_viewers: dict[str, set[str]] = {}
         self._history_limit = max(history_limit, 1)
         self._history_key = "history:tokens"
         self._section_key = "section:current"
@@ -171,6 +173,52 @@ class TokenStore:
         total = self._view_counts.get(token, 0)
         unique = len(self._unique_viewers.get(token, set()))
         return total, unique
+
+    async def set_like(self, token: str, viewer_id: str, liked: bool) -> tuple[int, bool]:
+        if self._redis is not None:
+            count_key = f"likes:count:{token}"
+            set_key = f"likes:set:{token}"
+            if liked:
+                added = await self._redis.sadd(set_key, viewer_id)
+                if added:
+                    await self._redis.incr(count_key)
+            else:
+                removed = await self._redis.srem(set_key, viewer_id)
+                if removed:
+                    await self._redis.decr(count_key)
+            total_raw = await self._redis.get(count_key)
+            total = int(total_raw or 0)
+            user_liked = await self._redis.sismember(set_key, viewer_id)
+            if total < 0:
+                total = 0
+                await self._redis.set(count_key, 0)
+            return total, bool(user_liked)
+
+        viewers = self._like_viewers.setdefault(token, set())
+        if liked:
+            viewers.add(viewer_id)
+        else:
+            viewers.discard(viewer_id)
+        total = len(viewers)
+        self._like_counts[token] = total
+        return total, viewer_id in viewers
+
+    async def get_likes(self, token: str, viewer_id: Optional[str] = None) -> tuple[int, bool]:
+        if self._redis is not None:
+            count_key = f"likes:count:{token}"
+            set_key = f"likes:set:{token}"
+            total_raw = await self._redis.get(count_key)
+            total = int(total_raw or 0)
+            user_liked = False
+            if viewer_id:
+                user_liked = bool(await self._redis.sismember(set_key, viewer_id))
+            return total, user_liked
+
+        total = self._like_counts.get(token, len(self._like_viewers.get(token, set())))
+        user_liked = False
+        if viewer_id:
+            user_liked = viewer_id in self._like_viewers.get(token, set())
+        return total, user_liked
 
 
     async def set_section(self, section_name: Optional[str]) -> Optional[str]:
