@@ -25,6 +25,10 @@ class FileRef:
     section_name: Optional[str] = None
 
 
+def _normalize_section(value: str) -> str:
+    return " ".join(value.strip().lower().split())
+
+
 def _slugify(value: str) -> str:
     cleaned = []
     last_dash = False
@@ -47,10 +51,14 @@ class TokenStore:
         self._memory: dict[str, FileRef] = {}
         self._history: list[str] = []
         self._sections: dict[str, list[str]] = {}
+        self._section_registry: dict[str, str] = {}
+        self._section_registry_id: dict[str, str] = {}
         self._history_limit = max(history_limit, 1)
         self._history_key = "history:tokens"
         self._section_key = "section:current"
         self._section_name_key = "section:current:name"
+        self._section_name_map = "section:registry:name"
+        self._section_id_map = "section:registry:id"
         self._current_section: Optional[str] = None
         self._current_section_name: Optional[str] = None
 
@@ -127,18 +135,30 @@ class TokenStore:
 
 
     async def set_section(self, section_name: Optional[str]) -> Optional[str]:
-        if section_name:
-            section_id = _slugify(section_name)
-        else:
-            section_id = None
-        if self._redis is not None:
-            if section_id:
-                await self._redis.set(self._section_key, section_id)
-                await self._redis.set(self._section_name_key, section_name or "")
-            else:
+        if not section_name:
+            if self._redis is not None:
                 await self._redis.delete(self._section_key)
                 await self._redis.delete(self._section_name_key)
+            self._current_section = None
+            self._current_section_name = None
+            return None
+
+        normalized = _normalize_section(section_name)
+        section_id = _slugify(section_name)
+        if await self.section_exists(section_name):
+            return None
+        if await self.section_id_exists(section_id):
+            return None
+
+        if self._redis is not None:
+            await self._redis.hset(self._section_name_map, normalized, section_id)
+            await self._redis.hset(self._section_id_map, section_id, section_name)
+            await self._redis.set(self._section_key, section_id)
+            await self._redis.set(self._section_name_key, section_name)
             return section_id
+
+        self._section_registry[normalized] = section_id
+        self._section_registry_id[section_id] = section_name
         self._current_section = section_id
         self._current_section_name = section_name
         return section_id
@@ -149,6 +169,51 @@ class TokenStore:
             section_name = await self._redis.get(self._section_name_key)
             return (section_id or None, section_name or None)
         return (self._current_section, self._current_section_name)
+
+    async def section_exists(self, section_name: str) -> bool:
+        normalized = _normalize_section(section_name)
+        if self._redis is not None:
+            val = await self._redis.hget(self._section_name_map, normalized)
+            return val is not None
+        return normalized in self._section_registry
+
+    async def section_id_exists(self, section_id: str) -> bool:
+        if self._redis is not None:
+            val = await self._redis.hget(self._section_id_map, section_id)
+            return val is not None
+        return section_id in self._section_registry_id
+
+    async def list_sections(self) -> list[tuple[str, str]]:
+        if self._redis is not None:
+            data = await self._redis.hgetall(self._section_id_map)
+            return [(name, section_id) for section_id, name in data.items()]
+        return [(name, section_id) for section_id, name in self._section_registry_id.items()]
+
+    async def delete_section(self, section_name: str) -> bool:
+        normalized = _normalize_section(section_name)
+        if self._redis is not None:
+            section_id = await self._redis.hget(self._section_name_map, normalized)
+            if not section_id:
+                return False
+            await self._redis.hdel(self._section_name_map, normalized)
+            await self._redis.hdel(self._section_id_map, section_id)
+            await self._redis.delete(f"section:{section_id}")
+            current = await self._redis.get(self._section_key)
+            if current and current == section_id:
+                await self._redis.delete(self._section_key)
+                await self._redis.delete(self._section_name_key)
+            return True
+
+        section_id = self._section_registry.get(normalized)
+        if not section_id:
+            return False
+        self._section_registry.pop(normalized, None)
+        self._section_registry_id.pop(section_id, None)
+        self._sections.pop(section_id, None)
+        if self._current_section == section_id:
+            self._current_section = None
+            self._current_section_name = None
+        return True
 
 
     async def list_section(self, section_id: str, limit: int) -> list[str]:

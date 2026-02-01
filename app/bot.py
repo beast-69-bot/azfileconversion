@@ -132,8 +132,11 @@ async def add_section(client: Client, message):
 
     section = parts[1].strip()
     section_id = await store.set_section(section)
-    link = f"{settings.base_url}/section/{section_id}" if section_id else ""
-    premium_link = f"{settings.base_url}/section/{section_id}/premium" if section_id else ""
+    if not section_id:
+        await message.reply_text("Section name already exists. Choose another name.")
+        return
+    link = f"{settings.base_url}/section/{section_id}"
+    premium_link = f"{settings.base_url}/section/{section_id}/premium"
     await message.reply_text(f"Section set to: {section}\nNormal: {link}\nPremium: {premium_link}")
 
 
@@ -145,6 +148,99 @@ async def end_section(client: Client, message):
 
     await store.set_section(None)
     await message.reply_text("Section cleared.")
+
+
+@app.on_message(filters.command("delsection") & filters.private)
+async def delete_section(client: Client, message):
+    if not is_admin(message.from_user.id if message.from_user else None):
+        await message.reply_text("Not allowed.")
+        return
+
+    parts = (message.text or "").split(maxsplit=1)
+    if len(parts) < 2 or not parts[1].strip():
+        await message.reply_text("Usage: /delsection <name>")
+        return
+
+    name = parts[1].strip()
+    ok = await store.delete_section(name)
+    if not ok:
+        await message.reply_text("Section not found.")
+        return
+    await message.reply_text(f"Section deleted: {name}")
+
+
+@app.on_message(filters.command("showsections") & filters.private)
+async def show_sections(client: Client, message):
+    if not is_admin(message.from_user.id if message.from_user else None):
+        await message.reply_text("Not allowed.")
+        return
+
+    sections = await store.list_sections()
+    if not sections:
+        await message.reply_text("No sections yet.")
+        return
+
+    lines = ["Sections:"]
+    for name, section_id in sections:
+        lines.append(f"{name} -> {settings.base_url}/section/{section_id}")
+    await message.reply_text("\n".join(lines))
+
+
+@app.on_message(filters.command("addadmin") & filters.private)
+async def add_admin(client: Client, message):
+    if not is_admin(message.from_user.id if message.from_user else None):
+        await message.reply_text("Not allowed.")
+        return
+
+    parts = (message.text or "").split()
+    if len(parts) < 2:
+        await message.reply_text("Usage: /addadmin <userid>")
+        return
+
+    try:
+        user_id = int(parts[1])
+    except Exception:
+        await message.reply_text("Invalid user id.")
+        return
+
+    await db.add_admin(user_id)
+    settings.admin_ids.add(user_id)
+    await message.reply_text(f"Admin added: {user_id}")
+
+
+@app.on_message(filters.command("showadminlist") & filters.private)
+async def show_admins(client: Client, message):
+    if not is_admin(message.from_user.id if message.from_user else None):
+        await message.reply_text("Not allowed.")
+        return
+
+    admins = sorted(settings.admin_ids)
+    if not admins:
+        await message.reply_text("No admins found.")
+        return
+    await message.reply_text("Admins:\n" + "\n".join(str(a) for a in admins))
+
+
+@app.on_message(filters.command("premiumlist") & filters.private)
+async def premium_list(client: Client, message):
+    if not is_admin(message.from_user.id if message.from_user else None):
+        await message.reply_text("Not allowed.")
+        return
+
+    users = await db.list_premium_users()
+    if not users:
+        await message.reply_text("No premium users.")
+        return
+
+    lines = ["Premium users:"]
+    now = int(time.time())
+    for user in users:
+        if user.expires_at is None:
+            lines.append(f"{user.user_id} (lifetime)")
+        else:
+            remaining = user.expires_at - now
+            lines.append(f"{user.user_id} (expires in {max(0, remaining)}s)")
+    await message.reply_text("\n".join(lines))
 
 
 @app.on_message(filters.command("history") & filters.private)
@@ -349,6 +445,10 @@ async def handle_channel_media(client: Client, message):
 async def runner() -> None:
     await store.connect()
     await db.connect()
+    for admin_id in settings.admin_ids:
+        await db.add_admin(admin_id)
+    admins = await db.list_admins()
+    settings.admin_ids.update(admins)
     while True:
         try:
             await app.start()

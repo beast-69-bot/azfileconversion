@@ -26,6 +26,13 @@ class PremiumDB:
             )
             """
         )
+        await self._conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS admins (
+                user_id INTEGER PRIMARY KEY
+            )
+            """
+        )
         await self._conn.commit()
 
     async def close(self) -> None:
@@ -54,3 +61,25 @@ class PremiumDB:
         if expires_at is None:
             return True
         return int(time.time()) <= int(expires_at)
+
+
+    async def list_premium_users(self) -> list[PremiumUser]:
+        cursor = await self._conn.execute(
+            "SELECT user_id, expires_at FROM premium_users ORDER BY user_id"
+        )
+        rows = await cursor.fetchall()
+        return [PremiumUser(user_id=row[0], expires_at=row[1]) for row in rows]
+
+    async def add_admin(self, user_id: int) -> None:
+        await self._conn.execute(
+            "INSERT OR REPLACE INTO admins (user_id) VALUES (?)",
+            (user_id,),
+        )
+        await self._conn.commit()
+
+    async def list_admins(self) -> list[int]:
+        cursor = await self._conn.execute(
+            "SELECT user_id FROM admins ORDER BY user_id"
+        )
+        rows = await cursor.fetchall()
+        return [row[0] for row in rows]
