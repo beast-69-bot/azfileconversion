@@ -954,6 +954,34 @@ def section_picker_html(section_id: str) -> str:
 """
 
 
+
+
+@app.get("/debug/section/{section_id}")
+async def debug_section(section_id: str, access: str = "premium"):
+    if settings.redis_url and getattr(store, "_redis", None) is None:
+        await store.connect()
+    tokens = await store.list_section(section_id, settings.history_limit)
+    entries = []
+    for token in tokens:
+        ref = await store.get(token, settings.token_ttl_seconds)
+        if not ref:
+            entries.append({"token": token, "status": "missing"})
+            continue
+        if access == "premium" and ref.access != "premium":
+            continue
+        if access == "normal" and ref.access != "normal":
+            continue
+        entries.append({
+            "token": token,
+            "access": ref.access,
+            "section_id": ref.section_id,
+            "file_name": ref.file_name,
+        })
+    return {
+        "tokens_total": len(tokens),
+        "entries_filtered": len(entries),
+        "entries": entries[:5],
+    }
 @app.get("/section/{section_id}")
 async def section_page(section_id: str, request: Request):
     access = (request.query_params.get("access") or "").lower()
