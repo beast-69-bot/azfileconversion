@@ -57,6 +57,7 @@ class TokenStore:
         self._unique_viewers: dict[str, set[str]] = {}
         self._like_counts: dict[str, int] = {}
         self._like_viewers: dict[str, set[str]] = {}
+        self._credits: dict[int, int] = {}
         self._history_limit = max(history_limit, 1)
         self._history_key = "history:tokens"
         self._section_key = "section:current"
@@ -219,6 +220,44 @@ class TokenStore:
         if viewer_id:
             user_liked = viewer_id in self._like_viewers.get(token, set())
         return total, user_liked
+
+    async def get_credits(self, user_id: int) -> int:
+        if self._redis is not None:
+            raw = await self._redis.get(f"credits:{user_id}")
+            return int(raw or 0)
+        return int(self._credits.get(user_id, 0))
+
+    async def add_credits(self, user_id: int, amount: int) -> int:
+        amount = int(amount)
+        if self._redis is not None:
+            return int(await self._redis.incrby(f"credits:{user_id}", amount))
+        current = int(self._credits.get(user_id, 0)) + amount
+        self._credits[user_id] = current
+        return current
+
+    async def charge_credits(self, user_id: int, amount: int) -> tuple[bool, int]:
+        amount = int(amount)
+        if amount <= 0:
+            return True, await self.get_credits(user_id)
+        if self._redis is not None:
+            script = """
+local key = KEYS[1]
+local amount = tonumber(ARGV[1])
+local current = tonumber(redis.call('get', key) or '0')
+if current < amount then
+  return {-1, current}
+end
+local newval = redis.call('incrby', key, -amount)
+return {1, newval}
+"""
+            ok, balance = await self._redis.eval(script, 1, f"credits:{user_id}", str(amount))
+            return ok == 1, int(balance)
+        current = int(self._credits.get(user_id, 0))
+        if current < amount:
+            return False, current
+        current -= amount
+        self._credits[user_id] = current
+        return True, current
 
 
     async def set_section(self, section_name: Optional[str]) -> Optional[str]:

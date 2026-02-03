@@ -28,6 +28,7 @@ app = Client(
 )
 
 VIDEO_EXTS = {".mp4", ".mkv", ".mov", ".webm", ".avi", ".mpeg", ".mpg", ".m4v"}
+CREDIT_COST = 1
 
 
 def build_link(token: str) -> str:
@@ -116,7 +117,15 @@ async def start_handler(client: Client, message):
         await message.reply_text("Use premium link for download.")
         return
 
-    await send_premium_file(client, user_id, ref)
+    ok, balance = await store.charge_credits(user_id, CREDIT_COST)
+    if not ok:
+        await message.reply_text(f"Insufficient credits. Balance: {balance}.")
+        return
+    try:
+        await send_premium_file(client, user_id, ref)
+    except Exception:
+        await store.add_credits(user_id, CREDIT_COST)
+        raise
 
 
 @app.on_message(filters.command("addsection") & filters.private)
@@ -218,6 +227,37 @@ async def show_admins(client: Client, message):
         await message.reply_text("No admins found.")
         return
     await message.reply_text("Admins:\n" + "\n".join(str(a) for a in admins))
+
+@app.on_message(filters.command("credit") & filters.private)
+async def credit_balance(client: Client, message):
+    if not message.from_user:
+        await message.reply_text("User not found.")
+        return
+    user_id = message.from_user.id
+    balance = await store.get_credits(user_id)
+    await message.reply_text(f"Credits: {balance}")
+
+
+@app.on_message(filters.command("credit_add") & filters.private)
+async def credit_add(client: Client, message):
+    if not is_admin(message.from_user.id if message.from_user else None):
+        await message.reply_text("Not allowed.")
+        return
+    parts = (message.text or "").split()
+    if len(parts) < 3:
+        await message.reply_text("Usage: /credit_add <userid> <amount>")
+        return
+    try:
+        user_id = int(parts[1])
+        amount = int(parts[2])
+    except Exception:
+        await message.reply_text("Invalid format. Example: /credit_add 123456 10")
+        return
+    if amount <= 0:
+        await message.reply_text("Amount must be > 0.")
+        return
+    balance = await store.add_credits(user_id, amount)
+    await message.reply_text(f"Added {amount} credits to {user_id}. Balance: {balance}")
 
 
 @app.on_message(filters.command("premiumlist") & filters.private)
