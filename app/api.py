@@ -1162,13 +1162,11 @@ async def player(token: str, request: Request):
         font-family: 'Space Grotesk', system-ui, sans-serif;
         color: var(--text);
         min-height: 100vh;
-        display: grid;
-        place-items: center;
         background:
           radial-gradient(1200px 500px at 10% 0%, rgba(123, 223, 242, 0.12), transparent 60%),
           radial-gradient(900px 600px at 90% 10%, rgba(242, 160, 123, 0.14), transparent 60%),
           linear-gradient(135deg, var(--bg-1), var(--bg-2));
-        overflow: hidden;
+        overflow-x: hidden;
       }
       body::before {
         content: '';
@@ -1185,77 +1183,104 @@ async def player(token: str, request: Request):
         opacity: 0.35;
       }
       .shell {
-        width: min(1024px, 94vw);
-        padding: 28px;
-        border-radius: 24px;
+        width: min(1180px, 94vw);
+        margin: 32px auto 42px;
+        padding: 24px;
+        border-radius: 26px;
         background: var(--card);
         border: 1px solid var(--border);
         box-shadow: 0 20px 60px rgba(0,0,0,0.35);
         backdrop-filter: blur(12px);
         animation: float-in 600ms ease-out;
-        display: grid;
-        gap: 16px;
-        align-content: start;
       }
-      .header {
+      .topbar {
         display: flex;
         align-items: center;
         justify-content: space-between;
         gap: 16px;
         margin-bottom: 18px;
-        flex-wrap: wrap;
       }
-      .title {
-        font-size: 20px;
+      .brand {
         font-weight: 700;
-        letter-spacing: 0.3px;
-      }
-      .meta {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 10px;
-        margin-top: 6px;
-      }
-      .chip {
-        font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, monospace;
-        font-size: 12px;
+        letter-spacing: 0.4px;
+        font-size: 16px;
+        text-transform: uppercase;
         color: var(--muted);
+      }
+      .status {
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 1px;
         padding: 6px 10px;
         border-radius: 999px;
+        border: 1px solid rgba(123, 223, 242, 0.4);
+        color: var(--accent);
+        background: rgba(123, 223, 242, 0.08);
+      }
+      .layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 320px;
+        gap: 18px;
+        align-items: start;
+      }
+      .media-card {
+        display: grid;
+        gap: 12px;
+        padding: 16px;
+        border-radius: 20px;
         border: 1px solid var(--border);
-        background: rgba(255,255,255,0.03);
+        background: rgba(8, 14, 26, 0.7);
+      }
+      .file-title {
+        font-size: 22px;
+        font-weight: 700;
+        letter-spacing: 0.2px;
+        word-break: break-word;
+      }
+      .file-sub {
+        color: var(--muted);
+        font-size: 13px;
+        font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, monospace;
       }
       .player {
         width: 100%;
-        border-radius: 18px;
+        border-radius: 16px;
         overflow: hidden;
         border: 1px solid var(--border);
         background: #000;
-        max-height: 60vh;
+        max-height: 70vh;
       }
       __MEDIA_TAG__ {
         width: 100%;
         height: auto;
-        max-height: 60vh;
+        max-height: 70vh;
         display: block;
         background: #000;
         object-fit: contain;
       }
-      .sticky-bar {
-        position: sticky;
-        top: 16px;
-        z-index: 5;
-        background: linear-gradient(135deg, rgba(11, 15, 26, 0.9), rgba(17, 26, 43, 0.92));
-        border: 1px solid var(--border);
-        border-radius: 18px;
+      .player audio {
+        width: 100%;
+        height: 52px;
+      }
+      .panel {
         padding: 16px;
-        backdrop-filter: blur(10px);
+        border-radius: 18px;
+        border: 1px solid var(--border);
+        background: linear-gradient(145deg, rgba(11, 17, 30, 0.92), rgba(15, 23, 40, 0.92));
+        display: grid;
+        gap: 12px;
+      }
+      .panel-title {
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 1px;
       }
       .actions {
         display: flex;
         flex-wrap: wrap;
         gap: 12px;
-        margin-top: 12px;
         align-items: center;
       }
       .btn {
@@ -1297,15 +1322,44 @@ async def player(token: str, request: Request):
       .hint {
         font-size: 12px;
         color: var(--muted);
-        margin-top: 10px;
+        line-height: 1.5;
+      }
+      .stats {
+        display: grid;
+        gap: 10px;
+      }
+      .stat-row {
+        display: flex;
+        justify-content: space-between;
+        font-size: 13px;
+      }
+      .stat-row span:first-child {
+        color: var(--muted);
+      }
+      .chip-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .chip {
+        font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, monospace;
+        font-size: 11px;
+        color: var(--muted);
+        padding: 6px 10px;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        background: rgba(255,255,255,0.03);
       }
       @keyframes float-in {
         from { opacity: 0; transform: translateY(10px); }
         to { opacity: 1; transform: translateY(0); }
       }
-      @media (max-width: 600px) {
+      @media (max-width: 960px) {
+        .layout { grid-template-columns: 1fr; }
+      }
+      @media (max-width: 700px) {
         .shell { padding: 18px; }
-        .title { font-size: 18px; }
+        .file-title { font-size: 18px; }
         .actions { flex-direction: column; align-items: stretch; }
         .actions .btn { width: 100%; text-align: center; }
       }
@@ -1313,32 +1367,52 @@ async def player(token: str, request: Request):
   </head>
   <body>
     <div class="shell">
-      <div class="sticky-bar">
-        <div class="header">
-          <div>
-            <div class="title">Streaming</div>
-            <div class="meta">
-              <div class="chip">__FILE__</div>
-              <div class="chip">__SIZE__</div>
-              <div class="chip">__MIME__</div>
+      <div class="topbar">
+        <div class="brand">AZ Stream</div>
+        <div class="status">Live</div>
+      </div>
+      <div class="layout">
+        <section class="main">
+          <div class="media-card">
+            <div>
+              <div class="file-title">__FILE__</div>
+              <div class="file-sub">__SIZE__ • __MIME__</div>
+            </div>
+            <div class="player">
+              <__MEDIA_TAG__ controls autoplay preload="auto" controlsList="nodownload">
+                <source src="/stream/__TOKEN__" type="__MIME__" />
+              </__MEDIA_TAG__>
+            </div>
+            <div class="chip-row">
               <div class="chip">Views __VIEWS__</div>
               <div class="chip">Likes __LIKES__</div>
+              <div class="chip">Token __TOKEN__</div>
             </div>
           </div>
-        </div>
-        <div class="actions">
-          <a class="btn secondary" href="/stream/__TOKEN__">Direct stream</a>
-          __DOWNLOAD_BUTTON__
-          <button id="like-btn" class="btn ghost __LIKE_ACTIVE__" data-liked="__LIKED__" data-token="__TOKEN__">
-            Like <span id="like-count">__LIKES__</span>
-          </button>
-        </div>
-        <div class="hint">If playback stalls, try refreshing once. Some files need a few seconds to start.</div>
-      </div>
-      <div class="player">
-        <__MEDIA_TAG__ controls autoplay preload="auto" controlsList="nodownload">
-          <source src="/stream/__TOKEN__" type="__MIME__" />
-        </__MEDIA_TAG__>
+        </section>
+        <aside class="side">
+          <div class="panel">
+            <div class="panel-title">Controls</div>
+            <div class="actions">
+              <a class="btn secondary" href="/stream/__TOKEN__">Direct stream</a>
+              __DOWNLOAD_BUTTON__
+              <button id="like-btn" class="btn ghost __LIKE_ACTIVE__" data-liked="__LIKED__" data-token="__TOKEN__">
+                Like <span id="like-count">__LIKES__</span>
+              </button>
+            </div>
+            <div class="hint">If playback stalls, refresh once. Some files need a few seconds to start.</div>
+          </div>
+          <div class="panel stats">
+            <div class="panel-title">Stats</div>
+            <div class="stat-row"><span>Views</span><strong>__VIEWS__</strong></div>
+            <div class="stat-row"><span>Likes</span><strong>__LIKES__</strong></div>
+            <div class="stat-row"><span>File size</span><strong>__SIZE__</strong></div>
+          </div>
+          <div class="panel">
+            <div class="panel-title">Playback Tips</div>
+            <div class="hint">Use direct stream for external players. For large files, wait a few seconds after pressing play.</div>
+          </div>
+        </aside>
       </div>
     </div>
     <script>
