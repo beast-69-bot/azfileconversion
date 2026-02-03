@@ -104,10 +104,6 @@ async def start_handler(client: Client, message):
         return
 
     user_id = message.from_user.id
-    if not await db.is_premium(user_id):
-        await message.reply_text("Premium required. Contact admin to upgrade.")
-        return
-
     token = payload[3:]
     ref = await store.get(token, settings.token_ttl_seconds)
     if not ref:
@@ -117,15 +113,20 @@ async def start_handler(client: Client, message):
         await message.reply_text("Use premium link for download.")
         return
 
-    ok, balance = await store.charge_credits(user_id, CREDIT_COST)
-    if not ok:
-        await message.reply_text(f"Insufficient credits. Balance: {balance}.")
+    is_premium = await db.is_premium(user_id)
+    if not is_premium:
+        ok, balance = await store.charge_credits(user_id, CREDIT_COST)
+        if not ok:
+            await message.reply_text(f"Insufficient credits. Balance: {balance}.")
+            return
+        try:
+            await send_premium_file(client, user_id, ref)
+        except Exception:
+            await store.add_credits(user_id, CREDIT_COST)
+            raise
         return
-    try:
-        await send_premium_file(client, user_id, ref)
-    except Exception:
-        await store.add_credits(user_id, CREDIT_COST)
-        raise
+
+    await send_premium_file(client, user_id, ref)
 
 
 @app.on_message(filters.command("addsection") & filters.private)
