@@ -91,12 +91,15 @@ async def start_handler(client: Client, message):
     text = message.text or ""
     parts = text.split(maxsplit=1)
     if len(parts) < 2:
-        await message.reply_text("Send /add <userid> <period_days|life> to add premium users.")
+        await message.reply_text(
+            "Hi! Send me a download link or open a file link from the channel.\n"
+            "Admins can use /add, /addsection, /showsections, /credit_add."
+        )
         return
 
     payload = parts[1].strip()
     if not payload.startswith("dl_"):
-        await message.reply_text("Invalid link.")
+        await message.reply_text("Invalid link. Please open the correct download link.")
         return
 
     if not message.from_user:
@@ -124,6 +127,7 @@ async def start_handler(client: Client, message):
         except Exception:
             await store.add_credits(user_id, CREDIT_COST)
             raise
+        await message.reply_text(f"1 credit used. Remaining credits: {balance}")
         return
 
     await send_premium_file(client, user_id, ref)
