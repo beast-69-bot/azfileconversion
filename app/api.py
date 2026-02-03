@@ -1449,7 +1449,7 @@ async def player(token: str, request: Request):
 
     download_button = ""
     if ref.access == "premium" and settings.bot_username:
-        download_button = f'<a class="btn" href="/player/{token}/download">Download</a>'
+        download_button = f'<a class="btn" href="https://t.me/{settings.bot_username}?start=dl_{token}">Download</a>'
 
     html = (html
             .replace("__TOKEN__", token)
@@ -1476,8 +1476,6 @@ async def player_download(token: str, request: Request):
         raise HTTPException(status_code=404, detail="Invalid or expired token")
     if ref.access != "premium":
         raise HTTPException(status_code=403, detail="Premium required")
-    if settings.direct_download:
-        return RedirectResponse(url=f"/download/{token}", status_code=302)
     if settings.bot_username:
         return RedirectResponse(url=f"https://t.me/{settings.bot_username}?start=dl_{token}", status_code=302)
     return HTMLResponse(content="Download unavailable.", status_code=404)
