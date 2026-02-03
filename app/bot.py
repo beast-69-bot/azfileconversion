@@ -6,6 +6,7 @@ import tempfile
 from pathlib import Path
 
 from pyrogram import Client, filters
+from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from pyrogram.errors import FloodWait
 
 from app.config import get_settings
@@ -29,6 +30,8 @@ app = Client(
 
 VIDEO_EXTS = {".mp4", ".mkv", ".mov", ".webm", ".avi", ".mpeg", ".mpg", ".m4v"}
 CREDIT_COST = 1
+CREDIT_PRICE_INR = 0.35
+ADMIN_CONTACT = "@azmoviedeal"
 
 
 def build_link(token: str) -> str:
@@ -242,6 +245,19 @@ async def credit_balance(client: Client, message):
     user_id = message.from_user.id
     balance = await store.get_credits(user_id)
     await message.reply_text(f"Your credits: {balance} 💳")
+
+
+@app.on_message(filters.command("pay") & filters.private)
+async def pay_info(client: Client, message):
+    keyboard = InlineKeyboardMarkup(
+        [[InlineKeyboardButton("Contact Admin 💬", url=f"https://t.me/{ADMIN_CONTACT.lstrip('@')}")]]
+    )
+    await message.reply_text(
+        f"Price per credit: ₹{CREDIT_PRICE_INR:.2f}\n"
+        "To add credits, contact admin.",
+        reply_markup=keyboard,
+        disable_web_page_preview=True,
+    )
 
 
 @app.on_message(filters.command("credit_add") & filters.private)
