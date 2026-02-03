@@ -92,42 +92,43 @@ async def start_handler(client: Client, message):
     parts = text.split(maxsplit=1)
     if len(parts) < 2:
         await message.reply_text(
-            "Hi! Send me a download link or open a file link from the channel.\n"
-            "Admins can use /add, /addsection, /showsections, /credit_add."
+            "Hey! 👋\n"
+            "Open a download link here and I’ll deliver the file.\n"
+            "Admins: /add, /addsection, /showsections, /credit_add."
         )
         return
 
     payload = parts[1].strip()
     if not payload.startswith("dl_"):
-        await message.reply_text("Invalid link. Please open the correct download link.")
+        await message.reply_text("That link doesn’t look right. Please open a valid download link. 🙏")
         return
 
     if not message.from_user:
-        await message.reply_text("User not found.")
+        await message.reply_text("I couldn’t read your user info. Please try again. 🙏")
         return
 
     user_id = message.from_user.id
     token = payload[3:]
     ref = await store.get(token, settings.token_ttl_seconds)
     if not ref:
-        await message.reply_text("Link expired or invalid.")
+        await message.reply_text("This link is expired or invalid. Please ask for a fresh one. ⏳")
         return
     if ref.access != "premium":
-        await message.reply_text("Use premium link for download.")
+        await message.reply_text("Please use the premium download link for this file. 🔒")
         return
 
     is_premium = await db.is_premium(user_id)
     if not is_premium:
         ok, balance = await store.charge_credits(user_id, CREDIT_COST)
         if not ok:
-            await message.reply_text(f"Insufficient credits. Balance: {balance}.")
+            await message.reply_text(f"Not enough credits. Balance: {balance}. 💳")
             return
         try:
             await send_premium_file(client, user_id, ref)
         except Exception:
             await store.add_credits(user_id, CREDIT_COST)
             raise
-        await message.reply_text(f"1 credit used. Remaining credits: {balance}")
+        await message.reply_text(f"✅ 1 credit used. Remaining: {balance}")
         return
 
     await send_premium_file(client, user_id, ref)
@@ -136,61 +137,61 @@ async def start_handler(client: Client, message):
 @app.on_message(filters.command("addsection") & filters.private)
 async def add_section(client: Client, message):
     if not is_admin(message.from_user.id if message.from_user else None):
-        await message.reply_text("Not allowed.")
+        await message.reply_text("Not allowed. 🚫")
         return
 
     parts = (message.text or "").split(maxsplit=1)
     if len(parts) < 2 or not parts[1].strip():
-        await message.reply_text("Usage: /addsection <name>")
+        await message.reply_text("Usage: /addsection <name> 📁")
         return
 
     section = parts[1].strip()
     section_id = await store.set_section(section)
     if not section_id:
-        await message.reply_text("Section name already exists. Choose another name.")
+        await message.reply_text("Section name already exists. Try another name. 🧭")
         return
     link = f"{settings.base_url}/section/{section_id}"
-    await message.reply_text(f"Section set to: {section}\nOpen: {link}")
+    await message.reply_text(f"Section set: {section}\nOpen: {link} ✅")
 
 
 @app.on_message(filters.command("endsection") & filters.private)
 async def end_section(client: Client, message):
     if not is_admin(message.from_user.id if message.from_user else None):
-        await message.reply_text("Not allowed.")
+        await message.reply_text("Not allowed. 🚫")
         return
 
     await store.set_section(None)
-    await message.reply_text("Section cleared.")
+    await message.reply_text("Section cleared. ✅")
 
 
 @app.on_message(filters.command("delsection") & filters.private)
 async def delete_section(client: Client, message):
     if not is_admin(message.from_user.id if message.from_user else None):
-        await message.reply_text("Not allowed.")
+        await message.reply_text("Not allowed. 🚫")
         return
 
     parts = (message.text or "").split(maxsplit=1)
     if len(parts) < 2 or not parts[1].strip():
-        await message.reply_text("Usage: /delsection <name>")
+        await message.reply_text("Usage: /delsection <name> 🗑️")
         return
 
     name = parts[1].strip()
     ok = await store.delete_section(name)
     if not ok:
-        await message.reply_text("Section not found.")
+        await message.reply_text("Section not found. 🧩")
         return
-    await message.reply_text(f"Section deleted: {name}")
+    await message.reply_text(f"Section deleted: {name} ✅")
 
 
 @app.on_message(filters.command("showsections") & filters.private)
 async def show_sections(client: Client, message):
     if not is_admin(message.from_user.id if message.from_user else None):
-        await message.reply_text("Not allowed.")
+        await message.reply_text("Not allowed. 🚫")
         return
 
     sections = await store.list_sections()
     if not sections:
-        await message.reply_text("No sections yet.")
+        await message.reply_text("No sections yet. 📭")
         return
 
     lines = ["Sections:"]
@@ -202,78 +203,78 @@ async def show_sections(client: Client, message):
 @app.on_message(filters.command("addadmin") & filters.private)
 async def add_admin(client: Client, message):
     if not is_admin(message.from_user.id if message.from_user else None):
-        await message.reply_text("Not allowed.")
+        await message.reply_text("Not allowed. 🚫")
         return
 
     parts = (message.text or "").split()
     if len(parts) < 2:
-        await message.reply_text("Usage: /addadmin <userid>")
+        await message.reply_text("Usage: /addadmin <userid> 👤")
         return
 
     try:
         user_id = int(parts[1])
     except Exception:
-        await message.reply_text("Invalid user id.")
+        await message.reply_text("Invalid user id. 🧾")
         return
 
     await db.add_admin(user_id)
     settings.admin_ids.add(user_id)
-    await message.reply_text(f"Admin added: {user_id}")
+    await message.reply_text(f"Admin added: {user_id} ✅")
 
 
 @app.on_message(filters.command("showadminlist") & filters.private)
 async def show_admins(client: Client, message):
     if not is_admin(message.from_user.id if message.from_user else None):
-        await message.reply_text("Not allowed.")
+        await message.reply_text("Not allowed. 🚫")
         return
 
     admins = sorted(settings.admin_ids)
     if not admins:
-        await message.reply_text("No admins found.")
+        await message.reply_text("No admins found. 📭")
         return
     await message.reply_text("Admins:\n" + "\n".join(str(a) for a in admins))
 
 @app.on_message(filters.command("credit") & filters.private)
 async def credit_balance(client: Client, message):
     if not message.from_user:
-        await message.reply_text("User not found.")
+        await message.reply_text("I couldn’t read your user info. Please try again. 🙏")
         return
     user_id = message.from_user.id
     balance = await store.get_credits(user_id)
-    await message.reply_text(f"Credits: {balance}")
+    await message.reply_text(f"Your credits: {balance} 💳")
 
 
 @app.on_message(filters.command("credit_add") & filters.private)
 async def credit_add(client: Client, message):
     if not is_admin(message.from_user.id if message.from_user else None):
-        await message.reply_text("Not allowed.")
+        await message.reply_text("Not allowed. 🚫")
         return
     parts = (message.text or "").split()
     if len(parts) < 3:
-        await message.reply_text("Usage: /credit_add <userid> <amount>")
+        await message.reply_text("Usage: /credit_add <userid> <amount> 💳")
         return
     try:
         user_id = int(parts[1])
         amount = int(parts[2])
     except Exception:
-        await message.reply_text("Invalid format. Example: /credit_add 123456 10")
+        await message.reply_text("Invalid format. Example: /credit_add 123456 10 🧾")
         return
     if amount <= 0:
-        await message.reply_text("Amount must be > 0.")
+        await message.reply_text("Amount must be > 0. 🔢")
         return
     balance = await store.add_credits(user_id, amount)
-    await message.reply_text(f"Added {amount} credits to {user_id}. Balance: {balance}")
+    await message.reply_text(f"Added {amount} credits to {user_id}. Balance: {balance} ✅")
 
 
 @app.on_message(filters.command("premiumlist") & filters.private)
 async def premium_list(client: Client, message):
     if not is_admin(message.from_user.id if message.from_user else None):
-        await message.reply_text("Not allowed.")
+        await message.reply_text("Not allowed. 🚫")
         return
 
     users = await db.list_premium_users()
     if not users:
-        await message.reply_text("No premium users.")
+        await message.reply_text("No premium users. 📭")
         return
 
     lines = ["Premium users:"]
@@ -290,7 +291,7 @@ async def premium_list(client: Client, message):
 @app.on_message(filters.command("history") & filters.private)
 async def history_links(client: Client, message):
     if not is_admin(message.from_user.id if message.from_user else None):
-        await message.reply_text("Not allowed.")
+        await message.reply_text("Not allowed. 🚫")
         return
 
     parts = (message.text or "").split()
@@ -303,7 +304,7 @@ async def history_links(client: Client, message):
 
     tokens = await store.list_recent(limit * 2)
     if not tokens:
-        await message.reply_text("No history yet.")
+        await message.reply_text("No history yet. 📭")
         return
 
     lines = ["Recent stream links:"]
@@ -322,7 +323,7 @@ async def history_links(client: Client, message):
             break
 
     if shown == 0:
-        await message.reply_text("No active links found (expired or missing).")
+        await message.reply_text("No active links found (expired or missing). ⏳")
         return
 
     await message.reply_text("\n\n".join(lines))
@@ -331,32 +332,32 @@ async def history_links(client: Client, message):
 @app.on_message(filters.command("add") & filters.private)
 async def add_premium_user(client: Client, message):
     if not is_admin(message.from_user.id if message.from_user else None):
-        await message.reply_text("Not allowed.")
+        await message.reply_text("Not allowed. 🚫")
         return
 
     parts = (message.text or "").split()
     if len(parts) < 3:
-        await message.reply_text("Usage: /add <userid> <period_days|life>")
+        await message.reply_text("Usage: /add <userid> <period_days|life> 🏷️")
         return
 
     try:
         user_id = int(parts[1])
         period = parse_period(parts[2])
     except Exception:
-        await message.reply_text("Invalid format. Example: /add 123456 30")
+        await message.reply_text("Invalid format. Example: /add 123456 30 🧾")
         return
 
     await db.add_user(user_id, period)
     if period is None:
-        await message.reply_text(f"Added {user_id} as lifetime premium.")
+        await message.reply_text(f"Added {user_id} as lifetime premium. ✅")
     else:
-        await message.reply_text(f"Added {user_id} premium for {period} days.")
+        await message.reply_text(f"Added {user_id} premium for {period} days. ✅")
 
 
 @app.on_message(filters.private & (filters.document | filters.video | filters.audio))
 async def handle_private_media(client: Client, message):
     if not is_admin(message.from_user.id if message.from_user else None):
-        await message.reply_text("Not allowed.")
+        await message.reply_text("Not allowed. 🚫")
         return
 
     media = message.document or message.video or message.audio
@@ -365,7 +366,7 @@ async def handle_private_media(client: Client, message):
 
     section_id, section_name = await store.get_section()
     if not section_id:
-        await message.reply_text("Set a section first using /addsection <name>.")
+        await message.reply_text("Set a section first using /addsection <name>. 📁")
         return
 
     normal_token = secrets.token_urlsafe(24)
@@ -399,7 +400,7 @@ async def handle_private_media(client: Client, message):
     link = build_link(normal_token)
     premium_link = build_link(premium_token)
     link_text = f"Stream (Normal): {link}\nStream (Premium): {premium_link}\nSection: {section_name}"
-    await message.reply_text(link_text)
+    await message.reply_text(link_text + "\n\nReady to stream. ✅")
 
 @app.on_message(filters.channel & (filters.document | filters.video | filters.audio))
 async def handle_channel_media(client: Client, message):
@@ -511,3 +512,5 @@ async def runner() -> None:
 
 if __name__ == "__main__":
     app.run(runner())
+
+
