@@ -455,7 +455,6 @@ async def render_section(section_id: str, access_filter: str, request: Request) 
 
     entries = []
     entries_all = []
-    base_url = str(request.base_url).rstrip("/")
     for token in tokens:
         ref = await store.get(token, settings.token_ttl_seconds)
         if ref is None:
@@ -464,6 +463,9 @@ async def render_section(section_id: str, access_filter: str, request: Request) 
         name = ref.file_name or ref.file_unique_id or "file"
         size_text = human_size(ref.file_size)
         views_total, views_unique = await store.get_views(token)
+        bot_link = ""
+        if settings.bot_username:
+            bot_link = f"https://t.me/{settings.bot_username}?start=dl_{token}"
         entry = {
             "token": token,
             "name": name,
@@ -474,8 +476,7 @@ async def render_section(section_id: str, access_filter: str, request: Request) 
             "views_total": views_total,
             "views_unique": views_unique,
             "access": ref_access,
-            "play_link": f"/player/{token}",
-            "copy_link": f"{base_url}/player/{token}",
+            "play_link": bot_link,
         }
         entries_all.append(entry)
         if (
@@ -547,8 +548,7 @@ async def render_section(section_id: str, access_filter: str, request: Request) 
             "</div>"
             "</div>"
             "<div class=\"card-actions\">"
-            f"<a class=\"btn\" href=\"{item['play_link']}\">Play</a>"
-            f"<button class=\"btn ghost copy\" data-copy=\"{item['copy_link']}\">Copy Link</button>"
+            f"<a class=\"btn{'' if item['play_link'] else ' disabled'}\" href=\"{item['play_link'] or '#'}\">Open in Telegram</a>"
             "</div>"
             "</li>"
         )
@@ -876,20 +876,7 @@ async def render_section(section_id: str, access_filter: str, request: Request) 
           window.location.href = url.toString();
         });
       }
-      document.querySelectorAll('[data-copy]').forEach((btn) => {
-        btn.addEventListener('click', async () => {
-          const link = btn.getAttribute('data-copy');
-          if (!link) return;
-          try {
-            await navigator.clipboard.writeText(link);
-            const original = btn.textContent;
-            btn.textContent = 'Copied';
-            setTimeout(() => (btn.textContent = original), 1200);
-          } catch (err) {
-            window.prompt('Copy link', link);
-          }
-        });
-      });
+      // copy button removed
       document.body.classList.remove('is-loading');
     </script>
   </body>

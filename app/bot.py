@@ -79,6 +79,7 @@ async def send_premium_file(client: Client, user_id: int, ref: FileRef) -> None:
             chat_id=user_id,
             from_chat_id=ref.chat_id,
             message_id=ref.message_id,
+            protect_content=True,
         )
         return
     except Exception:
@@ -86,6 +87,7 @@ async def send_premium_file(client: Client, user_id: int, ref: FileRef) -> None:
     await client.send_cached_media(
         chat_id=user_id,
         file_id=ref.file_id,
+        protect_content=True,
     )
 
 
