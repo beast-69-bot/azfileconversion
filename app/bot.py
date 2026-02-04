@@ -1,4 +1,5 @@
 ﻿import asyncio
+import asyncio
 import logging
 import secrets
 import time
@@ -93,22 +94,37 @@ async def send_reaction_prompt(client: Client, user_id: int, token: str) -> None
     )
 
 
+DELETE_AFTER_SECONDS = 30 * 60
+
+
+async def schedule_delete(client: Client, chat_id: int, message_id: int, delay: int = DELETE_AFTER_SECONDS) -> None:
+    await asyncio.sleep(delay)
+    try:
+        await client.delete_messages(chat_id=chat_id, message_ids=message_id)
+    except Exception:
+        pass
+
+
 async def send_premium_file(client: Client, user_id: int, ref: FileRef, protect: bool) -> None:
     try:
-        await client.copy_message(
+        sent = await client.copy_message(
             chat_id=user_id,
             from_chat_id=ref.chat_id,
             message_id=ref.message_id,
             protect_content=protect,
         )
+        if sent:
+            asyncio.create_task(schedule_delete(client, user_id, sent.id))
         return
     except Exception:
         pass
-    await client.send_cached_media(
+    sent = await client.send_cached_media(
         chat_id=user_id,
         file_id=ref.file_id,
         protect_content=protect,
     )
+    if sent:
+        asyncio.create_task(schedule_delete(client, user_id, sent.id))
 
 
 @app.on_message(filters.command("start") & filters.private)
@@ -159,6 +175,7 @@ async def start_handler(client: Client, message):
 
     # Normal access: always protected (play-only) for everyone.
     await send_premium_file(client, user_id, ref, protect=True)
+    await message.reply_text("Note: This file will be auto-deleted in 30 minutes. ⏳")
     await send_reaction_prompt(client, user_id, token)
     await message.reply_text(
         "Play-only mode enabled (saving/forwarding is blocked). 🔒\n"
