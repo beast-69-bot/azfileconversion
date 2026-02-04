@@ -159,8 +159,11 @@ async def start_handler(client: Client, message):
 
     # Normal access: always protected (play-only) for everyone.
     await send_premium_file(client, user_id, ref, protect=True)
-    await message.reply_text("Play-only mode enabled (saving/forwarding is blocked). 🔒")
     await send_reaction_prompt(client, user_id, token)
+    await message.reply_text(
+        "Play-only mode enabled (saving/forwarding is blocked). 🔒\n"
+        "Want full download access? Use /pay to buy credits or ask for premium."
+    )
 
 
 @app.on_message(filters.command("addsection") & filters.private)
