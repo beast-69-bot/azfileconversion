@@ -73,13 +73,13 @@ async def reupload_video_as_media(client: Client, message, target_chat_id):
             caption=caption,
         )
 
-async def send_premium_file(client: Client, user_id: int, ref: FileRef) -> None:
+async def send_premium_file(client: Client, user_id: int, ref: FileRef, protect: bool) -> None:
     try:
         await client.copy_message(
             chat_id=user_id,
             from_chat_id=ref.chat_id,
             message_id=ref.message_id,
-            protect_content=True,
+            protect_content=protect,
         )
         return
     except Exception:
@@ -87,7 +87,7 @@ async def send_premium_file(client: Client, user_id: int, ref: FileRef) -> None:
     await client.send_cached_media(
         chat_id=user_id,
         file_id=ref.file_id,
-        protect_content=True,
+        protect_content=protect,
     )
 
 
@@ -118,25 +118,44 @@ async def start_handler(client: Client, message):
     if not ref:
         await message.reply_text("This link is expired or invalid. Please ask for a fresh one. ⏳")
         return
-    if ref.access != "premium":
-        await message.reply_text("Please use the premium download link for this file. 🔒")
-        return
-
     is_premium = await db.is_premium(user_id)
-    if not is_premium:
+    if ref.access == "premium":
+        if is_premium:
+            await send_premium_file(client, user_id, ref, protect=False)
+            return
         ok, balance = await store.charge_credits(user_id, CREDIT_COST)
         if not ok:
             await message.reply_text(f"Not enough credits. Balance: {balance}. 💳")
             return
         try:
-            await send_premium_file(client, user_id, ref)
+            await send_premium_file(client, user_id, ref, protect=False)
         except Exception:
             await store.add_credits(user_id, CREDIT_COST)
             raise
         await message.reply_text(f"✅ 1 credit used. Remaining: {balance}")
         return
 
-    await send_premium_file(client, user_id, ref)
+    # Normal access: allow play for everyone, protected by default.
+    if is_premium:
+        await send_premium_file(client, user_id, ref, protect=False)
+        return
+
+    balance = await store.get_credits(user_id)
+    if balance > 0:
+        ok, new_balance = await store.charge_credits(user_id, CREDIT_COST)
+        if not ok:
+            await message.reply_text(f"Not enough credits. Balance: {new_balance}. 💳")
+            return
+        try:
+            await send_premium_file(client, user_id, ref, protect=False)
+        except Exception:
+            await store.add_credits(user_id, CREDIT_COST)
+            raise
+        await message.reply_text(f"✅ 1 credit used. Remaining: {new_balance}")
+        return
+
+    await send_premium_file(client, user_id, ref, protect=True)
+    await message.reply_text("Play-only mode enabled (saving/forwarding is blocked). 🔒")
 
 
 @app.on_message(filters.command("addsection") & filters.private)
