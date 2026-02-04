@@ -135,25 +135,7 @@ async def start_handler(client: Client, message):
         await message.reply_text(f"✅ 1 credit used. Remaining: {balance}")
         return
 
-    # Normal access: allow play for everyone, protected by default.
-    if is_premium:
-        await send_premium_file(client, user_id, ref, protect=False)
-        return
-
-    balance = await store.get_credits(user_id)
-    if balance > 0:
-        ok, new_balance = await store.charge_credits(user_id, CREDIT_COST)
-        if not ok:
-            await message.reply_text(f"Not enough credits. Balance: {new_balance}. 💳")
-            return
-        try:
-            await send_premium_file(client, user_id, ref, protect=False)
-        except Exception:
-            await store.add_credits(user_id, CREDIT_COST)
-            raise
-        await message.reply_text(f"✅ 1 credit used. Remaining: {new_balance}")
-        return
-
+    # Normal access: always protected (play-only) for everyone.
     await send_premium_file(client, user_id, ref, protect=True)
     await message.reply_text("Play-only mode enabled (saving/forwarding is blocked). 🔒")
 
