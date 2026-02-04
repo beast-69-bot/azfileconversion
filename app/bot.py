@@ -73,6 +73,26 @@ async def reupload_video_as_media(client: Client, message, target_chat_id):
             caption=caption,
         )
 
+def build_reaction_keyboard(token: str, likes: int, dislikes: int, status: int) -> InlineKeyboardMarkup:
+    like_label = f"👍 {likes}" + (" ✅" if status == 1 else "")
+    dislike_label = f"👎 {dislikes}" + (" ✅" if status == -1 else "")
+    return InlineKeyboardMarkup(
+        [[
+            InlineKeyboardButton(like_label, callback_data=f"react:{token}:up"),
+            InlineKeyboardButton(dislike_label, callback_data=f"react:{token}:down"),
+        ]]
+    )
+
+
+async def send_reaction_prompt(client: Client, user_id: int, token: str) -> None:
+    likes, dislikes, status = await store.get_reactions(token, user_id)
+    await client.send_message(
+        chat_id=user_id,
+        text="Rate this file:",
+        reply_markup=build_reaction_keyboard(token, likes, dislikes, status),
+    )
+
+
 async def send_premium_file(client: Client, user_id: int, ref: FileRef, protect: bool) -> None:
     try:
         await client.copy_message(
@@ -122,6 +142,7 @@ async def start_handler(client: Client, message):
     if ref.access == "premium":
         if is_premium:
             await send_premium_file(client, user_id, ref, protect=False)
+            await send_reaction_prompt(client, user_id, token)
             return
         ok, balance = await store.charge_credits(user_id, CREDIT_COST)
         if not ok:
@@ -133,11 +154,13 @@ async def start_handler(client: Client, message):
             await store.add_credits(user_id, CREDIT_COST)
             raise
         await message.reply_text(f"✅ 1 credit used. Remaining: {balance}")
+        await send_reaction_prompt(client, user_id, token)
         return
 
     # Normal access: always protected (play-only) for everyone.
     await send_premium_file(client, user_id, ref, protect=True)
     await message.reply_text("Play-only mode enabled (saving/forwarding is blocked). 🔒")
+    await send_reaction_prompt(client, user_id, token)
 
 
 @app.on_message(filters.command("addsection") & filters.private)
@@ -283,6 +306,33 @@ async def credit_add(client: Client, message):
         return
     balance = await store.add_credits(user_id, amount)
     await message.reply_text(f"Added {amount} credits to {user_id}. Balance: {balance} ✅")
+
+
+@app.on_callback_query(filters.regex("^react:"))
+async def reaction_callback(client: Client, callback):
+    if not callback.from_user or not callback.data:
+        return
+    parts = callback.data.split(":")
+    if len(parts) != 3:
+        return
+    token = parts[1]
+    action = parts[2]
+    user_id = callback.from_user.id
+
+    _, _, status = await store.get_reactions(token, user_id)
+    if action == "up":
+        new_reaction = 0 if status == 1 else 1
+    elif action == "down":
+        new_reaction = 0 if status == -1 else -1
+    else:
+        return
+
+    likes, dislikes, status = await store.set_reaction(token, user_id, new_reaction)
+    if callback.message:
+        await callback.message.edit_reply_markup(
+            reply_markup=build_reaction_keyboard(token, likes, dislikes, status)
+        )
+    await callback.answer("Updated")
 
 
 @app.on_message(filters.command("premiumlist") & filters.private)

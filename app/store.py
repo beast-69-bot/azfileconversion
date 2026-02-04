@@ -57,6 +57,8 @@ class TokenStore:
         self._unique_viewers: dict[str, set[str]] = {}
         self._like_counts: dict[str, int] = {}
         self._like_viewers: dict[str, set[str]] = {}
+        self._react_likes: dict[str, set[int]] = {}
+        self._react_dislikes: dict[str, set[int]] = {}
         self._credits: dict[int, int] = {}
         self._history_limit = max(history_limit, 1)
         self._history_key = "history:tokens"
@@ -220,6 +222,72 @@ class TokenStore:
         if viewer_id:
             user_liked = viewer_id in self._like_viewers.get(token, set())
         return total, user_liked
+
+    async def get_reactions(self, token: str, user_id: Optional[int] = None) -> tuple[int, int, int]:
+        if self._redis is not None:
+            like_key = f"react:like:{token}"
+            dislike_key = f"react:dislike:{token}"
+            likes = await self._redis.scard(like_key)
+            dislikes = await self._redis.scard(dislike_key)
+            status = 0
+            if user_id is not None:
+                if await self._redis.sismember(like_key, str(user_id)):
+                    status = 1
+                elif await self._redis.sismember(dislike_key, str(user_id)):
+                    status = -1
+            return int(likes), int(dislikes), status
+
+        likes_set = self._react_likes.get(token, set())
+        dislikes_set = self._react_dislikes.get(token, set())
+        status = 0
+        if user_id is not None:
+            if user_id in likes_set:
+                status = 1
+            elif user_id in dislikes_set:
+                status = -1
+        return len(likes_set), len(dislikes_set), status
+
+    async def set_reaction(self, token: str, user_id: int, reaction: int) -> tuple[int, int, int]:
+        # reaction: 1=like, -1=dislike, 0=remove
+        if self._redis is not None:
+            like_key = f"react:like:{token}"
+            dislike_key = f"react:dislike:{token}"
+            user = str(user_id)
+            if reaction == 1:
+                await self._redis.sadd(like_key, user)
+                await self._redis.srem(dislike_key, user)
+            elif reaction == -1:
+                await self._redis.sadd(dislike_key, user)
+                await self._redis.srem(like_key, user)
+            else:
+                await self._redis.srem(like_key, user)
+                await self._redis.srem(dislike_key, user)
+            likes = await self._redis.scard(like_key)
+            dislikes = await self._redis.scard(dislike_key)
+            status = 0
+            if await self._redis.sismember(like_key, user):
+                status = 1
+            elif await self._redis.sismember(dislike_key, user):
+                status = -1
+            return int(likes), int(dislikes), status
+
+        likes_set = self._react_likes.setdefault(token, set())
+        dislikes_set = self._react_dislikes.setdefault(token, set())
+        if reaction == 1:
+            likes_set.add(user_id)
+            dislikes_set.discard(user_id)
+        elif reaction == -1:
+            dislikes_set.add(user_id)
+            likes_set.discard(user_id)
+        else:
+            likes_set.discard(user_id)
+            dislikes_set.discard(user_id)
+        status = 0
+        if user_id in likes_set:
+            status = 1
+        elif user_id in dislikes_set:
+            status = -1
+        return len(likes_set), len(dislikes_set), status
 
     async def get_credits(self, user_id: int) -> int:
         if self._redis is not None:
