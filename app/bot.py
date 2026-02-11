@@ -1,5 +1,4 @@
 ﻿import asyncio
-import asyncio
 import logging
 import secrets
 import time
@@ -31,7 +30,8 @@ app = Client(
 
 VIDEO_EXTS = {".mp4", ".mkv", ".mov", ".webm", ".avi", ".mpeg", ".mpg", ".m4v"}
 CREDIT_COST = 1
-CREDIT_PRICE_INR = 0.35
+DEFAULT_CREDIT_PRICE_INR = 0.35
+DEFAULT_PAY_TEXT = "Price per credit: INR {price}\nTo add credits, contact admin."
 ADMIN_CONTACT = "@azmoviedeal"
 
 
@@ -127,6 +127,66 @@ async def send_premium_file(client: Client, user_id: int, ref: FileRef, protect:
         asyncio.create_task(schedule_delete(client, user_id, sent.id))
 
 
+def parse_send_all_payload(payload: str) -> tuple[str, str] | None:
+    if not payload.startswith("sa_"):
+        return None
+    rest = payload[3:]
+    section_id, sep, access = rest.rpartition("_")
+    if not sep:
+        return None
+    access = access.strip().lower()
+    if access not in {"normal", "premium"}:
+        return None
+    section_id = section_id.strip()
+    if not section_id:
+        return None
+    return section_id, access
+
+
+def render_pay_text(template: str, price: float) -> str:
+    formatted_price = f"{price:.2f}"
+    try:
+        return template.format(price=formatted_price)
+    except Exception:
+        return f"{template}\nPrice per credit: INR {formatted_price}"
+
+
+async def deliver_token(client: Client, user_id: int, token: str, include_guidance: bool = True) -> bool:
+    ref = await store.get(token, settings.token_ttl_seconds)
+    if not ref:
+        return False
+    is_premium = await db.is_premium(user_id)
+    if ref.access == "premium":
+        if is_premium:
+            await send_premium_file(client, user_id, ref, protect=False)
+            await send_reaction_prompt(client, user_id, token)
+            return True
+        ok, balance = await store.charge_credits(user_id, CREDIT_COST)
+        if not ok:
+            await client.send_message(chat_id=user_id, text=f"Not enough credits. Balance: {balance}. 💳")
+            return False
+        try:
+            await send_premium_file(client, user_id, ref, protect=False)
+        except Exception:
+            await store.add_credits(user_id, CREDIT_COST)
+            raise
+        await client.send_message(chat_id=user_id, text=f"✅ 1 credit used. Remaining: {balance}")
+        await send_reaction_prompt(client, user_id, token)
+        return True
+
+    await send_premium_file(client, user_id, ref, protect=True)
+    await send_reaction_prompt(client, user_id, token)
+    if include_guidance:
+        await client.send_message(
+            chat_id=user_id,
+            text=(
+                "Play-only mode enabled (saving/forwarding is blocked). 🔒\n"
+                "Want full download access? Use /pay to buy credits or ask for premium."
+            ),
+        )
+    return True
+
+
 @app.on_message(filters.command("start") & filters.private)
 async def start_handler(client: Client, message):
     text = message.text or ""
@@ -139,48 +199,63 @@ async def start_handler(client: Client, message):
         )
         return
 
-    payload = parts[1].strip()
-    if not payload.startswith("dl_"):
-        await message.reply_text("That link doesn’t look right. Please open a valid download link. 🙏")
-        return
-
     if not message.from_user:
         await message.reply_text("I couldn’t read your user info. Please try again. 🙏")
         return
 
     user_id = message.from_user.id
-    token = payload[3:]
-    ref = await store.get(token, settings.token_ttl_seconds)
-    if not ref:
-        await message.reply_text("This link is expired or invalid. Please ask for a fresh one. ⏳")
-        return
-    is_premium = await db.is_premium(user_id)
-    if ref.access == "premium":
-        if is_premium:
-            await send_premium_file(client, user_id, ref, protect=False)
-            await send_reaction_prompt(client, user_id, token)
-            return
-        ok, balance = await store.charge_credits(user_id, CREDIT_COST)
+    payload = parts[1].strip()
+    if payload.startswith("dl_"):
+        token = payload[3:]
+        ok = await deliver_token(client, user_id, token, include_guidance=True)
         if not ok:
-            await message.reply_text(f"Not enough credits. Balance: {balance}. 💳")
-            return
-        try:
-            await send_premium_file(client, user_id, ref, protect=False)
-        except Exception:
-            await store.add_credits(user_id, CREDIT_COST)
-            raise
-        await message.reply_text(f"✅ 1 credit used. Remaining: {balance}")
-        await send_reaction_prompt(client, user_id, token)
+            await message.reply_text("This link is expired, invalid, or inaccessible. ⏳")
         return
 
-    # Normal access: always protected (play-only) for everyone.
-    await send_premium_file(client, user_id, ref, protect=True)
-    await message.reply_text("Note: This file will be auto-deleted in 30 minutes. ⏳")
-    await send_reaction_prompt(client, user_id, token)
-    await message.reply_text(
-        "Play-only mode enabled (saving/forwarding is blocked). 🔒\n"
-        "Want full download access? Use /pay to buy credits or ask for premium."
-    )
+    send_all = parse_send_all_payload(payload)
+    if not send_all:
+        await message.reply_text("That link doesn’t look right. Please open a valid download link. 🙏")
+        return
+
+    section_id, access_filter = send_all
+    tokens = await store.list_section(section_id, settings.history_limit)
+    if not tokens:
+        await message.reply_text("No files found in this section. 📭")
+        return
+
+    selected_tokens: list[str] = []
+    for token in tokens:
+        ref = await store.get(token, settings.token_ttl_seconds)
+        if not ref:
+            continue
+        if (ref.access or "normal").strip().lower() == access_filter:
+            selected_tokens.append(token)
+    if not selected_tokens:
+        await message.reply_text("No matching files found for this section access. 📭")
+        return
+
+    await message.reply_text(f"Sending {len(selected_tokens)} files from section `{section_id}` ({access_filter}).")
+    sent_count = 0
+    skipped_count = 0
+    for token in selected_tokens:
+        try:
+            ok = await deliver_token(client, user_id, token, include_guidance=False)
+            if ok:
+                sent_count += 1
+            else:
+                skipped_count += 1
+        except FloodWait as exc:
+            await asyncio.sleep(exc.value)
+        except Exception:
+            skipped_count += 1
+
+    if access_filter == "normal":
+        await message.reply_text(
+            f"Completed. Sent: {sent_count}, Skipped: {skipped_count}\n"
+            "Normal files are in play-only mode. Use /pay for credits or ask for premium."
+        )
+    else:
+        await message.reply_text(f"Completed. Sent: {sent_count}, Skipped: {skipped_count}")
 
 
 @app.on_message(filters.command("addsection") & filters.private)
@@ -295,14 +370,43 @@ async def credit_balance(client: Client, message):
 
 @app.on_message(filters.command("pay") & filters.private)
 async def pay_info(client: Client, message):
+    price, template = await store.get_pay_plan(DEFAULT_CREDIT_PRICE_INR, DEFAULT_PAY_TEXT)
     keyboard = InlineKeyboardMarkup(
         [[InlineKeyboardButton("Contact Admin 💬", url=f"https://t.me/{ADMIN_CONTACT.lstrip('@')}")]]
     )
     await message.reply_text(
-        f"Price per credit: ₹{CREDIT_PRICE_INR:.2f}\n"
-        "To add credits, contact admin.",
+        render_pay_text(template, price),
         reply_markup=keyboard,
         disable_web_page_preview=True,
+    )
+
+
+@app.on_message(filters.command("editplan") & filters.private)
+async def edit_plan(client: Client, message):
+    if not is_admin(message.from_user.id if message.from_user else None):
+        await message.reply_text("Not allowed. 🚫")
+        return
+    parts = (message.text or "").split(maxsplit=2)
+    if len(parts) < 3:
+        await message.reply_text("Usage: /editplan <price> <text with {price}>")
+        return
+    try:
+        price = float(parts[1])
+    except Exception:
+        await message.reply_text("Invalid price. Example: /editplan 0.35 Price per credit: INR {price}")
+        return
+    if price <= 0:
+        await message.reply_text("Price must be greater than 0.")
+        return
+    text = parts[2].strip()
+    if not text:
+        await message.reply_text("Text cannot be empty.")
+        return
+    new_price, new_text = await store.set_pay_plan(price, text)
+    await message.reply_text(
+        "Plan updated.\n"
+        f"Price: INR {new_price:.2f}\n"
+        f"Preview:\n{render_pay_text(new_text, new_price)}"
     )
 
 
@@ -601,5 +705,6 @@ async def runner() -> None:
 
 if __name__ == "__main__":
     app.run(runner())
+
 
 

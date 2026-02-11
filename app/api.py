@@ -570,6 +570,11 @@ async def render_section(section_id: str, access_filter: str, request: Request) 
     title = f"Section ({access_filter.title()}): {section_id}"
     access_label = "All" if fallback_all else access_filter.title()
     breadcrumb = f"<a href=\"{settings.base_url}\">Home</a> <span>→</span> <span>Section</span> <span>→</span> <span>{section_id}</span>"
+    send_all_link = "#"
+    send_all_class = "btn disabled"
+    if settings.bot_username and total_items > 0:
+        send_all_link = f"https://t.me/{settings.bot_username}?start=sa_{section_id}_{access_filter}"
+        send_all_class = "btn"
 
     prev_link = build_query(page=page - 1) if page > 1 else ""
     next_link = build_query(page=page + 1) if page < page_count else ""
@@ -847,6 +852,7 @@ async def render_section(section_id: str, access_filter: str, request: Request) 
           <a class="tab __TAB_PREMIUM__" role="tab" href="__PREMIUM_LINK__">Premium</a>
         </div>
         <div class="controls">
+          <a class="__SEND_ALL_CLASS__" href="__SEND_ALL_LINK__">Send All</a>
           <label for="sort">Sort</label>
           <select id="sort" name="sort">
             __SORT_OPTIONS__
@@ -896,6 +902,8 @@ async def render_section(section_id: str, access_filter: str, request: Request) 
             .replace("__PAGE__", str(page))
             .replace("__PAGE_COUNT__", str(page_count))
             .replace("__SORT_OPTIONS__", "".join(sort_options))
+            .replace("__SEND_ALL_LINK__", send_all_link)
+            .replace("__SEND_ALL_CLASS__", send_all_class)
             .replace("__NORMAL_LINK__", normal_link)
             .replace("__PREMIUM_LINK__", premium_link)
             .replace("__TAB_NORMAL__", tab_normal)

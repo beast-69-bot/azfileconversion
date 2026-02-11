@@ -66,8 +66,11 @@ class TokenStore:
         self._section_name_key = "section:current:name"
         self._section_name_map = "section:registry:name"
         self._section_id_map = "section:registry:id"
+        self._pay_plan_key = "plan:pay"
         self._current_section: Optional[str] = None
         self._current_section_name: Optional[str] = None
+        self._pay_price: Optional[float] = None
+        self._pay_text: Optional[str] = None
 
     async def connect(self) -> None:
         if self._redis_url and redis is not None:
@@ -326,6 +329,28 @@ return {1, newval}
         current -= amount
         self._credits[user_id] = current
         return True, current
+
+    async def get_pay_plan(self, default_price: float, default_text: str) -> tuple[float, str]:
+        if self._redis is not None:
+            data = await self._redis.hgetall(self._pay_plan_key)
+            price_raw = data.get("price")
+            text_raw = data.get("text")
+            price = float(price_raw) if price_raw else float(default_price)
+            text = text_raw or default_text
+            return price, text
+        price = self._pay_price if self._pay_price is not None else float(default_price)
+        text = self._pay_text if self._pay_text else default_text
+        return price, text
+
+    async def set_pay_plan(self, price: float, text: str) -> tuple[float, str]:
+        price = float(price)
+        text = str(text).strip()
+        if self._redis is not None:
+            await self._redis.hset(self._pay_plan_key, mapping={"price": f"{price:.4f}", "text": text})
+            return price, text
+        self._pay_price = price
+        self._pay_text = text
+        return price, text
 
 
     async def set_section(self, section_name: Optional[str]) -> Optional[str]:
