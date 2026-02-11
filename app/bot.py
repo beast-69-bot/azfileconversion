@@ -151,6 +151,16 @@ def render_pay_text(template: str, price: float) -> str:
         return f"{template}\nPrice per credit: INR {formatted_price}"
 
 
+def normalize_plan_text(raw_text: str) -> str:
+    # Allow admins to type escaped newlines in Telegram commands.
+    return (
+        raw_text.replace("\\r\\n", "\n")
+        .replace("\\n", "\n")
+        .replace("\\r", "\n")
+        .strip()
+    )
+
+
 async def deliver_token(client: Client, user_id: int, token: str, include_guidance: bool = True) -> bool:
     ref = await store.get(token, settings.token_ttl_seconds)
     if not ref:
@@ -398,7 +408,7 @@ async def edit_plan(client: Client, message):
     if price <= 0:
         await message.reply_text("Price must be greater than 0.")
         return
-    text = parts[2].strip()
+    text = normalize_plan_text(parts[2])
     if not text:
         await message.reply_text("Text cannot be empty.")
         return
