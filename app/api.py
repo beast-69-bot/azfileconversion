@@ -523,7 +523,7 @@ async def render_section(section_id: str, access_filter: str, request: Request) 
         items.append(
             "<li class=\"card empty\">No files yet. Upload to this section to see items here.</li>"
         )
-    for item in page_entries:
+    for idx, item in enumerate(page_entries, start=show_start if total_items else 1):
         view_text = f"👁 {item['views_total']}"
         if item["views_unique"]:
             view_text = f"{view_text} · {item['views_unique']} unique"
@@ -533,7 +533,7 @@ async def render_section(section_id: str, access_filter: str, request: Request) 
         items.append(
             "<li class=\"card\">"
             "<div class=\"card-main\">"
-            f"<div class=\"file-name\" title=\"{item['name']}\">{item['name']}</div>"
+            f"<div class=\"file-name\" title=\"{item['name']}\">{idx}. {item['name']}</div>"
             "<div class=\"file-meta\">"
             f"<span>{item['size_text']}</span>"
             f"<span>{item['mime']}</span>"
