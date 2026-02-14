@@ -505,6 +505,7 @@ async def render_section(section_id: str, access_filter: str, request: Request) 
     page = min(page, page_count)
     start = (page - 1) * per_page
     end = start + per_page
+    show_start = 0 if total_items == 0 else start + 1
     page_entries = entries[start:end] if total_items else []
 
     max_views = max((item["views_total"] for item in entries), default=0)
@@ -587,7 +588,6 @@ async def render_section(section_id: str, access_filter: str, request: Request) 
 
     prev_class = "page disabled" if not prev_link else "page"
     next_class = "page disabled" if not next_link else "page"
-    show_start = 0 if total_items == 0 else start + 1
     show_end = min(end, total_items)
 
     html = """
