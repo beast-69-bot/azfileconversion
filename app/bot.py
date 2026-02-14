@@ -442,6 +442,28 @@ async def credit_add(client: Client, message):
     await message.reply_text(f"Added {amount} credits to {user_id}. Balance: {balance} ✅")
 
 
+@app.on_message(filters.command("db") & filters.private)
+async def credit_db(client: Client, message):
+    if not is_admin(message.from_user.id if message.from_user else None):
+        await message.reply_text("Not allowed. 🚫")
+        return
+    parts = (message.text or "").split()
+    limit = 20
+    if len(parts) >= 2:
+        try:
+            limit = max(1, min(int(parts[1]), 100))
+        except Exception:
+            limit = 20
+    rows = await store.list_credit_balances(limit)
+    if not rows:
+        await message.reply_text("No credit records found. 📭")
+        return
+    lines = [f"Credit DB (top {len(rows)}):"]
+    for user_id, balance in rows:
+        lines.append(f"{user_id} -> {balance}")
+    await message.reply_text("\n".join(lines))
+
+
 @app.on_callback_query(filters.regex("^react:"))
 async def reaction_callback(client: Client, callback):
     if not callback.from_user or not callback.data:

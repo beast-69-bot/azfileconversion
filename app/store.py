@@ -330,6 +330,27 @@ return {1, newval}
         self._credits[user_id] = current
         return True, current
 
+    async def list_credit_balances(self, limit: int = 20) -> list[tuple[int, int]]:
+        limit = max(1, int(limit))
+        items: list[tuple[int, int]] = []
+        if self._redis is not None:
+            async for key in self._redis.scan_iter(match="credits:*", count=500):
+                try:
+                    user_id = int(str(key).split(":", 1)[1])
+                except Exception:
+                    continue
+                raw = await self._redis.get(key)
+                try:
+                    balance = int(raw or 0)
+                except Exception:
+                    balance = 0
+                items.append((user_id, balance))
+        else:
+            items.extend((int(uid), int(balance)) for uid, balance in self._credits.items())
+
+        items.sort(key=lambda pair: pair[1], reverse=True)
+        return items[:limit]
+
     async def get_pay_plan(self, default_price: float, default_text: str) -> tuple[float, str]:
         if self._redis is not None:
             data = await self._redis.hgetall(self._pay_plan_key)
