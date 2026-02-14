@@ -404,7 +404,7 @@ def section_password_form_html(section_id: str, access_filter: str, error: str =
 """
 
 async def render_section(section_id: str, access_filter: str, request: Request) -> HTMLResponse:
-    access_filter = (access_filter or "normal").strip().lower()
+    access_filter = (access_filter or "all").strip().lower()
     if password_enabled() and not is_authed(request):
         return HTMLResponse(content=section_password_form_html(section_id, access_filter), status_code=401)
 
@@ -414,24 +414,18 @@ async def render_section(section_id: str, access_filter: str, request: Request) 
     if request.query_params.get("debug") == "1":
         tokens = await store.list_section(section_id, settings.history_limit)
         present = 0
-        filtered = 0
         for token in tokens:
             ref = await store.get(token, settings.token_ttl_seconds)
             if not ref:
                 continue
             present += 1
-            if access_filter == "premium" and ref.access != "premium":
-                continue
-            if access_filter == "normal" and ref.access != "normal":
-                continue
-            filtered += 1
         return JSONResponse(
             {
                 "section_id": section_id,
                 "access_filter": access_filter,
                 "tokens_total": len(tokens),
                 "tokens_present": present,
-                "tokens_filtered": filtered,
+                "tokens_filtered": present,
             }
         )
 
@@ -453,43 +447,45 @@ async def render_section(section_id: str, access_filter: str, request: Request) 
     page = max(page, 1)
     per_page = max(6, min(per_page, 60))
 
-    entries = []
-    entries_all = []
+    grouped: dict[str, dict] = {}
     for token in tokens:
         ref = await store.get(token, settings.token_ttl_seconds)
         if ref is None:
             continue
         ref_access = (ref.access or "normal").strip().lower()
+        group_key = f"{ref.chat_id}:{ref.message_id}"
         name = ref.file_name or ref.file_unique_id or "file"
         size_text = human_size(ref.file_size)
         views_total, views_unique = await store.get_views(token)
-        bot_link = ""
+        entry = grouped.setdefault(
+            group_key,
+            {
+                "name": name,
+                "size_text": size_text,
+                "mime": resolve_mime(ref),
+                "created_at": ref.created_at,
+                "file_size": ref.file_size or 0,
+                "views_total": 0,
+                "views_unique": 0,
+                "normal_link": "",
+                "premium_link": "",
+            },
+        )
+        if entry["created_at"] < ref.created_at:
+            entry["created_at"] = ref.created_at
+        if not entry["file_size"] and ref.file_size:
+            entry["file_size"] = ref.file_size
+            entry["size_text"] = size_text
+        entry["views_total"] += views_total
+        entry["views_unique"] += views_unique
         if settings.bot_username:
             bot_link = f"https://t.me/{settings.bot_username}?start=dl_{token}"
-        entry = {
-            "token": token,
-            "name": name,
-            "size_text": size_text,
-            "mime": resolve_mime(ref),
-            "created_at": ref.created_at,
-            "file_size": ref.file_size or 0,
-            "views_total": views_total,
-            "views_unique": views_unique,
-            "access": ref_access,
-            "play_link": bot_link,
-        }
-        entries_all.append(entry)
-        if (
-            (access_filter == "premium" and ref_access == "premium")
-            or (access_filter == "normal" and ref_access == "normal")
-        ):
-            entries.append(entry)
+            if ref_access == "premium":
+                entry["premium_link"] = bot_link
+            else:
+                entry["normal_link"] = bot_link
 
-    fallback_all = False
-    if not entries and entries_all:
-        entries = entries_all
-        fallback_all = True
-
+    entries = list(grouped.values())
     empty_section = not entries
 
     if sort == "name_asc":
@@ -534,7 +530,6 @@ async def render_section(section_id: str, access_filter: str, request: Request) 
         badge = ""
         if max_views and item["views_total"] == max_views:
             badge = "<span class=\"badge\">Trending</span>"
-        access_badge = f"<span class=\\\"badge\\\">{item['access'].title()}</span>" if fallback_all else ""
         items.append(
             "<li class=\"card\">"
             "<div class=\"card-main\">"
@@ -544,11 +539,11 @@ async def render_section(section_id: str, access_filter: str, request: Request) 
             f"<span>{item['mime']}</span>"
             f"<span>{view_text}</span>"
             f"{badge}"
-            f"{access_badge}"
             "</div>"
             "</div>"
             "<div class=\"card-actions\">"
-            f"<a class=\"btn{'' if item['play_link'] else ' disabled'}\" href=\"{item['play_link'] or '#'}\">Open in Telegram</a>"
+            f"<a class=\"btn{'' if item['normal_link'] else ' disabled'}\" href=\"{item['normal_link'] or '#'}\">Normal Open</a>"
+            f"<a class=\"btn ghost{'' if item['premium_link'] else ' disabled'}\" href=\"{item['premium_link'] or '#'}\">Premium Open</a>"
             "</div>"
             "</li>"
         )
@@ -567,14 +562,17 @@ async def render_section(section_id: str, access_filter: str, request: Request) 
 
     skeleton_items = "".join(["<li class=\"card skeleton\"><div class=\"line w-60\"></div><div class=\"line w-40\"></div><div class=\"line w-30\"></div></li>" for _ in range(min(6, per_page))])
 
-    title = f"Section ({access_filter.title()}): {section_id}"
-    access_label = "All" if fallback_all else access_filter.title()
+    title = f"Section: {section_id}"
     breadcrumb = f"<a href=\"{settings.base_url}\">Home</a> <span>→</span> <span>Section</span> <span>→</span> <span>{section_id}</span>"
-    send_all_link = "#"
-    send_all_class = "btn disabled"
+    send_all_normal_link = "#"
+    send_all_normal_class = "btn disabled"
+    send_all_premium_link = "#"
+    send_all_premium_class = "btn disabled"
     if settings.bot_username and total_items > 0:
-        send_all_link = f"https://t.me/{settings.bot_username}?start=sa_{section_id}_{access_filter}"
-        send_all_class = "btn"
+        send_all_normal_link = f"https://t.me/{settings.bot_username}?start=sa_{section_id}_normal"
+        send_all_premium_link = f"https://t.me/{settings.bot_username}?start=sa_{section_id}_premium"
+        send_all_normal_class = "btn"
+        send_all_premium_class = "btn"
 
     prev_link = build_query(page=page - 1) if page > 1 else ""
     next_link = build_query(page=page + 1) if page < page_count else ""
@@ -679,20 +677,6 @@ async def render_section(section_id: str, access_filter: str, request: Request) 
         background: rgba(255,255,255,0.03);
       }
       .controls { display: flex; gap: 10px; align-items: center; }
-      .tabs { display: flex; gap: 8px; align-items: center; }
-      .tab {
-        text-decoration: none;
-        color: var(--text);
-        border: 1px solid var(--border);
-        padding: 6px 12px;
-        border-radius: 999px;
-        font-size: 12px;
-      }
-      .tab.active {
-        border-color: rgba(123, 223, 242, 0.6);
-        color: #7bdff2;
-        background: rgba(123, 223, 242, 0.12);
-      }
       .controls label { font-size: 12px; color: var(--muted); }
       select {
         background: rgba(255,255,255,0.04);
@@ -843,16 +827,12 @@ async def render_section(section_id: str, access_filter: str, request: Request) 
           <div class="title">__TITLE__</div>
           <div class="meta">
             <div class="chip">__TOTAL__ files</div>
-            <div class="chip">Access: __ACCESS_LABEL__</div>
             <div class="chip">Page __PAGE__ of __PAGE_COUNT__</div>
           </div>
         </div>
-        <div class="tabs" role="tablist">
-          <a class="tab __TAB_NORMAL__" role="tab" href="__NORMAL_LINK__">Normal</a>
-          <a class="tab __TAB_PREMIUM__" role="tab" href="__PREMIUM_LINK__">Premium</a>
-        </div>
         <div class="controls">
-          <a class="__SEND_ALL_CLASS__" href="__SEND_ALL_LINK__">Send All</a>
+          <a class="__SEND_ALL_NORMAL_CLASS__" href="__SEND_ALL_NORMAL_LINK__">Send All Normal</a>
+          <a class="__SEND_ALL_PREMIUM_CLASS__" href="__SEND_ALL_PREMIUM_LINK__">Send All Premium</a>
           <label for="sort">Sort</label>
           <select id="sort" name="sort">
             __SORT_OPTIONS__
@@ -888,26 +868,17 @@ async def render_section(section_id: str, access_filter: str, request: Request) 
   </body>
 </html>
 """
-    normal_link = f"/section/{section_id}?access=normal"
-    premium_link = f"/section/{section_id}/premium"
-    tab_normal = "active" if access_filter == "normal" else ""
-    tab_premium = "active" if access_filter == "premium" else ""
-
     html = (html
             .replace("__TITLE__", title)
             .replace("__BREADCRUMB__", breadcrumb)
             .replace("__TOTAL__", str(total_items))
-            .replace("__ACCESS__", access_filter.title())
-            .replace("__ACCESS_LABEL__", access_label)
             .replace("__PAGE__", str(page))
             .replace("__PAGE_COUNT__", str(page_count))
             .replace("__SORT_OPTIONS__", "".join(sort_options))
-            .replace("__SEND_ALL_LINK__", send_all_link)
-            .replace("__SEND_ALL_CLASS__", send_all_class)
-            .replace("__NORMAL_LINK__", normal_link)
-            .replace("__PREMIUM_LINK__", premium_link)
-            .replace("__TAB_NORMAL__", tab_normal)
-            .replace("__TAB_PREMIUM__", tab_premium)
+            .replace("__SEND_ALL_NORMAL_LINK__", send_all_normal_link)
+            .replace("__SEND_ALL_NORMAL_CLASS__", send_all_normal_class)
+            .replace("__SEND_ALL_PREMIUM_LINK__", send_all_premium_link)
+            .replace("__SEND_ALL_PREMIUM_CLASS__", send_all_premium_class)
             .replace("__SKELETON__", skeleton_items)
             .replace("__ITEMS__", "".join(items))
             .replace("__PREV_CLASS__", prev_class)
@@ -1028,17 +999,12 @@ async def debug_section(section_id: str, access: str = "premium"):
     }
 @app.get("/section/{section_id}")
 async def section_page(section_id: str, request: Request):
-    access = (request.query_params.get("access") or "").lower()
-    if access == "premium":
-        return await render_section(section_id, "premium", request)
-    if access == "normal":
-        return await render_section(section_id, "normal", request)
-    return HTMLResponse(content=section_picker_html(section_id))
+    return await render_section(section_id, "all", request)
 
 
 @app.get("/section/{section_id}/premium")
 async def section_page_premium(section_id: str, request: Request):
-    return await render_section(section_id, "premium", request)
+    return await render_section(section_id, "all", request)
 
 
 
