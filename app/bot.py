@@ -33,6 +33,7 @@ CREDIT_COST = 1
 DEFAULT_CREDIT_PRICE_INR = 0.35
 DEFAULT_PAY_TEXT = "Price per credit: INR {price}\nTo add credits, contact admin."
 ADMIN_CONTACT = "@azmoviedeal"
+MIN_CUSTOM_PAY_INR = 10.0
 
 
 def build_link(token: str) -> str:
@@ -187,6 +188,36 @@ def format_payment_request_line(req: dict) -> str:
         f"{req.get('id')} | user {req.get('user_id')} | INR {float(req.get('amount_inr', 0)):.2f} "
         f"| credits {req.get('credits')} | {req.get('status')}"
     )
+
+
+def build_pay_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("10rs", callback_data="payamt:10"),
+                InlineKeyboardButton("50rs", callback_data="payamt:50"),
+            ],
+            [
+                InlineKeyboardButton("100rs", callback_data="payamt:100"),
+                InlineKeyboardButton("Custom amount (>10rs)", callback_data="payamt:custom"),
+            ],
+            [InlineKeyboardButton("Contact Admin", url=f"https://t.me/{ADMIN_CONTACT.lstrip('@')}")],
+        ]
+    )
+
+
+async def create_payment_request_for_amount(user_id: int, amount_inr: float) -> tuple[dict | None, str | None]:
+    price, _ = await store.get_pay_plan(DEFAULT_CREDIT_PRICE_INR, DEFAULT_PAY_TEXT)
+    credits = credits_for_amount(amount_inr, price)
+    if credits < 1:
+        return None, f"Amount is too low. Minimum amount for 1 credit is INR {price:.2f}."
+    req = await store.create_payment_request(
+        request_id=new_payment_request_id(),
+        user_id=user_id,
+        amount_inr=amount_inr,
+        credits=credits,
+    )
+    return req, None
 
 async def deliver_token(client: Client, user_id: int, token: str, include_guidance: bool = True) -> bool:
     ref = await store.get(token, settings.token_ttl_seconds)
@@ -408,11 +439,35 @@ async def credit_balance(client: Client, message):
 @app.on_message(filters.command("pay") & filters.private)
 async def pay_info(client: Client, message):
     price, template = await store.get_pay_plan(DEFAULT_CREDIT_PRICE_INR, DEFAULT_PAY_TEXT)
-    keyboard = InlineKeyboardMarkup(
-        [[InlineKeyboardButton("Contact Admin 💬", url=f"https://t.me/{ADMIN_CONTACT.lstrip('@')}")]]
-    )
+    keyboard = build_pay_keyboard()
+    parts = (message.text or "").split(maxsplit=1)
+    if len(parts) >= 2:
+        amount_inr = parse_amount_value(parts[1])
+        if amount_inr is None:
+            await message.reply_text("Invalid amount. Example: /pay 75")
+            return
+        if amount_inr <= MIN_CUSTOM_PAY_INR:
+            await message.reply_text(f"Custom amount must be more than INR {MIN_CUSTOM_PAY_INR:.0f}.")
+            return
+        if not message.from_user:
+            await message.reply_text("User not found.")
+            return
+        req, err = await create_payment_request_for_amount(message.from_user.id, amount_inr)
+        if err:
+            await message.reply_text(err)
+            return
+        await message.reply_text(
+            f"Payment request created.\n"
+            f"Request ID: {req['id']}\n"
+            f"Amount: INR {amount_inr:.2f}\n"
+            f"You will get: {req['credits']} credits\n\n"
+            f"After payment, send: /paid {req['id']} <UTR>"
+        )
+        return
+
     await message.reply_text(
-        render_pay_text(template, price),
+        render_pay_text(template, price)
+        + f"\n\nChoose an amount below, or use /pay <amount> (custom must be > INR {MIN_CUSTOM_PAY_INR:.0f}).",
         reply_markup=keyboard,
         disable_web_page_preview=True,
     )
@@ -630,6 +685,36 @@ async def credit_db(client: Client, message):
     for user_id, balance in rows:
         lines.append(f"{user_id} -> {balance}")
     await message.reply_text("\n".join(lines))
+
+
+@app.on_callback_query(filters.regex("^payamt:"))
+async def pay_amount_callback(client: Client, callback):
+    if not callback.from_user or not callback.data:
+        return
+    value = callback.data.split(":", 1)[1].strip().lower()
+    if value == "custom":
+        await callback.answer(
+            f"Use /pay <amount>. Custom amount must be more than INR {MIN_CUSTOM_PAY_INR:.0f}.",
+            show_alert=True,
+        )
+        return
+    amount_inr = parse_amount_value(value)
+    if amount_inr is None:
+        await callback.answer("Invalid amount.", show_alert=True)
+        return
+    req, err = await create_payment_request_for_amount(callback.from_user.id, amount_inr)
+    if err:
+        await callback.answer(err, show_alert=True)
+        return
+    if callback.message:
+        await callback.message.reply_text(
+            f"Payment request created.\n"
+            f"Request ID: {req['id']}\n"
+            f"Amount: INR {amount_inr:.2f}\n"
+            f"You will get: {req['credits']} credits\n\n"
+            f"After payment, send: /paid {req['id']} <UTR>"
+        )
+    await callback.answer("Request created.")
 
 
 @app.on_callback_query(filters.regex("^react:"))
