@@ -354,7 +354,7 @@ async def submit_payment_with_utr(client: Client, user, request_id: str, utr: st
     req = await store.get_payment_request(request_id)
     if req:
         await notify_admin_payment_submitted(client, req, user, clean_utr)
-    return True, "Payment submitted to admin. You will be notified after review."
+    return True, "Payment submitted to admin. You will be notified after review. ✅"
 
 
 async def approve_payment_request(client: Client, request_id: str, admin_id: int, note: str) -> tuple[bool, str]:
@@ -686,7 +686,7 @@ async def show_admins(client: Client, message):
 @app.on_message(filters.command("credit") & filters.private)
 async def credit_balance(client: Client, message):
     if not message.from_user:
-        await message.reply_text("Could not read your user info. Please try again.")
+        await message.reply_text("Could not read your user info. Please try again. 🙏")
         return
 
     user_id = message.from_user.id
@@ -695,15 +695,15 @@ async def credit_balance(client: Client, message):
 
     if is_premium:
         await message.reply_text(
-            "Your plan details:\n"
-            "- Premium plan: Active\n"
-            "- Credits: Unlimited"
+            "Your plan details 📋:\n"
+            "- Premium plan: Active ✅\n"
+            "- Credits: Unlimited ♾️"
         )
         return
 
     await message.reply_text(
-        "Your plan details:\n"
-        "- Premium plan: Not active\n"
+        "Your plan details 📋:\n"
+        "- Premium plan: Not active ❌\n"
         f"- Credits: {balance}"
     )
 
@@ -1004,7 +1004,7 @@ async def broadcast_message(client: Client, message):
 
     parts = (message.text or "").split(maxsplit=1)
     if len(parts) < 2 or not parts[1].strip():
-        await message.reply_text("Usage: /broadcast <message>")
+        await message.reply_text("Usage: /broadcast <message> ℹ️")
         return
 
     text_to_send = parts[1].strip()
@@ -1017,7 +1017,7 @@ async def broadcast_message(client: Client, message):
         targets.remove(admin_id)
 
     if not targets:
-        await message.reply_text("No users found for broadcast.")
+        await message.reply_text("No users found for broadcast. 📭")
         return
 
     sent = 0
@@ -1036,7 +1036,7 @@ async def broadcast_message(client: Client, message):
         except Exception:
             failed += 1
 
-    await message.reply_text(f"Broadcast done. Sent: {sent}, Failed: {failed}")
+    await message.reply_text(f"Broadcast done ✅ Sent: {sent}, Failed: {failed} ❌")
 
 
 @app.on_message(filters.command("credit_add") & filters.private)
@@ -1102,7 +1102,7 @@ async def pay_amount_callback(client: Client, callback):
         req = await create_premium_monthly_request(callback.from_user.id)
         if callback.message:
             await send_payment_request_message(client, callback.message.chat.id, req, upi_id)
-        await callback.answer("Premium payment request created.")
+        await callback.answer("Premium payment request created. ✅")
         return
     amount_inr = parse_amount_value(value)
     if amount_inr is None:
