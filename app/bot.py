@@ -244,12 +244,18 @@ async def send_payment_request_message(client: Client, chat_id: int, req: dict, 
     credits = int(req.get("credits", 0) or 0)
     upi_uri = build_upi_uri(upi_id=upi_id, amount_inr=amount_inr, request_id=request_id)
     caption = (
-        f"Payment request created.\n"
+        "PAYMENT CHECKOUT\n\n"
         f"Request ID: {request_id}\n"
         f"Amount: INR {amount_inr:.2f}\n"
-        f"You will get: {credits} credits\n"
+        f"Credits: {credits}\n"
         f"UPI ID: {upi_id}\n\n"
-        f"Scan QR and pay, then tap 'Send UTR'."
+        "Steps:\n"
+        "1) Open any UPI app and scan this QR.\n"
+        "2) Pay the exact amount shown above.\n"
+        "3) Tap 'Send UTR' below.\n"
+        "4) Send transaction UTR/Ref number.\n"
+        "5) Wait for admin approval.\n\n"
+        "Use 'Cancel' if you do not want to continue."
     )
     qr_url = build_upi_qr_url(upi_uri)
     keyboard = build_payment_request_keyboard(request_id)
