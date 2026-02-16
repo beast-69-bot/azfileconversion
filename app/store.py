@@ -69,11 +69,13 @@ class TokenStore:
         self._pay_plan_key = "plan:pay"
         self._pay_req_prefix = "pay:req:"
         self._pay_req_index = "pay:req:index"
+        self._pay_pending_utr_prefix = "pay:pending_utr:"
         self._current_section: Optional[str] = None
         self._current_section_name: Optional[str] = None
         self._pay_price: Optional[float] = None
         self._pay_text: Optional[str] = None
         self._upi_id: Optional[str] = None
+        self._pay_pending_utr: dict[int, str] = {}
         self._pay_requests: dict[str, dict] = {}
 
     async def connect(self) -> None:
@@ -394,6 +396,32 @@ return {1, newval}
             return clean
         self._upi_id = clean or None
         return clean
+
+
+    async def set_pending_utr(self, user_id: int, request_id: str, ttl_seconds: int = 900) -> None:
+        key = f"{self._pay_pending_utr_prefix}{int(user_id)}"
+        value = str(request_id).strip()
+        if self._redis is not None:
+            if ttl_seconds and ttl_seconds > 0:
+                await self._redis.setex(key, int(ttl_seconds), value)
+            else:
+                await self._redis.set(key, value)
+            return
+        self._pay_pending_utr[int(user_id)] = value
+
+    async def get_pending_utr(self, user_id: int) -> str:
+        key = f"{self._pay_pending_utr_prefix}{int(user_id)}"
+        if self._redis is not None:
+            value = await self._redis.get(key)
+            return (value or "").strip()
+        return (self._pay_pending_utr.get(int(user_id)) or "").strip()
+
+    async def clear_pending_utr(self, user_id: int) -> None:
+        key = f"{self._pay_pending_utr_prefix}{int(user_id)}"
+        if self._redis is not None:
+            await self._redis.delete(key)
+            return
+        self._pay_pending_utr.pop(int(user_id), None)
 
 
     async def create_payment_request(self, request_id: str, user_id: int, amount_inr: float, credits: int) -> dict:

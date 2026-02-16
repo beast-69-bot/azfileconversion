@@ -216,6 +216,27 @@ def build_upi_qr_url(upi_uri: str) -> str:
     return f"https://quickchart.io/qr?size=600&text={quote(upi_uri, safe='')}"
 
 
+def build_payment_request_keyboard(request_id: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("Send UTR", callback_data=f"payreq:utr:{request_id}"),
+                InlineKeyboardButton("Cancel", callback_data=f"payreq:cancel:{request_id}"),
+            ],
+            [InlineKeyboardButton("Contact Admin", url=f"https://t.me/{ADMIN_CONTACT.lstrip('@')}")],
+        ]
+    )
+
+
+def build_admin_payment_keyboard(request_id: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [[
+            InlineKeyboardButton("Approve", callback_data=f"payadm:approve:{request_id}"),
+            InlineKeyboardButton("Reject", callback_data=f"payadm:reject:{request_id}"),
+        ]]
+    )
+
+
 async def send_payment_request_message(client: Client, chat_id: int, req: dict, upi_id: str) -> None:
     amount_inr = float(req.get("amount_inr", 0) or 0)
     request_id = str(req.get("id", "")).strip()
@@ -227,17 +248,109 @@ async def send_payment_request_message(client: Client, chat_id: int, req: dict, 
         f"Amount: INR {amount_inr:.2f}\n"
         f"You will get: {credits} credits\n"
         f"UPI ID: {upi_id}\n\n"
-        f"Scan QR and pay, then send: /paid {request_id} <UTR>"
+        f"Scan QR and pay, then tap 'Send UTR'."
     )
     qr_url = build_upi_qr_url(upi_uri)
+    keyboard = build_payment_request_keyboard(request_id)
     try:
-        await client.send_photo(chat_id=chat_id, photo=qr_url, caption=caption)
+        await client.send_photo(chat_id=chat_id, photo=qr_url, caption=caption, reply_markup=keyboard)
     except Exception:
         await client.send_message(
             chat_id=chat_id,
             text=caption + f"\n\nUPI link:\n{upi_uri}",
             disable_web_page_preview=True,
+            reply_markup=keyboard,
         )
+
+
+async def notify_admin_payment_submitted(client: Client, req: dict, user, utr: str) -> None:
+    username = f"@{user.username}" if getattr(user, "username", None) else "-"
+    full_name = (getattr(user, "first_name", "") or "").strip()
+    if getattr(user, "last_name", None):
+        full_name = f"{full_name} {user.last_name}".strip()
+    amount_inr = float(req.get("amount_inr", 0) or 0)
+    request_id = str(req.get("id", "")).strip()
+    credits = int(req.get("credits", 0) or 0)
+    text_msg = (
+        "New payment submitted.\n"
+        f"Request ID: {request_id}\n"
+        f"User ID: {user.id}\n"
+        f"Name: {full_name or '-'}\n"
+        f"Username: {username}\n"
+        f"Amount: INR {amount_inr:.2f}\n"
+        f"Credits: {credits}\n"
+        f"UTR: {utr}"
+    )
+    markup = build_admin_payment_keyboard(request_id)
+    for admin_id in settings.admin_ids:
+        try:
+            await client.send_message(chat_id=admin_id, text=text_msg, reply_markup=markup)
+        except Exception:
+            continue
+
+
+async def submit_payment_with_utr(client: Client, user, request_id: str, utr: str) -> tuple[bool, str]:
+    req = await store.get_payment_request(request_id)
+    if not req:
+        return False, "Request not found."
+    if int(req.get("user_id", 0) or 0) != int(user.id):
+        return False, "This request is not yours."
+    status = (req.get("status") or "").strip().lower()
+    if status in {"approved", "rejected", "cancelled"}:
+        return False, f"Request already {status}."
+    clean_utr = (utr or "").strip()
+    if len(clean_utr) < 6:
+        return False, "UTR looks too short. Send full UTR."
+    await store.set_payment_request_status(request_id, "submitted", note=clean_utr, admin_id=0)
+    await store.clear_pending_utr(user.id)
+    req = await store.get_payment_request(request_id)
+    if req:
+        await notify_admin_payment_submitted(client, req, user, clean_utr)
+    return True, "Payment submitted to admin. You will be notified after review."
+
+
+async def approve_payment_request(client: Client, request_id: str, admin_id: int, note: str) -> tuple[bool, str]:
+    req = await store.get_payment_request(request_id)
+    if not req:
+        return False, "Request not found."
+    status = (req.get("status") or "").strip().lower()
+    if status == "approved":
+        return False, "Already approved."
+    if status in {"rejected", "cancelled"}:
+        return False, f"Request is {status}."
+    credits = int(req.get("credits", 0) or 0)
+    user_id = int(req.get("user_id", 0) or 0)
+    if credits <= 0 or user_id <= 0:
+        return False, "Invalid request data."
+    balance = await store.add_credits(user_id, credits)
+    await store.set_payment_request_status(request_id, "approved", note=note, admin_id=admin_id)
+    await store.clear_pending_utr(user_id)
+    try:
+        await client.send_message(user_id, f"Your payment {request_id} is approved. Credits added: {credits}. Balance: {balance}")
+    except Exception:
+        pass
+    return True, f"Approved {request_id}. Added {credits} credits to {user_id}. New balance: {balance}"
+
+
+async def reject_payment_request(client: Client, request_id: str, admin_id: int, reason: str) -> tuple[bool, str]:
+    req = await store.get_payment_request(request_id)
+    if not req:
+        return False, "Request not found."
+    status = (req.get("status") or "").strip().lower()
+    if status == "approved":
+        return False, "Request already approved. Cannot reject now."
+    if status == "rejected":
+        return False, "Already rejected."
+    if status == "cancelled":
+        return False, "Request already cancelled."
+    user_id = int(req.get("user_id", 0) or 0)
+    await store.set_payment_request_status(request_id, "rejected", note=reason, admin_id=admin_id)
+    await store.clear_pending_utr(user_id)
+    try:
+        await client.send_message(user_id, f"Your payment {request_id} was rejected. Reason: {reason}")
+    except Exception:
+        pass
+    return True, f"Rejected {request_id}."
 
 
 def build_pay_keyboard() -> InlineKeyboardMarkup:
@@ -604,23 +717,28 @@ async def mark_paid(client: Client, message):
         await message.reply_text("User not found.")
         return
     parts = (message.text or "").split(maxsplit=2)
-    if len(parts) < 2:
-        await message.reply_text("Usage: /paid <request_id> <UTR(optional)>")
+    if len(parts) < 3:
+        await message.reply_text("Usage: /paid <request_id> <UTR>")
         return
     request_id = parts[1].strip()
-    note = parts[2].strip() if len(parts) >= 3 else ""
-    req = await store.get_payment_request(request_id)
-    if not req:
-        await message.reply_text("Request not found.")
+    utr = parts[2].strip()
+    ok, msg = await submit_payment_with_utr(client, message.from_user, request_id, utr)
+    await message.reply_text(msg)
+
+
+@app.on_message(filters.private & filters.text & ~filters.command(["start", "pay", "paid", "add", "addsection", "endsection", "delsection", "showsections", "setcreditprice", "setupi", "payments", "approve", "reject", "credit", "credit_add", "db", "premium", "premiumlist", "history", "stats", "redeem", "setpay", "editplan"]))
+async def collect_pending_utr(client: Client, message):
+    if not message.from_user:
         return
-    if int(req.get("user_id", 0)) != int(message.from_user.id):
-        await message.reply_text("This request is not yours.")
+    request_id = await store.get_pending_utr(message.from_user.id)
+    if not request_id:
         return
-    if req.get("status") in {"approved", "rejected"}:
-        await message.reply_text(f"Request already {req.get('status')}.")
+    utr = (message.text or "").strip()
+    if not utr:
+        await message.reply_text("Please send your UTR text.")
         return
-    await store.set_payment_request_status(request_id, "submitted", note=note, admin_id=0)
-    await message.reply_text("Payment marked as submitted. Admin will verify and approve.")
+    ok, msg = await submit_payment_with_utr(client, message.from_user, request_id, utr)
+    await message.reply_text(msg)
 
 
 @app.on_message(filters.command("payments") & filters.private)
@@ -638,7 +756,7 @@ async def list_payments(client: Client, message):
             limit = max(1, min(int(parts[2]), 100))
         except Exception:
             limit = 20
-    if status not in {"all", "pending", "submitted", "approved", "rejected"}:
+    if status not in {"all", "pending", "submitted", "approved", "rejected", "cancelled"}:
         status = "all"
     rows = await store.list_payment_requests(status=status, limit=limit)
     if not rows:
@@ -653,7 +771,7 @@ async def list_payments(client: Client, message):
 @app.on_message(filters.command("approve") & filters.private)
 async def approve_payment(client: Client, message):
     if not is_admin(message.from_user.id if message.from_user else None):
-        await message.reply_text("Not allowed. 🚫")
+        await message.reply_text("Not allowed. ??")
         return
     parts = (message.text or "").split(maxsplit=2)
     if len(parts) < 2:
@@ -661,39 +779,19 @@ async def approve_payment(client: Client, message):
         return
     request_id = parts[1].strip()
     note = parts[2].strip() if len(parts) >= 3 else "approved"
-    req = await store.get_payment_request(request_id)
-    if not req:
-        await message.reply_text("Request not found.")
-        return
-    if req.get("status") == "approved":
-        await message.reply_text("Already approved.")
-        return
-    if req.get("status") == "rejected":
-        await message.reply_text("Request is rejected. Use a new payment request.")
-        return
-    credits = int(req.get("credits", 0) or 0)
-    user_id = int(req.get("user_id", 0) or 0)
-    if credits <= 0 or user_id <= 0:
-        await message.reply_text("Invalid request data.")
-        return
-    balance = await store.add_credits(user_id, credits)
-    await store.set_payment_request_status(
-        request_id,
-        "approved",
-        note=note,
+    ok, msg = await approve_payment_request(
+        client,
+        request_id=request_id,
         admin_id=(message.from_user.id if message.from_user else 0),
+        note=note,
     )
-    await message.reply_text(f"Approved {request_id}. Added {credits} credits to {user_id}. New balance: {balance}")
-    try:
-        await client.send_message(user_id, f"Your payment {request_id} is approved. Credits added: {credits}. Balance: {balance}")
-    except Exception:
-        pass
+    await message.reply_text(msg)
 
 
 @app.on_message(filters.command("reject") & filters.private)
 async def reject_payment(client: Client, message):
     if not is_admin(message.from_user.id if message.from_user else None):
-        await message.reply_text("Not allowed. 🚫")
+        await message.reply_text("Not allowed. ??")
         return
     parts = (message.text or "").split(maxsplit=2)
     if len(parts) < 2:
@@ -701,24 +799,13 @@ async def reject_payment(client: Client, message):
         return
     request_id = parts[1].strip()
     reason = parts[2].strip() if len(parts) >= 3 else "rejected"
-    req = await store.get_payment_request(request_id)
-    if not req:
-        await message.reply_text("Request not found.")
-        return
-    if req.get("status") == "approved":
-        await message.reply_text("Request already approved. Cannot reject now.")
-        return
-    await store.set_payment_request_status(
-        request_id,
-        "rejected",
-        note=reason,
+    ok, msg = await reject_payment_request(
+        client,
+        request_id=request_id,
         admin_id=(message.from_user.id if message.from_user else 0),
+        reason=reason,
     )
-    await message.reply_text(f"Rejected {request_id}.")
-    try:
-        await client.send_message(int(req.get("user_id", 0) or 0), f"Your payment {request_id} was rejected. Reason: {reason}")
-    except Exception:
-        pass
+    await message.reply_text(msg)
 
 
 @app.on_message(filters.command("credit_add") & filters.private)
@@ -791,6 +878,90 @@ async def pay_amount_callback(client: Client, callback):
     if callback.message:
         await send_payment_request_message(client, callback.message.chat.id, req, upi_id)
     await callback.answer("Request created.")
+
+
+@app.on_callback_query(filters.regex("^payreq:"))
+async def payment_request_action(client: Client, callback):
+    if not callback.from_user or not callback.data:
+        return
+    parts = callback.data.split(":", 2)
+    if len(parts) != 3:
+        await callback.answer("Invalid action.", show_alert=True)
+        return
+    action = parts[1].strip().lower()
+    request_id = parts[2].strip()
+    req = await store.get_payment_request(request_id)
+    if not req:
+        await callback.answer("Request not found.", show_alert=True)
+        return
+    user_id = int(req.get("user_id", 0) or 0)
+    if callback.from_user.id != user_id:
+        await callback.answer("This request is not yours.", show_alert=True)
+        return
+    status = (req.get("status") or "").strip().lower()
+
+    if action == "utr":
+        if status in {"approved", "rejected", "cancelled"}:
+            await callback.answer(f"Request already {status}.", show_alert=True)
+            return
+        await store.set_pending_utr(user_id, request_id, ttl_seconds=1800)
+        await callback.answer("Now send your UTR as a message.", show_alert=True)
+        if callback.message:
+            await callback.message.reply_text(f"Send your UTR for request {request_id} now.")
+        return
+
+    if action == "cancel":
+        if status in {"approved", "rejected", "cancelled"}:
+            await callback.answer(f"Request already {status}.", show_alert=True)
+            return
+        await store.set_payment_request_status(request_id, "cancelled", note="cancelled by user", admin_id=0)
+        await store.clear_pending_utr(user_id)
+        await callback.answer("Payment request cancelled.", show_alert=True)
+        if callback.message:
+            await callback.message.reply_text(f"Payment request {request_id} cancelled.")
+        return
+
+    await callback.answer("Unknown action.", show_alert=True)
+
+
+@app.on_callback_query(filters.regex("^payadm:"))
+async def admin_payment_action(client: Client, callback):
+    if not callback.from_user or not callback.data:
+        return
+    if not is_admin(callback.from_user.id):
+        await callback.answer("Not allowed.", show_alert=True)
+        return
+    parts = callback.data.split(":", 2)
+    if len(parts) != 3:
+        await callback.answer("Invalid action.", show_alert=True)
+        return
+    action = parts[1].strip().lower()
+    request_id = parts[2].strip()
+
+    if action == "approve":
+        ok, msg = await approve_payment_request(
+            client,
+            request_id=request_id,
+            admin_id=callback.from_user.id,
+            note="approved by admin button",
+        )
+    elif action == "reject":
+        ok, msg = await reject_payment_request(
+            client,
+            request_id=request_id,
+            admin_id=callback.from_user.id,
+            reason="rejected by admin button",
+        )
+    else:
+        await callback.answer("Unknown action.", show_alert=True)
+        return
+
+    await callback.answer(msg if not ok else "Done", show_alert=not ok)
+    if callback.message:
+        try:
+            await callback.message.reply_text(msg)
+        except Exception:
+            pass
 
 
 @app.on_callback_query(filters.regex("^react:"))
