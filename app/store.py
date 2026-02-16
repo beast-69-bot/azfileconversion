@@ -73,6 +73,7 @@ class TokenStore:
         self._current_section_name: Optional[str] = None
         self._pay_price: Optional[float] = None
         self._pay_text: Optional[str] = None
+        self._upi_id: Optional[str] = None
         self._pay_requests: dict[str, dict] = {}
 
     async def connect(self) -> None:
@@ -375,6 +376,24 @@ return {1, newval}
         self._pay_price = price
         self._pay_text = text
         return price, text
+
+
+    async def get_upi_id(self) -> str:
+        if self._redis is not None:
+            value = await self._redis.hget(self._pay_plan_key, "upi_id")
+            return (value or "").strip()
+        return (self._upi_id or "").strip()
+
+    async def set_upi_id(self, upi_id: str) -> str:
+        clean = str(upi_id or "").strip()
+        if self._redis is not None:
+            if clean:
+                await self._redis.hset(self._pay_plan_key, mapping={"upi_id": clean})
+            else:
+                await self._redis.hdel(self._pay_plan_key, "upi_id")
+            return clean
+        self._upi_id = clean or None
+        return clean
 
 
     async def create_payment_request(self, request_id: str, user_id: int, amount_inr: float, credits: int) -> dict:

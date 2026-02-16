@@ -1,9 +1,11 @@
 ﻿import asyncio
 import logging
+import re
 import secrets
 import time
 import tempfile
 from pathlib import Path
+from urllib.parse import quote
 
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
@@ -34,6 +36,7 @@ DEFAULT_CREDIT_PRICE_INR = 0.35
 DEFAULT_PAY_TEXT = "Price per credit: INR {price}\nTo add credits, contact admin."
 ADMIN_CONTACT = "@azmoviedeal"
 MIN_CUSTOM_PAY_INR = 10.0
+DEFAULT_UPI_PAYEE_NAME = "AZ File Conversion"
 
 
 def build_link(token: str) -> str:
@@ -190,6 +193,53 @@ def format_payment_request_line(req: dict) -> str:
     )
 
 
+def validate_upi_id(upi_id: str) -> bool:
+    value = (upi_id or "").strip()
+    if not value or "@" not in value:
+        return False
+    return bool(re.fullmatch(r"[a-zA-Z0-9._-]{2,}@[a-zA-Z]{2,}", value))
+
+
+def build_upi_uri(upi_id: str, amount_inr: float, request_id: str) -> str:
+    params = {
+        "pa": upi_id,
+        "pn": DEFAULT_UPI_PAYEE_NAME,
+        "am": f"{amount_inr:.2f}",
+        "cu": "INR",
+        "tn": f"Credits {request_id}",
+    }
+    qp = "&".join(f"{k}={quote(v, safe='')}" for k, v in params.items())
+    return f"upi://pay?{qp}"
+
+
+def build_upi_qr_url(upi_uri: str) -> str:
+    return f"https://quickchart.io/qr?size=600&text={quote(upi_uri, safe='')}"
+
+
+async def send_payment_request_message(client: Client, chat_id: int, req: dict, upi_id: str) -> None:
+    amount_inr = float(req.get("amount_inr", 0) or 0)
+    request_id = str(req.get("id", "")).strip()
+    credits = int(req.get("credits", 0) or 0)
+    upi_uri = build_upi_uri(upi_id=upi_id, amount_inr=amount_inr, request_id=request_id)
+    caption = (
+        f"Payment request created.\n"
+        f"Request ID: {request_id}\n"
+        f"Amount: INR {amount_inr:.2f}\n"
+        f"You will get: {credits} credits\n"
+        f"UPI ID: {upi_id}\n\n"
+        f"Scan QR and pay, then send: /paid {request_id} <UTR>"
+    )
+    qr_url = build_upi_qr_url(upi_uri)
+    try:
+        await client.send_photo(chat_id=chat_id, photo=qr_url, caption=caption)
+    except Exception:
+        await client.send_message(
+            chat_id=chat_id,
+            text=caption + f"\n\nUPI link:\n{upi_uri}",
+            disable_web_page_preview=True,
+        )
+
+
 def build_pay_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         [
@@ -263,7 +313,7 @@ async def start_handler(client: Client, message):
         await message.reply_text(
             "Hey! 👋\n"
             "Open a download link here and I’ll deliver the file.\n"
-            "Admins: /add, /addsection, /showsections, /credit_add."
+            "Admins: /add, /addsection, /showsections, /credit_add, /setupi."
         )
         return
 
@@ -439,6 +489,7 @@ async def credit_balance(client: Client, message):
 @app.on_message(filters.command("pay") & filters.private)
 async def pay_info(client: Client, message):
     price, template = await store.get_pay_plan(DEFAULT_CREDIT_PRICE_INR, DEFAULT_PAY_TEXT)
+    upi_id = await store.get_upi_id()
     keyboard = build_pay_keyboard()
     parts = (message.text or "").split(maxsplit=1)
     if len(parts) >= 2:
@@ -452,21 +503,20 @@ async def pay_info(client: Client, message):
         if not message.from_user:
             await message.reply_text("User not found.")
             return
+        if not upi_id:
+            await message.reply_text("Payment is not configured yet. Please contact admin.")
+            return
         req, err = await create_payment_request_for_amount(message.from_user.id, amount_inr)
         if err:
             await message.reply_text(err)
             return
-        await message.reply_text(
-            f"Payment request created.\n"
-            f"Request ID: {req['id']}\n"
-            f"Amount: INR {amount_inr:.2f}\n"
-            f"You will get: {req['credits']} credits\n\n"
-            f"After payment, send: /paid {req['id']} <UTR>"
-        )
+        await send_payment_request_message(client, message.chat.id, req, upi_id)
         return
 
+    upi_note = f"\nUPI ID: {upi_id}" if upi_id else "\nUPI not configured yet."
     await message.reply_text(
         render_pay_text(template, price)
+        + upi_note
         + f"\n\nChoose an amount below, or use /pay <amount> (custom must be > INR {MIN_CUSTOM_PAY_INR:.0f}).",
         reply_markup=keyboard,
         disable_web_page_preview=True,
@@ -518,6 +568,34 @@ async def set_credit_price(client: Client, message):
     _, current_text = await store.get_pay_plan(DEFAULT_CREDIT_PRICE_INR, DEFAULT_PAY_TEXT)
     new_price, _ = await store.set_pay_plan(value, current_text)
     await message.reply_text(f"Credit price updated: INR {new_price:.2f}")
+
+
+@app.on_message(filters.command("setupi") & filters.private)
+async def set_upi(client: Client, message):
+    if not is_admin(message.from_user.id if message.from_user else None):
+        await message.reply_text("Not allowed. ??")
+        return
+    parts = (message.text or "").split(maxsplit=1)
+    if len(parts) < 2:
+        current = await store.get_upi_id()
+        if current:
+            await message.reply_text(f"Current UPI ID: {current}\nUsage: /setupi <upi_id>\nClear: /setupi clear")
+        else:
+            await message.reply_text("Usage: /setupi <upi_id>\nExample: /setupi yourname@upi")
+        return
+
+    raw = parts[1].strip()
+    if raw.lower() in {"clear", "none", "remove"}:
+        await store.set_upi_id("")
+        await message.reply_text("UPI ID cleared.")
+        return
+
+    if not validate_upi_id(raw):
+        await message.reply_text("Invalid UPI ID format. Example: yourname@upi")
+        return
+
+    saved = await store.set_upi_id(raw)
+    await message.reply_text(f"UPI ID updated: {saved}")
 
 
 @app.on_message(filters.command("paid") & filters.private)
@@ -702,18 +780,16 @@ async def pay_amount_callback(client: Client, callback):
     if amount_inr is None:
         await callback.answer("Invalid amount.", show_alert=True)
         return
+    upi_id = await store.get_upi_id()
+    if not upi_id:
+        await callback.answer("Payment is not configured yet. Contact admin.", show_alert=True)
+        return
     req, err = await create_payment_request_for_amount(callback.from_user.id, amount_inr)
     if err:
         await callback.answer(err, show_alert=True)
         return
     if callback.message:
-        await callback.message.reply_text(
-            f"Payment request created.\n"
-            f"Request ID: {req['id']}\n"
-            f"Amount: INR {amount_inr:.2f}\n"
-            f"You will get: {req['credits']} credits\n\n"
-            f"After payment, send: /paid {req['id']} <UTR>"
-        )
+        await send_payment_request_message(client, callback.message.chat.id, req, upi_id)
     await callback.answer("Request created.")
 
 
