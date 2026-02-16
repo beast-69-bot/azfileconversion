@@ -7,6 +7,7 @@ import tempfile
 from pathlib import Path
 from urllib.parse import quote
 
+from openpyxl import Workbook
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from pyrogram.errors import FloodWait
@@ -737,7 +738,7 @@ async def mark_paid(client: Client, message):
     await message.reply_text(msg)
 
 
-@app.on_message(filters.private & filters.text & ~filters.command(["start", "pay", "paid", "add", "addsection", "endsection", "delsection", "showsections", "setcreditprice", "setupi", "payments", "approve", "reject", "credit", "credit_add", "db", "premium", "premiumlist", "history", "stats", "redeem", "setpay", "editplan"]))
+@app.on_message(filters.private & filters.text & ~filters.command(["start", "pay", "paid", "add", "addsection", "endsection", "delsection", "showsections", "setcreditprice", "setupi", "payments", "paydb", "approve", "reject", "credit", "credit_add", "db", "premium", "premiumlist", "history", "stats", "redeem", "setpay", "editplan"]))
 async def collect_pending_utr(client: Client, message):
     if not message.from_user:
         return
@@ -777,6 +778,75 @@ async def list_payments(client: Client, message):
     for req in rows:
         lines.append(format_payment_request_line(req))
     await message.reply_text("\n".join(lines))
+
+
+@app.on_message(filters.command("paydb") & filters.private)
+async def export_payments_db(client: Client, message):
+    if not is_admin(message.from_user.id if message.from_user else None):
+        await message.reply_text("Not allowed. ??")
+        return
+
+    parts = (message.text or "").split()
+    status = "all"
+    if len(parts) >= 2:
+        status = parts[1].strip().lower()
+    if status not in {"all", "pending", "submitted", "approved", "rejected", "cancelled"}:
+        status = "all"
+
+    rows = await store.list_payment_requests(status=status, limit=100000)
+    if not rows:
+        await message.reply_text("No payment records found.")
+        return
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "payments"
+    ws.append([
+        "request_id",
+        "user_id",
+        "amount_inr",
+        "credits",
+        "status",
+        "utr_or_note",
+        "admin_id",
+        "created_at",
+        "updated_at",
+    ])
+
+    def fmt_ts(value):
+        try:
+            ts = int(value or 0)
+            if ts <= 0:
+                return ""
+            return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(ts))
+        except Exception:
+            return ""
+
+    for req in rows:
+        ws.append([
+            str(req.get("id", "")),
+            int(req.get("user_id", 0) or 0),
+            float(req.get("amount_inr", 0) or 0),
+            int(req.get("credits", 0) or 0),
+            str(req.get("status", "")),
+            str(req.get("note", "")),
+            int(req.get("admin_id", 0) or 0),
+            fmt_ts(req.get("created_at", 0)),
+            fmt_ts(req.get("updated_at", 0)),
+        ])
+
+    ts_name = time.strftime("%Y%m%d-%H%M%S", time.localtime())
+    out_path = Path(tempfile.gettempdir()) / f"payments-{status}-{ts_name}.xlsx"
+    wb.save(out_path)
+    await client.send_document(
+        chat_id=message.chat.id,
+        document=str(out_path),
+        caption=f"Payment export ({status}) | records: {len(rows)}",
+    )
+    try:
+        out_path.unlink(missing_ok=True)
+    except Exception:
+        pass
 
 
 @app.on_message(filters.command("approve") & filters.private)
