@@ -99,6 +99,7 @@ async def send_reaction_prompt(client: Client, user_id: int, token: str) -> None
 
 
 DELETE_AFTER_SECONDS = 30 * 60
+PAYMENT_QR_DELETE_SECONDS = 15 * 60
 
 
 async def schedule_delete(client: Client, chat_id: int, message_id: int, delay: int = DELETE_AFTER_SECONDS) -> None:
@@ -252,15 +253,19 @@ async def send_payment_request_message(client: Client, chat_id: int, req: dict, 
     )
     qr_url = build_upi_qr_url(upi_uri)
     keyboard = build_payment_request_keyboard(request_id)
+    sent = None
     try:
-        await client.send_photo(chat_id=chat_id, photo=qr_url, caption=caption, reply_markup=keyboard)
+        sent = await client.send_photo(chat_id=chat_id, photo=qr_url, caption=caption, reply_markup=keyboard)
     except Exception:
-        await client.send_message(
+        sent = await client.send_message(
             chat_id=chat_id,
             text=caption + f"\n\nUPI link:\n{upi_uri}",
             disable_web_page_preview=True,
             reply_markup=keyboard,
         )
+    if sent:
+        asyncio.create_task(schedule_delete(client, chat_id, sent.id, PAYMENT_QR_DELETE_SECONDS))
+
 
 
 async def notify_admin_payment_submitted(client: Client, req: dict, user, utr: str) -> None:
@@ -918,7 +923,11 @@ async def payment_request_action(client: Client, callback):
         await store.clear_pending_utr(user_id)
         await callback.answer("Payment request cancelled.", show_alert=True)
         if callback.message:
-            await callback.message.reply_text(f"Payment request {request_id} cancelled.")
+            try:
+                await callback.message.delete()
+            except Exception:
+                pass
+            await client.send_message(user_id, f"Payment request {request_id} cancelled.")
         return
 
     await callback.answer("Unknown action.", show_alert=True)
@@ -958,6 +967,20 @@ async def admin_payment_action(client: Client, callback):
 
     await callback.answer(msg if not ok else "Done", show_alert=not ok)
     if callback.message:
+        if ok:
+            status_line = "Status: APPROVED" if action == "approve" else "Status: REJECTED"
+            updated_text = (callback.message.text or "").strip()
+            if updated_text:
+                updated_text = (
+                    f"{updated_text}\n\n"
+                    f"{status_line}\n"
+                    f"Handled by: {callback.from_user.id}"
+                )
+                try:
+                    await callback.message.edit_text(updated_text, reply_markup=None)
+                    return
+                except Exception:
+                    pass
         try:
             await callback.message.reply_text(msg)
         except Exception:
