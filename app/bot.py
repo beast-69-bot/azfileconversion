@@ -9,7 +9,7 @@ from urllib.parse import quote
 
 from openpyxl import Workbook
 from pyrogram import Client, filters
-from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from pyrogram.types import BotCommand, InlineKeyboardButton, InlineKeyboardMarkup
 from pyrogram.errors import FloodWait
 
 from app.config import get_settings
@@ -50,6 +50,24 @@ def is_admin(user_id: int | None) -> bool:
     if not user_id:
         return False
     return user_id in settings.admin_ids
+
+
+def build_bot_commands() -> list[BotCommand]:
+    return [
+        BotCommand("start", "Bot overview and usage"),
+        BotCommand("pay", "Buy credits"),
+        BotCommand("premium", "INR 499 monthly premium"),
+        BotCommand("credit", "Check your plan and credits"),
+        BotCommand("paid", "Submit payment proof"),
+        BotCommand("redeem", "Redeem token"),
+        BotCommand("stats", "Bot stats"),
+        BotCommand("showsections", "List sections (admin)"),
+        BotCommand("paydb", "Export payment Excel (admin)"),
+        BotCommand("payments", "List payment requests (admin)"),
+        BotCommand("approve", "Approve payment (admin)"),
+        BotCommand("reject", "Reject payment (admin)"),
+        BotCommand("broadcast", "Broadcast message (admin)"),
+    ]
 
 
 def parse_period(value: str) -> int | None:
@@ -499,8 +517,8 @@ async def start_handler(client: Client, message):
             "3) File will be delivered in this chat\n\n"
             "Useful commands:\n"
             "- /pay : buy credits\n"
-            "- /premium : monthly premium plan\n"
-            "- /credit : check your balance\n"
+            "- /premium : monthly premium (INR 499 / 30 days)\n"
+            "- /credit : check your plan and balance\n"
             "- /paid <request_id> <UTR> : submit payment proof\n"
             "- /redeem <token> : redeem token"
         )
@@ -668,11 +686,26 @@ async def show_admins(client: Client, message):
 @app.on_message(filters.command("credit") & filters.private)
 async def credit_balance(client: Client, message):
     if not message.from_user:
-        await message.reply_text("I couldn’t read your user info. Please try again. 🙏")
+        await message.reply_text("Could not read your user info. Please try again.")
         return
+
     user_id = message.from_user.id
+    is_premium = await db.is_premium(user_id)
     balance = await store.get_credits(user_id)
-    await message.reply_text(f"Your credits: {balance} 💳")
+
+    if is_premium:
+        await message.reply_text(
+            "Your plan details:\n"
+            "- Premium plan: Active\n"
+            "- Credits: Unlimited"
+        )
+        return
+
+    await message.reply_text(
+        "Your plan details:\n"
+        "- Premium plan: Not active\n"
+        f"- Credits: {balance}"
+    )
 
 
 @app.on_message(filters.command("premium") & filters.private)
@@ -716,7 +749,7 @@ async def pay_info(client: Client, message):
     await message.reply_text(
         render_pay_text(template, price)
         + upi_note
-        + f"\n\nChoose an amount below, or use /pay <amount> (custom must be > INR {MIN_CUSTOM_PAY_INR:.0f}).\nPremium: INR 499 for 30 days unlimited credits (tap Premium 499 or use /premium).",
+        + f"\n\nChoose an amount below, or use /pay <amount> (custom must be > INR {MIN_CUSTOM_PAY_INR:.0f}).\nPremium plan: INR 499 for 30 days. Includes unlimited credit usage while premium is active. Tap Premium 499 or use /premium.",
         reply_markup=keyboard,
         disable_web_page_preview=True,
     )
@@ -961,6 +994,49 @@ async def reject_payment(client: Client, message):
         reason=reason,
     )
     await message.reply_text(msg)
+
+
+@app.on_message(filters.command("broadcast") & filters.private)
+async def broadcast_message(client: Client, message):
+    if not is_admin(message.from_user.id if message.from_user else None):
+        await message.reply_text("Not allowed. ??")
+        return
+
+    parts = (message.text or "").split(maxsplit=1)
+    if len(parts) < 2 or not parts[1].strip():
+        await message.reply_text("Usage: /broadcast <message>")
+        return
+
+    text_to_send = parts[1].strip()
+    targets = set(await store.list_known_user_ids(limit=100000))
+    for user in await db.list_premium_users():
+        targets.add(int(user.user_id))
+
+    admin_id = message.from_user.id if message.from_user else 0
+    if admin_id in targets:
+        targets.remove(admin_id)
+
+    if not targets:
+        await message.reply_text("No users found for broadcast.")
+        return
+
+    sent = 0
+    failed = 0
+    for user_id in sorted(targets):
+        try:
+            await client.send_message(chat_id=user_id, text=text_to_send)
+            sent += 1
+        except FloodWait as exc:
+            await asyncio.sleep(exc.value)
+            try:
+                await client.send_message(chat_id=user_id, text=text_to_send)
+                sent += 1
+            except Exception:
+                failed += 1
+        except Exception:
+            failed += 1
+
+    await message.reply_text(f"Broadcast done. Sent: {sent}, Failed: {failed}")
 
 
 @app.on_message(filters.command("credit_add") & filters.private)
@@ -1402,6 +1478,10 @@ async def runner() -> None:
     while True:
         try:
             await app.start()
+            try:
+                await app.set_bot_commands(build_bot_commands())
+            except Exception as exc:
+                logger.warning("Failed to set bot commands: %s", exc)
             logger.info("Bot started")
             break
         except FloodWait as exc:

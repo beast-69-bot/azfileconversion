@@ -577,6 +577,37 @@ return {1, newval}
         return items
 
 
+    async def list_known_user_ids(self, limit: int = 50000) -> list[int]:
+        limit = max(1, int(limit))
+        users: set[int] = set()
+        if self._redis is not None:
+            async for key in self._redis.scan_iter(match="credits:*", count=1000):
+                try:
+                    users.add(int(str(key).split(":", 1)[1]))
+                except Exception:
+                    continue
+            request_ids = await self._redis.zrevrange(self._pay_req_index, 0, limit * 5)
+            for request_id in request_ids:
+                req = await self.get_payment_request(request_id)
+                if not req:
+                    continue
+                uid = int(req.get("user_id", 0) or 0)
+                if uid > 0:
+                    users.add(uid)
+                if len(users) >= limit:
+                    break
+            return sorted(users)
+
+        users.update(int(uid) for uid in self._credits.keys())
+        for req in self._pay_requests.values():
+            uid = int(req.get("user_id", 0) or 0)
+            if uid > 0:
+                users.add(uid)
+            if len(users) >= limit:
+                break
+        return sorted(users)
+
+
     async def set_section(self, section_name: Optional[str]) -> Optional[str]:
         if not section_name:
             if self._redis is not None:
