@@ -38,6 +38,8 @@ DEFAULT_PAY_TEXT = "Price per credit: INR {price}\nTo add credits, contact admin
 ADMIN_CONTACT = "@azmoviedeal"
 MIN_CUSTOM_PAY_INR = 10.0
 DEFAULT_UPI_PAYEE_NAME = "AZ File Conversion"
+PREMIUM_MONTHLY_PRICE_INR = 499.0
+PREMIUM_MONTHLY_DAYS = 30
 
 
 def build_link(token: str) -> str:
@@ -242,13 +244,13 @@ def build_admin_payment_keyboard(request_id: str) -> InlineKeyboardMarkup:
 async def send_payment_request_message(client: Client, chat_id: int, req: dict, upi_id: str) -> None:
     amount_inr = float(req.get("amount_inr", 0) or 0)
     request_id = str(req.get("id", "")).strip()
-    credits = int(req.get("credits", 0) or 0)
+    plan_label = format_plan_label(req)
     upi_uri = build_upi_uri(upi_id=upi_id, amount_inr=amount_inr, request_id=request_id)
     caption = (
         "PAYMENT CHECKOUT\n\n"
         f"Request ID: {request_id}\n"
         f"Amount: INR {amount_inr:.2f}\n"
-        f"Credits: {credits}\n"
+        f"Plan: {plan_label}\n"
         f"UPI ID: {upi_id}\n\n"
         "Steps:\n"
         "1) Open any UPI app and scan this QR.\n"
@@ -298,7 +300,7 @@ async def notify_admin_payment_submitted(client: Client, req: dict, user, utr: s
         full_name = f"{full_name} {user.last_name}".strip()
     amount_inr = float(req.get("amount_inr", 0) or 0)
     request_id = str(req.get("id", "")).strip()
-    credits = int(req.get("credits", 0) or 0)
+    plan_label = format_plan_label(req)
     text_msg = (
         "New payment submitted.\n"
         f"Request ID: {request_id}\n"
@@ -306,7 +308,7 @@ async def notify_admin_payment_submitted(client: Client, req: dict, user, utr: s
         f"Name: {full_name or '-'}\n"
         f"Username: {username}\n"
         f"Amount: INR {amount_inr:.2f}\n"
-        f"Credits: {credits}\n"
+        f"Plan: {plan_label}\n"
         f"UTR: {utr}"
     )
     markup = build_admin_payment_keyboard(request_id)
@@ -346,9 +348,24 @@ async def approve_payment_request(client: Client, request_id: str, admin_id: int
         return False, "Already approved."
     if status in {"rejected", "cancelled"}:
         return False, f"Request is {status}."
-    credits = int(req.get("credits", 0) or 0)
     user_id = int(req.get("user_id", 0) or 0)
-    if credits <= 0 or user_id <= 0:
+    if user_id <= 0:
+        return False, "Invalid request data."
+
+    plan_type = str(req.get("plan_type", "credits") or "credits")
+    if plan_type == "premium_30d":
+        await db.add_user(user_id, PREMIUM_MONTHLY_DAYS)
+        await store.set_payment_request_status(request_id, "approved", note=note, admin_id=admin_id)
+        await store.clear_pending_utr(user_id)
+        await delete_payment_prompt_message(client, request_id)
+        try:
+            await client.send_message(user_id, f"Your payment {request_id} is approved. Premium activated for {PREMIUM_MONTHLY_DAYS} days.")
+        except Exception:
+            pass
+        return True, f"Approved {request_id}. Premium activated for {user_id} ({PREMIUM_MONTHLY_DAYS} days)."
+
+    credits = int(req.get("credits", 0) or 0)
+    if credits <= 0:
         return False, "Invalid request data."
     balance = await store.add_credits(user_id, credits)
     await store.set_payment_request_status(request_id, "approved", note=note, admin_id=admin_id)
@@ -394,6 +411,7 @@ def build_pay_keyboard() -> InlineKeyboardMarkup:
                 InlineKeyboardButton("100rs", callback_data="payamt:100"),
                 InlineKeyboardButton("Custom amount (>10rs)", callback_data="payamt:custom"),
             ],
+            [InlineKeyboardButton("Premium 499", callback_data="payamt:premium")],
             [InlineKeyboardButton("Contact Admin", url=f"https://t.me/{ADMIN_CONTACT.lstrip('@')}")],
         ]
     )
@@ -411,6 +429,22 @@ async def create_payment_request_for_amount(user_id: int, amount_inr: float) -> 
         credits=credits,
     )
     return req, None
+
+async def create_premium_monthly_request(user_id: int) -> dict:
+    return await store.create_payment_request(
+        request_id=new_payment_request_id(),
+        user_id=user_id,
+        amount_inr=PREMIUM_MONTHLY_PRICE_INR,
+        credits=0,
+        plan_type="premium_30d",
+    )
+
+
+def format_plan_label(req: dict) -> str:
+    plan_type = str(req.get("plan_type", "credits") or "credits")
+    if plan_type == "premium_30d":
+        return f"Premium {PREMIUM_MONTHLY_DAYS} days (unlimited credits)"
+    return f"Credits: {int(req.get('credits', 0) or 0)}"
 
 async def deliver_token(client: Client, user_id: int, token: str, include_guidance: bool = True) -> bool:
     ref = await store.get(token, settings.token_ttl_seconds)
@@ -465,6 +499,7 @@ async def start_handler(client: Client, message):
             "3) File will be delivered in this chat\n\n"
             "Useful commands:\n"
             "- /pay : buy credits\n"
+            "- /premium : monthly premium plan\n"
             "- /credit : check your balance\n"
             "- /paid <request_id> <UTR> : submit payment proof\n"
             "- /redeem <token> : redeem token"
@@ -640,6 +675,16 @@ async def credit_balance(client: Client, message):
     await message.reply_text(f"Your credits: {balance} 💳")
 
 
+@app.on_message(filters.command("premium") & filters.private)
+async def premium_info(client: Client, message):
+    upi_id = await store.get_upi_id()
+    if not upi_id:
+        await message.reply_text("Premium payment is not configured yet. Please contact admin.")
+        return
+    req = await create_premium_monthly_request(message.from_user.id if message.from_user else 0)
+    await send_payment_request_message(client, message.chat.id, req, upi_id)
+
+
 @app.on_message(filters.command("pay") & filters.private)
 async def pay_info(client: Client, message):
     price, template = await store.get_pay_plan(DEFAULT_CREDIT_PRICE_INR, DEFAULT_PAY_TEXT)
@@ -671,7 +716,7 @@ async def pay_info(client: Client, message):
     await message.reply_text(
         render_pay_text(template, price)
         + upi_note
-        + f"\n\nChoose an amount below, or use /pay <amount> (custom must be > INR {MIN_CUSTOM_PAY_INR:.0f}).",
+        + f"\n\nChoose an amount below, or use /pay <amount> (custom must be > INR {MIN_CUSTOM_PAY_INR:.0f}).\nPremium: INR 499 for 30 days unlimited credits (tap Premium 499 or use /premium).",
         reply_markup=keyboard,
         disable_web_page_preview=True,
     )
@@ -967,19 +1012,25 @@ async def pay_amount_callback(client: Client, callback):
     if not callback.from_user or not callback.data:
         return
     value = callback.data.split(":", 1)[1].strip().lower()
+    upi_id = await store.get_upi_id()
+    if not upi_id:
+        await callback.answer("Payment is not configured yet. Contact admin.", show_alert=True)
+        return
     if value == "custom":
         await callback.answer(
             f"Use /pay <amount>. Custom amount must be more than INR {MIN_CUSTOM_PAY_INR:.0f}.",
             show_alert=True,
         )
         return
+    if value == "premium":
+        req = await create_premium_monthly_request(callback.from_user.id)
+        if callback.message:
+            await send_payment_request_message(client, callback.message.chat.id, req, upi_id)
+        await callback.answer("Premium payment request created.")
+        return
     amount_inr = parse_amount_value(value)
     if amount_inr is None:
         await callback.answer("Invalid amount.", show_alert=True)
-        return
-    upi_id = await store.get_upi_id()
-    if not upi_id:
-        await callback.answer("Payment is not configured yet. Contact admin.", show_alert=True)
         return
     req, err = await create_payment_request_for_amount(callback.from_user.id, amount_inr)
     if err:

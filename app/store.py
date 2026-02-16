@@ -462,13 +462,14 @@ return {1, newval}
         self._pay_pending_utr.pop(int(user_id), None)
 
 
-    async def create_payment_request(self, request_id: str, user_id: int, amount_inr: float, credits: int) -> dict:
+    async def create_payment_request(self, request_id: str, user_id: int, amount_inr: float, credits: int, plan_type: str = "credits") -> dict:
         now = int(time.time())
         item = {
             "id": str(request_id),
             "user_id": int(user_id),
             "amount_inr": float(amount_inr),
             "credits": int(credits),
+            "plan_type": str(plan_type or "credits").strip().lower(),
             "status": "pending",
             "created_at": now,
             "updated_at": now,
@@ -484,6 +485,7 @@ return {1, newval}
                     "user_id": str(item["user_id"]),
                     "amount_inr": f"{item['amount_inr']:.2f}",
                     "credits": str(item["credits"]),
+                    "plan_type": item["plan_type"],
                     "status": item["status"],
                     "created_at": str(item["created_at"]),
                     "updated_at": str(item["updated_at"]),
@@ -509,13 +511,17 @@ return {1, newval}
                 "user_id": int(data.get("user_id", "0") or 0),
                 "amount_inr": float(data.get("amount_inr", "0") or 0),
                 "credits": int(data.get("credits", "0") or 0),
+                "plan_type": data.get("plan_type", "credits"),
                 "status": data.get("status", "pending"),
                 "created_at": int(data.get("created_at", "0") or 0),
                 "updated_at": int(data.get("updated_at", "0") or 0),
                 "note": data.get("note", ""),
                 "admin_id": int(data.get("admin_id", "0") or 0),
             }
-        return self._pay_requests.get(request_id)
+        req = self._pay_requests.get(request_id)
+        if req is not None and "plan_type" not in req:
+            req["plan_type"] = "credits"
+        return req
 
     async def set_payment_request_status(
         self,
