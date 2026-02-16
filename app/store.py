@@ -69,6 +69,7 @@ class TokenStore:
         self._pay_plan_key = "plan:pay"
         self._pay_req_prefix = "pay:req:"
         self._pay_req_index = "pay:req:index"
+        self._pay_req_msg_prefix = "pay:reqmsg:"
         self._pay_pending_utr_prefix = "pay:pending_utr:"
         self._current_section: Optional[str] = None
         self._current_section_name: Optional[str] = None
@@ -76,6 +77,7 @@ class TokenStore:
         self._pay_text: Optional[str] = None
         self._upi_id: Optional[str] = None
         self._pay_pending_utr: dict[int, str] = {}
+        self._pay_req_messages: dict[str, tuple[int, int]] = {}
         self._pay_requests: dict[str, dict] = {}
 
     async def connect(self) -> None:
@@ -396,6 +398,42 @@ return {1, newval}
             return clean
         self._upi_id = clean or None
         return clean
+
+
+    async def set_payment_prompt(self, request_id: str, chat_id: int, message_id: int) -> None:
+        req_id = str(request_id).strip()
+        if not req_id:
+            return
+        if self._redis is not None:
+            await self._redis.hset(
+                f"{self._pay_req_msg_prefix}{req_id}",
+                mapping={"chat_id": str(int(chat_id)), "message_id": str(int(message_id))},
+            )
+            return
+        self._pay_req_messages[req_id] = (int(chat_id), int(message_id))
+
+    async def get_payment_prompt(self, request_id: str) -> Optional[tuple[int, int]]:
+        req_id = str(request_id).strip()
+        if not req_id:
+            return None
+        if self._redis is not None:
+            data = await self._redis.hgetall(f"{self._pay_req_msg_prefix}{req_id}")
+            if not data:
+                return None
+            try:
+                return int(data.get("chat_id", "0") or 0), int(data.get("message_id", "0") or 0)
+            except Exception:
+                return None
+        return self._pay_req_messages.get(req_id)
+
+    async def clear_payment_prompt(self, request_id: str) -> None:
+        req_id = str(request_id).strip()
+        if not req_id:
+            return
+        if self._redis is not None:
+            await self._redis.delete(f"{self._pay_req_msg_prefix}{req_id}")
+            return
+        self._pay_req_messages.pop(req_id, None)
 
 
     async def set_pending_utr(self, user_id: int, request_id: str, ttl_seconds: int = 900) -> None:

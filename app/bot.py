@@ -271,8 +271,24 @@ async def send_payment_request_message(client: Client, chat_id: int, req: dict, 
             reply_markup=keyboard,
         )
     if sent:
+        await store.set_payment_prompt(request_id, chat_id, sent.id)
         asyncio.create_task(schedule_delete(client, chat_id, sent.id, PAYMENT_QR_DELETE_SECONDS))
 
+
+
+async def delete_payment_prompt_message(client: Client, request_id: str) -> None:
+    prompt = await store.get_payment_prompt(request_id)
+    if not prompt:
+        return
+    chat_id, message_id = prompt
+    if not chat_id or not message_id:
+        await store.clear_payment_prompt(request_id)
+        return
+    try:
+        await client.delete_messages(chat_id=chat_id, message_ids=message_id)
+    except Exception:
+        pass
+    await store.clear_payment_prompt(request_id)
 
 
 async def notify_admin_payment_submitted(client: Client, req: dict, user, utr: str) -> None:
@@ -337,6 +353,7 @@ async def approve_payment_request(client: Client, request_id: str, admin_id: int
     balance = await store.add_credits(user_id, credits)
     await store.set_payment_request_status(request_id, "approved", note=note, admin_id=admin_id)
     await store.clear_pending_utr(user_id)
+    await delete_payment_prompt_message(client, request_id)
     try:
         await client.send_message(user_id, f"Your payment {request_id} is approved. Credits added: {credits}. Balance: {balance}")
     except Exception:
@@ -358,6 +375,7 @@ async def reject_payment_request(client: Client, request_id: str, admin_id: int,
     user_id = int(req.get("user_id", 0) or 0)
     await store.set_payment_request_status(request_id, "rejected", note=reason, admin_id=admin_id)
     await store.clear_pending_utr(user_id)
+    await delete_payment_prompt_message(client, request_id)
     try:
         await client.send_message(user_id, f"Your payment {request_id} was rejected. Reason: {reason}")
     except Exception:
@@ -997,6 +1015,7 @@ async def payment_request_action(client: Client, callback):
             return
         await store.set_payment_request_status(request_id, "cancelled", note="cancelled by user", admin_id=0)
         await store.clear_pending_utr(user_id)
+        await store.clear_payment_prompt(request_id)
         await callback.answer("Payment request cancelled.", show_alert=True)
         if callback.message:
             try:
