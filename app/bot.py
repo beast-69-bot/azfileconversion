@@ -454,9 +454,20 @@ async def start_handler(client: Client, message):
     parts = text.split(maxsplit=1)
     if len(parts) < 2:
         await message.reply_text(
-            "Hey! 👋\n"
-            "Open a download link here and I’ll deliver the file.\n"
-            "Admins: /add, /addsection, /showsections, /credit_add, /setupi."
+            "Welcome to FileLord\n\n"
+            "Bot overview:\n"
+            "- Open website links and get files here in Telegram\n"
+            "- Normal users: play-only mode\n"
+            "- Premium/Credit users: full downloadable files\n\n"
+            "How to use:\n"
+            "1) Open a section/file link from website\n"
+            "2) Tap Open in Telegram\n"
+            "3) File will be delivered in this chat\n\n"
+            "Useful commands:\n"
+            "- /pay : buy credits\n"
+            "- /credit : check your balance\n"
+            "- /paid <request_id> <UTR> : submit payment proof\n"
+            "- /redeem <token> : redeem token"
         )
         return
 
