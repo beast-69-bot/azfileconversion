@@ -67,10 +67,13 @@ class TokenStore:
         self._section_name_map = "section:registry:name"
         self._section_id_map = "section:registry:id"
         self._pay_plan_key = "plan:pay"
+        self._pay_req_prefix = "pay:req:"
+        self._pay_req_index = "pay:req:index"
         self._current_section: Optional[str] = None
         self._current_section_name: Optional[str] = None
         self._pay_price: Optional[float] = None
         self._pay_text: Optional[str] = None
+        self._pay_requests: dict[str, dict] = {}
 
     async def connect(self) -> None:
         if self._redis_url and redis is not None:
@@ -374,6 +377,115 @@ return {1, newval}
         return price, text
 
 
+    async def create_payment_request(self, request_id: str, user_id: int, amount_inr: float, credits: int) -> dict:
+        now = int(time.time())
+        item = {
+            "id": str(request_id),
+            "user_id": int(user_id),
+            "amount_inr": float(amount_inr),
+            "credits": int(credits),
+            "status": "pending",
+            "created_at": now,
+            "updated_at": now,
+            "note": "",
+            "admin_id": 0,
+        }
+        if self._redis is not None:
+            key = f"{self._pay_req_prefix}{request_id}"
+            await self._redis.hset(
+                key,
+                mapping={
+                    "id": item["id"],
+                    "user_id": str(item["user_id"]),
+                    "amount_inr": f"{item['amount_inr']:.2f}",
+                    "credits": str(item["credits"]),
+                    "status": item["status"],
+                    "created_at": str(item["created_at"]),
+                    "updated_at": str(item["updated_at"]),
+                    "note": item["note"],
+                    "admin_id": str(item["admin_id"]),
+                },
+            )
+            await self._redis.zadd(self._pay_req_index, {item["id"]: float(item["created_at"])})
+            return item
+        self._pay_requests[item["id"]] = item
+        return item
+
+    async def get_payment_request(self, request_id: str) -> Optional[dict]:
+        request_id = str(request_id).strip()
+        if not request_id:
+            return None
+        if self._redis is not None:
+            data = await self._redis.hgetall(f"{self._pay_req_prefix}{request_id}")
+            if not data:
+                return None
+            return {
+                "id": data.get("id", request_id),
+                "user_id": int(data.get("user_id", "0") or 0),
+                "amount_inr": float(data.get("amount_inr", "0") or 0),
+                "credits": int(data.get("credits", "0") or 0),
+                "status": data.get("status", "pending"),
+                "created_at": int(data.get("created_at", "0") or 0),
+                "updated_at": int(data.get("updated_at", "0") or 0),
+                "note": data.get("note", ""),
+                "admin_id": int(data.get("admin_id", "0") or 0),
+            }
+        return self._pay_requests.get(request_id)
+
+    async def set_payment_request_status(
+        self,
+        request_id: str,
+        status: str,
+        note: str = "",
+        admin_id: int = 0,
+    ) -> Optional[dict]:
+        req = await self.get_payment_request(request_id)
+        if not req:
+            return None
+        req["status"] = str(status).strip().lower()
+        req["note"] = str(note or "").strip()
+        req["admin_id"] = int(admin_id or 0)
+        req["updated_at"] = int(time.time())
+        if self._redis is not None:
+            key = f"{self._pay_req_prefix}{req['id']}"
+            await self._redis.hset(
+                key,
+                mapping={
+                    "status": req["status"],
+                    "note": req["note"],
+                    "admin_id": str(req["admin_id"]),
+                    "updated_at": str(req["updated_at"]),
+                },
+            )
+            return req
+        self._pay_requests[req["id"]] = req
+        return req
+
+    async def list_payment_requests(self, status: str = "all", limit: int = 20) -> list[dict]:
+        status = (status or "all").strip().lower()
+        limit = max(1, int(limit))
+        items: list[dict] = []
+        if self._redis is not None:
+            request_ids = await self._redis.zrevrange(self._pay_req_index, 0, limit * 5)
+            for request_id in request_ids:
+                req = await self.get_payment_request(request_id)
+                if not req:
+                    continue
+                if status != "all" and req.get("status") != status:
+                    continue
+                items.append(req)
+                if len(items) >= limit:
+                    break
+            return items
+        for req in sorted(self._pay_requests.values(), key=lambda x: x.get("created_at", 0), reverse=True):
+            if status != "all" and req.get("status") != status:
+                continue
+            items.append(req)
+            if len(items) >= limit:
+                break
+        return items
+
+
     async def set_section(self, section_name: Optional[str]) -> Optional[str]:
         if not section_name:
             if self._redis is not None:
@@ -462,3 +574,4 @@ return {1, newval}
             tokens = await self._redis.lrange(f"section:{section_id}", 0, limit - 1)
             return [t for t in tokens if t]
         return self._sections.get(section_id, [])[:limit]
+

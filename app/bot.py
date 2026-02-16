@@ -161,6 +161,33 @@ def normalize_plan_text(raw_text: str) -> str:
     )
 
 
+def parse_amount_value(raw: str) -> float | None:
+    value = (raw or "").strip().replace(",", "")
+    try:
+        amount = float(value)
+    except Exception:
+        return None
+    if amount <= 0:
+        return None
+    return round(amount, 2)
+
+
+def credits_for_amount(amount_inr: float, price_per_credit: float) -> int:
+    if price_per_credit <= 0:
+        return 0
+    return int(amount_inr // price_per_credit)
+
+
+def new_payment_request_id() -> str:
+    return f"P{int(time.time())}{secrets.token_hex(2).upper()}"
+
+
+def format_payment_request_line(req: dict) -> str:
+    return (
+        f"{req.get('id')} | user {req.get('user_id')} | INR {float(req.get('amount_inr', 0)):.2f} "
+        f"| credits {req.get('credits')} | {req.get('status')}"
+    )
+
 async def deliver_token(client: Client, user_id: int, token: str, include_guidance: bool = True) -> bool:
     ref = await store.get(token, settings.token_ttl_seconds)
     if not ref:
@@ -418,6 +445,147 @@ async def edit_plan(client: Client, message):
         f"Price: INR {new_price:.2f}\n"
         f"Preview:\n{render_pay_text(new_text, new_price)}"
     )
+
+
+@app.on_message(filters.command("setcreditprice") & filters.private)
+async def set_credit_price(client: Client, message):
+    if not is_admin(message.from_user.id if message.from_user else None):
+        await message.reply_text("Not allowed. 🚫")
+        return
+    parts = (message.text or "").split(maxsplit=1)
+    if len(parts) < 2:
+        await message.reply_text("Usage: /setcreditprice <price_inr>")
+        return
+    value = parse_amount_value(parts[1])
+    if value is None:
+        await message.reply_text("Invalid price. Example: /setcreditprice 0.50")
+        return
+    _, current_text = await store.get_pay_plan(DEFAULT_CREDIT_PRICE_INR, DEFAULT_PAY_TEXT)
+    new_price, _ = await store.set_pay_plan(value, current_text)
+    await message.reply_text(f"Credit price updated: INR {new_price:.2f}")
+
+
+@app.on_message(filters.command("paid") & filters.private)
+async def mark_paid(client: Client, message):
+    if not message.from_user:
+        await message.reply_text("User not found.")
+        return
+    parts = (message.text or "").split(maxsplit=2)
+    if len(parts) < 2:
+        await message.reply_text("Usage: /paid <request_id> <UTR(optional)>")
+        return
+    request_id = parts[1].strip()
+    note = parts[2].strip() if len(parts) >= 3 else ""
+    req = await store.get_payment_request(request_id)
+    if not req:
+        await message.reply_text("Request not found.")
+        return
+    if int(req.get("user_id", 0)) != int(message.from_user.id):
+        await message.reply_text("This request is not yours.")
+        return
+    if req.get("status") in {"approved", "rejected"}:
+        await message.reply_text(f"Request already {req.get('status')}.")
+        return
+    await store.set_payment_request_status(request_id, "submitted", note=note, admin_id=0)
+    await message.reply_text("Payment marked as submitted. Admin will verify and approve.")
+
+
+@app.on_message(filters.command("payments") & filters.private)
+async def list_payments(client: Client, message):
+    if not is_admin(message.from_user.id if message.from_user else None):
+        await message.reply_text("Not allowed. 🚫")
+        return
+    parts = (message.text or "").split()
+    status = "all"
+    limit = 20
+    if len(parts) >= 2:
+        status = parts[1].strip().lower()
+    if len(parts) >= 3:
+        try:
+            limit = max(1, min(int(parts[2]), 100))
+        except Exception:
+            limit = 20
+    if status not in {"all", "pending", "submitted", "approved", "rejected"}:
+        status = "all"
+    rows = await store.list_payment_requests(status=status, limit=limit)
+    if not rows:
+        await message.reply_text("No payment requests found.")
+        return
+    lines = [f"Payments ({status}) top {len(rows)}:"]
+    for req in rows:
+        lines.append(format_payment_request_line(req))
+    await message.reply_text("\n".join(lines))
+
+
+@app.on_message(filters.command("approve") & filters.private)
+async def approve_payment(client: Client, message):
+    if not is_admin(message.from_user.id if message.from_user else None):
+        await message.reply_text("Not allowed. 🚫")
+        return
+    parts = (message.text or "").split(maxsplit=2)
+    if len(parts) < 2:
+        await message.reply_text("Usage: /approve <request_id> [note]")
+        return
+    request_id = parts[1].strip()
+    note = parts[2].strip() if len(parts) >= 3 else "approved"
+    req = await store.get_payment_request(request_id)
+    if not req:
+        await message.reply_text("Request not found.")
+        return
+    if req.get("status") == "approved":
+        await message.reply_text("Already approved.")
+        return
+    if req.get("status") == "rejected":
+        await message.reply_text("Request is rejected. Use a new payment request.")
+        return
+    credits = int(req.get("credits", 0) or 0)
+    user_id = int(req.get("user_id", 0) or 0)
+    if credits <= 0 or user_id <= 0:
+        await message.reply_text("Invalid request data.")
+        return
+    balance = await store.add_credits(user_id, credits)
+    await store.set_payment_request_status(
+        request_id,
+        "approved",
+        note=note,
+        admin_id=(message.from_user.id if message.from_user else 0),
+    )
+    await message.reply_text(f"Approved {request_id}. Added {credits} credits to {user_id}. New balance: {balance}")
+    try:
+        await client.send_message(user_id, f"Your payment {request_id} is approved. Credits added: {credits}. Balance: {balance}")
+    except Exception:
+        pass
+
+
+@app.on_message(filters.command("reject") & filters.private)
+async def reject_payment(client: Client, message):
+    if not is_admin(message.from_user.id if message.from_user else None):
+        await message.reply_text("Not allowed. 🚫")
+        return
+    parts = (message.text or "").split(maxsplit=2)
+    if len(parts) < 2:
+        await message.reply_text("Usage: /reject <request_id> [reason]")
+        return
+    request_id = parts[1].strip()
+    reason = parts[2].strip() if len(parts) >= 3 else "rejected"
+    req = await store.get_payment_request(request_id)
+    if not req:
+        await message.reply_text("Request not found.")
+        return
+    if req.get("status") == "approved":
+        await message.reply_text("Request already approved. Cannot reject now.")
+        return
+    await store.set_payment_request_status(
+        request_id,
+        "rejected",
+        note=reason,
+        admin_id=(message.from_user.id if message.from_user else 0),
+    )
+    await message.reply_text(f"Rejected {request_id}.")
+    try:
+        await client.send_message(int(req.get("user_id", 0) or 0), f"Your payment {request_id} was rejected. Reason: {reason}")
+    except Exception:
+        pass
 
 
 @app.on_message(filters.command("credit_add") & filters.private)
@@ -737,6 +905,7 @@ async def runner() -> None:
 
 if __name__ == "__main__":
     app.run(runner())
+
 
 
 
