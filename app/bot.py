@@ -583,7 +583,7 @@ async def start_handler(client: Client, message):
         await message.reply_text(f"Completed. Sent: {sent_count}, Skipped: {skipped_count}")
 
 
-@app.on_message(filters.command("addsection") & filters.private)
+@app.on_message(filters.command(["addsection", "addsections"]) & filters.private)
 async def add_section(client: Client, message):
     if not is_admin(message.from_user.id if message.from_user else None):
         await message.reply_text("Not allowed. 🚫")
@@ -632,7 +632,7 @@ async def delete_section(client: Client, message):
     await message.reply_text(f"Section deleted: {name} ✅")
 
 
-@app.on_message(filters.command("showsections") & filters.private)
+@app.on_message(filters.command(["showsections", "showsection", "sections"]) & filters.private)
 async def show_sections(client: Client, message):
     if not is_admin(message.from_user.id if message.from_user else None):
         await message.reply_text("Not allowed. 🚫")
@@ -845,7 +845,7 @@ async def mark_paid(client: Client, message):
     await message.reply_text(msg)
 
 
-@app.on_message(filters.private & filters.text & ~filters.command(["start", "pay", "paid", "add", "addsection", "endsection", "delsection", "showsections", "setcreditprice", "setupi", "payments", "paydb", "approve", "reject", "credit", "credit_add", "db", "premium", "premiumlist", "history", "stats", "redeem", "setpay", "editplan"]))
+@app.on_message(filters.private & filters.text & ~filters.command(["start", "pay", "paid", "add", "addsection", "addsections", "endsection", "delsection", "showsections", "showsection", "sections", "setcreditprice", "setupi", "payments", "paydb", "approve", "reject", "credit", "credit_add", "db", "premium", "premiumlist", "history", "stats", "redeem", "setpay", "editplan"]))
 async def collect_pending_utr(client: Client, message):
     if not message.from_user:
         return
