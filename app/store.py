@@ -467,9 +467,9 @@ return {1, newval}
     async def next_payment_request_id(self) -> str:
         if self._redis is not None:
             seq = int(await self._redis.incr(self._pay_req_seq_key))
-            return f"P{seq:03d}"
+            return f"{seq:03d}"
         self._pay_req_seq += 1
-        return f"P{self._pay_req_seq:03d}"
+        return f"{self._pay_req_seq:03d}"
 
     async def reset_payment_requests(self) -> int:
         deleted = 0

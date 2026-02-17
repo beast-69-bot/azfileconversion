@@ -1005,7 +1005,7 @@ async def reset_payment_db(client: Client, message):
         return
 
     deleted = await store.reset_payment_requests()
-    await message.reply_text(f"Payment DB reset done. Removed keys/entries: {deleted}. Next request ID starts from P001.")
+    await message.reply_text(f"Payment DB reset done. Removed keys/entries: {deleted}. Next request ID starts from 001.")
 
 
 @app.on_message(filters.command("broadcast") & filters.private)
