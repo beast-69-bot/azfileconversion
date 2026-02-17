@@ -69,6 +69,7 @@ class TokenStore:
         self._pay_plan_key = "plan:pay"
         self._pay_req_prefix = "pay:req:"
         self._pay_req_index = "pay:req:index"
+        self._pay_req_seq_key = "pay:req:seq"
         self._pay_req_msg_prefix = "pay:reqmsg:"
         self._pay_pending_utr_prefix = "pay:pending_utr:"
         self._current_section: Optional[str] = None
@@ -78,6 +79,7 @@ class TokenStore:
         self._upi_id: Optional[str] = None
         self._pay_pending_utr: dict[int, str] = {}
         self._pay_req_messages: dict[str, tuple[int, int]] = {}
+        self._pay_req_seq: int = 0
         self._pay_requests: dict[str, dict] = {}
 
     async def connect(self) -> None:
@@ -461,6 +463,37 @@ return {1, newval}
             return
         self._pay_pending_utr.pop(int(user_id), None)
 
+
+    async def next_payment_request_id(self) -> str:
+        if self._redis is not None:
+            seq = int(await self._redis.incr(self._pay_req_seq_key))
+            return f"P{seq:03d}"
+        self._pay_req_seq += 1
+        return f"P{self._pay_req_seq:03d}"
+
+    async def reset_payment_requests(self) -> int:
+        deleted = 0
+        if self._redis is not None:
+            keys: list[str] = [self._pay_req_index, self._pay_req_seq_key]
+            patterns = [
+                f"{self._pay_req_prefix}*",
+                f"{self._pay_req_msg_prefix}*",
+                f"{self._pay_pending_utr_prefix}*",
+            ]
+            for pattern in patterns:
+                async for key in self._redis.scan_iter(match=pattern, count=1000):
+                    keys.append(str(key))
+            unique_keys = [k for k in dict.fromkeys(keys) if k]
+            if unique_keys:
+                deleted = int(await self._redis.delete(*unique_keys))
+            return deleted
+
+        deleted = len(self._pay_requests) + len(self._pay_req_messages) + len(self._pay_pending_utr)
+        self._pay_requests.clear()
+        self._pay_req_messages.clear()
+        self._pay_pending_utr.clear()
+        self._pay_req_seq = 0
+        return deleted
 
     async def create_payment_request(self, request_id: str, user_id: int, amount_inr: float, credits: int, plan_type: str = "credits") -> dict:
         now = int(time.time())

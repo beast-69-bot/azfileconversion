@@ -67,6 +67,7 @@ def build_bot_commands() -> list[BotCommand]:
         BotCommand("approve", "Approve payment (admin)"),
         BotCommand("reject", "Reject payment (admin)"),
         BotCommand("broadcast", "Broadcast message (admin)"),
+        BotCommand("resetpaydb", "Reset payment DB (admin)"),
     ]
 
 
@@ -202,10 +203,6 @@ def credits_for_amount(amount_inr: float, price_per_credit: float) -> int:
     if price_per_credit <= 0:
         return 0
     return int(amount_inr // price_per_credit)
-
-
-def new_payment_request_id() -> str:
-    return f"P{int(time.time())}{secrets.token_hex(2).upper()}"
 
 
 def format_payment_request_line(req: dict) -> str:
@@ -441,7 +438,7 @@ async def create_payment_request_for_amount(user_id: int, amount_inr: float) -> 
     if credits < 1:
         return None, f"Amount is too low. Minimum amount for 1 credit is INR {price:.2f}."
     req = await store.create_payment_request(
-        request_id=new_payment_request_id(),
+        request_id=await store.next_payment_request_id(),
         user_id=user_id,
         amount_inr=amount_inr,
         credits=credits,
@@ -450,7 +447,7 @@ async def create_payment_request_for_amount(user_id: int, amount_inr: float) -> 
 
 async def create_premium_monthly_request(user_id: int) -> dict:
     return await store.create_payment_request(
-        request_id=new_payment_request_id(),
+        request_id=await store.next_payment_request_id(),
         user_id=user_id,
         amount_inr=PREMIUM_MONTHLY_PRICE_INR,
         credits=0,
@@ -805,7 +802,7 @@ async def set_credit_price(client: Client, message):
 @app.on_message(filters.command("setupi") & filters.private)
 async def set_upi(client: Client, message):
     if not is_admin(message.from_user.id if message.from_user else None):
-        await message.reply_text("Not allowed. ??")
+        await message.reply_text("Not allowed.")
         return
     parts = (message.text or "").split(maxsplit=1)
     if len(parts) < 2:
@@ -845,7 +842,7 @@ async def mark_paid(client: Client, message):
     await message.reply_text(msg)
 
 
-@app.on_message(filters.private & filters.text & ~filters.command(["start", "pay", "paid", "add", "addsection", "addsections", "endsection", "delsection", "showsections", "showsection", "sections", "setcreditprice", "setupi", "payments", "paydb", "approve", "reject", "credit", "credit_add", "db", "premium", "premiumlist", "history", "stats", "redeem", "setpay", "editplan"]))
+@app.on_message(filters.private & filters.text & ~filters.command(["start", "pay", "paid", "add", "addsection", "addsections", "endsection", "delsection", "showsections", "showsection", "sections", "setcreditprice", "setupi", "payments", "paydb", "approve", "reject", "credit", "credit_add", "db", "premium", "premiumlist", "history", "stats", "redeem", "setpay", "editplan", "broadcast", "resetpaydb"]))
 async def collect_pending_utr(client: Client, message):
     if not message.from_user:
         return
@@ -890,7 +887,7 @@ async def list_payments(client: Client, message):
 @app.on_message(filters.command("paydb") & filters.private)
 async def export_payments_db(client: Client, message):
     if not is_admin(message.from_user.id if message.from_user else None):
-        await message.reply_text("Not allowed. ??")
+        await message.reply_text("Not allowed.")
         return
 
     parts = (message.text or "").split()
@@ -959,7 +956,7 @@ async def export_payments_db(client: Client, message):
 @app.on_message(filters.command("approve") & filters.private)
 async def approve_payment(client: Client, message):
     if not is_admin(message.from_user.id if message.from_user else None):
-        await message.reply_text("Not allowed. ??")
+        await message.reply_text("Not allowed.")
         return
     parts = (message.text or "").split(maxsplit=2)
     if len(parts) < 2:
@@ -979,7 +976,7 @@ async def approve_payment(client: Client, message):
 @app.on_message(filters.command("reject") & filters.private)
 async def reject_payment(client: Client, message):
     if not is_admin(message.from_user.id if message.from_user else None):
-        await message.reply_text("Not allowed. ??")
+        await message.reply_text("Not allowed.")
         return
     parts = (message.text or "").split(maxsplit=2)
     if len(parts) < 2:
@@ -996,10 +993,25 @@ async def reject_payment(client: Client, message):
     await message.reply_text(msg)
 
 
+@app.on_message(filters.command("resetpaydb") & filters.private)
+async def reset_payment_db(client: Client, message):
+    if not is_admin(message.from_user.id if message.from_user else None):
+        await message.reply_text("Not allowed.")
+        return
+
+    parts = (message.text or "").split(maxsplit=1)
+    if len(parts) < 2 or parts[1].strip().lower() != "confirm":
+        await message.reply_text("Usage: /resetpaydb confirm")
+        return
+
+    deleted = await store.reset_payment_requests()
+    await message.reply_text(f"Payment DB reset done. Removed keys/entries: {deleted}. Next request ID starts from P001.")
+
+
 @app.on_message(filters.command("broadcast") & filters.private)
 async def broadcast_message(client: Client, message):
     if not is_admin(message.from_user.id if message.from_user else None):
-        await message.reply_text("Not allowed. ??")
+        await message.reply_text("Not allowed.")
         return
 
     parts = (message.text or "").split(maxsplit=1)
