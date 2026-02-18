@@ -58,6 +58,7 @@ def build_bot_commands() -> list[BotCommand]:
         BotCommand("pay", "Buy credits"),
         BotCommand("premium", "INR 499 monthly premium"),
         BotCommand("credit", "Check your plan and credits"),
+        BotCommand("credit_remove", "Remove user credits (admin)"),
         BotCommand("paid", "Submit payment proof"),
         BotCommand("redeem", "Redeem token"),
         BotCommand("stats", "Bot stats"),
@@ -876,7 +877,7 @@ async def mark_paid(client: Client, message):
     await message.reply_text(msg)
 
 
-@app.on_message(filters.private & filters.text & ~filters.command(["start", "pay", "paid", "add", "addsection", "addsections", "endsection", "delsection", "showsections", "showsection", "sections", "setcreditprice", "setupi", "payments", "paydb", "approve", "reject", "credit", "credit_add", "db", "premium", "premiumlist", "history", "stats", "redeem", "setpay", "editplan", "broadcast", "resetpaydb"]))
+@app.on_message(filters.private & filters.text & ~filters.command(["start", "pay", "paid", "add", "addsection", "addsections", "endsection", "delsection", "showsections", "showsection", "sections", "setcreditprice", "setupi", "payments", "paydb", "approve", "reject", "credit", "credit_add", "credit_remove", "db", "premium", "premiumlist", "history", "stats", "redeem", "setpay", "editplan", "broadcast", "resetpaydb"]))
 async def collect_pending_utr(client: Client, message):
     if not message.from_user:
         return
@@ -1105,6 +1106,33 @@ async def credit_add(client: Client, message):
         return
     balance = await store.add_credits(user_id, amount)
     await message.reply_text(f"Added {amount} credits to {user_id}. Balance: {balance} ✅")
+
+
+@app.on_message(filters.command("credit_remove") & filters.private)
+async def credit_remove(client: Client, message):
+    if not is_admin(message.from_user.id if message.from_user else None):
+        await message.reply_text("Not allowed. ??")
+        return
+    parts = (message.text or "").split()
+    if len(parts) < 3:
+        await message.reply_text("Usage: /credit_remove <userid> <amount> ??")
+        return
+    try:
+        user_id = int(parts[1])
+        amount = int(parts[2])
+    except Exception:
+        await message.reply_text("Invalid format. Example: /credit_remove 123456 10 ??")
+        return
+    if amount <= 0:
+        await message.reply_text("Amount must be > 0. ??")
+        return
+
+    ok, balance = await store.charge_credits(user_id, amount)
+    if not ok:
+        await message.reply_text(f"Cannot remove {amount} credits from {user_id}. Current balance: {balance}")
+        return
+
+    await message.reply_text(f"Removed {amount} credits from {user_id}. Balance: {balance} ?")
 
 
 @app.on_message(filters.command("db") & filters.private)
