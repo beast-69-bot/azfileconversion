@@ -1,4 +1,5 @@
 ﻿import asyncio
+from html import escape
 import logging
 import re
 import secrets
@@ -40,6 +41,10 @@ MIN_CUSTOM_PAY_INR = 10.0
 DEFAULT_UPI_PAYEE_NAME = "AZ File Conversion"
 PREMIUM_MONTHLY_PRICE_INR = 499.0
 PREMIUM_MONTHLY_DAYS = 30
+
+
+def bullet_lines(items: list[str]) -> str:
+    return "\n".join(f"- {item}" for item in items)
 
 
 def build_link(token: str) -> str:
@@ -263,30 +268,41 @@ async def send_payment_request_message(client: Client, chat_id: int, req: dict, 
     plan_label = format_plan_label(req)
     upi_uri = build_upi_uri(upi_id=upi_id, amount_inr=amount_inr, request_id=request_id)
     caption = (
-        "PAYMENT CHECKOUT\n\n"
-        f"Request ID: {request_id}\n"
-        f"Amount: INR {amount_inr:.2f}\n"
-        f"Plan: {plan_label}\n"
-        f"UPI ID: {upi_id}\n\n"
-        "Steps:\n"
-        "1) Open any UPI app and scan this QR.\n"
-        "2) Pay the exact amount shown above.\n"
-        "3) Tap 'Send UTR' below.\n"
-        "4) Send transaction UTR/Ref number.\n"
-        "5) Wait for admin approval.\n\n"
-        "Use 'Cancel' if you do not want to continue."
+        "\U0001F4B3 <b><u>Payment Checkout</u></b>\n\n"
+        + bullet_lines([
+            f"<b>Request ID:</b> <code>{escape(request_id)}</code>",
+            f"<b>Amount:</b> INR {amount_inr:.2f}",
+            f"<b>Plan:</b> {escape(plan_label)}",
+            f"<b>UPI ID:</b> <code>{escape(upi_id)}</code>",
+        ])
+        + "\n\n\U0001F4DD <b><u>Steps</u></b>\n"
+        + bullet_lines([
+            "Open any UPI app and scan this QR",
+            "Pay the exact amount shown above",
+            "Tap <b>Send UTR</b> below",
+            "Send transaction UTR/Ref number",
+            "Wait for admin approval",
+        ])
+        + "\n\n<i>Use Cancel if you do not want to continue.</i>"
     )
     qr_url = build_upi_qr_url(upi_uri)
     keyboard = build_payment_request_keyboard(request_id)
     sent = None
     try:
-        sent = await client.send_photo(chat_id=chat_id, photo=qr_url, caption=caption, reply_markup=keyboard)
+        sent = await client.send_photo(
+            chat_id=chat_id,
+            photo=qr_url,
+            caption=caption,
+            reply_markup=keyboard,
+            parse_mode="html",
+        )
     except Exception:
         sent = await client.send_message(
             chat_id=chat_id,
-            text=caption + f"\n\nUPI link:\n{upi_uri}",
+            text=caption + f"\n\n\U0001F517 <b>UPI Link:</b>\n<code>{escape(upi_uri)}</code>",
             disable_web_page_preview=True,
             reply_markup=keyboard,
+            parse_mode="html",
         )
     if sent:
         await store.set_payment_prompt(request_id, chat_id, sent.id)
@@ -538,21 +554,29 @@ async def start_handler(client: Client, message):
     parts = text.split(maxsplit=1)
     if len(parts) < 2:
         await message.reply_text(
-            "Welcome to FileLord\n\n"
-            "Bot overview:\n"
-            "- Open website links and get files here in Telegram\n"
-            "- Normal users: play-only mode\n"
-            "- Premium/Credit users: full downloadable files\n\n"
-            "How to use:\n"
-            "1) Open a section/file link from website\n"
-            "2) Tap Open in Telegram\n"
-            "3) File will be delivered in this chat\n\n"
-            "Useful commands:\n"
-            "- /pay : buy credits\n"
-            "- /premium : monthly premium (INR 499 / 30 days)\n"
-            "- /credit : check your plan and balance\n"
-            "- /paid <request_id> <UTR> : submit payment proof\n"
-            "- /redeem <token> : redeem token"
+            "\U0001F44B <b><u>Welcome to FileLord</u></b>\n\n"
+            "\u2728 <b><u>Overview</u></b>\n"
+            + bullet_lines([
+                "Open website links and receive files in Telegram",
+                "Normal users get <i>play-only</i> protected files",
+                "Premium/Credit users get full downloadable files",
+            ])
+            + "\n\n\U0001F680 <b><u>How To Use</u></b>\n"
+            + bullet_lines([
+                "Open a section/file link from the website",
+                "Tap <b>Open in Telegram</b>",
+                "File will be delivered in this chat",
+            ])
+            + "\n\n\U0001F9ED <b><u>Useful Commands</u></b>\n"
+            + bullet_lines([
+                "<code>/pay</code> - buy credits",
+                "<code>/premium</code> - monthly premium (INR 499 / 30 days)",
+                "<code>/credit</code> - check your plan and balance",
+                "<code>/paid &lt;request_id&gt; &lt;UTR&gt;</code> - submit payment proof",
+                "<code>/redeem &lt;token&gt;</code> - redeem token",
+            ]),
+            parse_mode="html",
+            disable_web_page_preview=True,
         )
         return
 
@@ -718,7 +742,7 @@ async def show_admins(client: Client, message):
 @app.on_message(filters.command("credit") & filters.private)
 async def credit_balance(client: Client, message):
     if not message.from_user:
-        await message.reply_text("Could not read your user info. Please try again. 🙏")
+        await message.reply_text("Could not read your user info. Please try again. \U0001F64F")
         return
 
     user_id = message.from_user.id
@@ -727,16 +751,22 @@ async def credit_balance(client: Client, message):
 
     if is_premium:
         await message.reply_text(
-            "Your plan details 📋:\n"
-            "- Premium plan: Active ✅\n"
-            "- Credits: Unlimited ♾️"
+            "\u2728 <b><u>Your Plan Details</u></b>\n\n"
+            + bullet_lines([
+                "<b>Premium plan:</b> Active \u2705",
+                "<b>Credits:</b> <i>Unlimited</i> \u267E\uFE0F",
+            ]),
+            parse_mode="html",
         )
         return
 
     await message.reply_text(
-        "Your plan details 📋:\n"
-        "- Premium plan: Not active ❌\n"
-        f"- Credits: {balance}"
+        "\U0001F4B3 <b><u>Your Plan Details</u></b>\n\n"
+        + bullet_lines([
+            "<b>Premium plan:</b> Not active \u274C",
+            f"<b>Credits:</b> <code>{balance}</code>",
+        ]),
+        parse_mode="html",
     )
 
 
@@ -777,13 +807,22 @@ async def pay_info(client: Client, message):
         await send_payment_request_message(client, message.chat.id, req, upi_id)
         return
 
-    upi_note = f"\nUPI ID: {upi_id}" if upi_id else "\nUPI not configured yet."
+    plan_text = escape(render_pay_text(template, price))
+    upi_html = f"<code>{escape(upi_id)}</code>" if upi_id else "<i>Not configured</i>"
     await message.reply_text(
-        render_pay_text(template, price)
-        + upi_note
-        + f"\n\nChoose an amount below, or use /pay <amount> (custom must be > INR {MIN_CUSTOM_PAY_INR:.0f}).\nPremium plan: INR 499 for 30 days. Includes unlimited credit usage while premium is active. Tap Premium 499 or use /premium.",
+        "\U0001F4B8 <b><u>Payment Options</u></b>\n\n"
+        + bullet_lines([
+            f"<b>Credit price:</b> INR {price:.2f}",
+            f"<b>UPI ID:</b> {upi_html}",
+            "Use the buttons below for quick payment amounts",
+            f"Use <code>/pay &lt;amount&gt;</code> for custom amount (&gt; INR {MIN_CUSTOM_PAY_INR:.0f})",
+            "<b>Premium:</b> INR 499 for 30 days with unlimited usage while active",
+        ])
+        + "\n\n\U0001F4DD <b><u>Plan Note</u></b>\n"
+        + f"<i>{plan_text}</i>",
         reply_markup=keyboard,
         disable_web_page_preview=True,
+        parse_mode="html",
     )
 
 
@@ -1111,20 +1150,20 @@ async def credit_add(client: Client, message):
 @app.on_message(filters.command("credit_remove") & filters.private)
 async def credit_remove(client: Client, message):
     if not is_admin(message.from_user.id if message.from_user else None):
-        await message.reply_text("Not allowed. ??")
+        await message.reply_text("Not allowed. \U0001F6AB")
         return
     parts = (message.text or "").split()
     if len(parts) < 3:
-        await message.reply_text("Usage: /credit_remove <userid> <amount> ??")
+        await message.reply_text("Usage: /credit_remove <userid> <amount> \U0001F9FE")
         return
     try:
         user_id = int(parts[1])
         amount = int(parts[2])
     except Exception:
-        await message.reply_text("Invalid format. Example: /credit_remove 123456 10 ??")
+        await message.reply_text("Invalid format. Example: /credit_remove 123456 10 \U0001F9FE")
         return
     if amount <= 0:
-        await message.reply_text("Amount must be > 0. ??")
+        await message.reply_text("Amount must be > 0. \U0001F522")
         return
 
     ok, balance = await store.charge_credits(user_id, amount)
@@ -1132,7 +1171,7 @@ async def credit_remove(client: Client, message):
         await message.reply_text(f"Cannot remove {amount} credits from {user_id}. Current balance: {balance}")
         return
 
-    await message.reply_text(f"Removed {amount} credits from {user_id}. Balance: {balance} ?")
+    await message.reply_text(f"Removed {amount} credits from {user_id}. Balance: {balance} \u2705")
 
 
 @app.on_message(filters.command("db") & filters.private)
