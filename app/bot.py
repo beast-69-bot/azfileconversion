@@ -334,6 +334,37 @@ async def notify_admin_payment_submitted(client: Client, req: dict, user, utr: s
             continue
 
 
+async def notify_other_admins_payment_updated(
+    client: Client,
+    req: dict,
+    actor_admin_id: int,
+    final_status: str,
+    action_note: str,
+) -> None:
+    request_id = str(req.get("id", "")).strip()
+    user_id = int(req.get("user_id", 0) or 0)
+    amount_inr = float(req.get("amount_inr", 0) or 0)
+    plan_label = format_plan_label(req)
+    note_text = (action_note or "-").strip()
+    text_msg = (
+        "Payment request updated.\n"
+        f"Request ID: {request_id}\n"
+        f"User ID: {user_id}\n"
+        f"Amount: INR {amount_inr:.2f}\n"
+        f"Plan: {plan_label}\n"
+        f"Status: {final_status}\n"
+        f"Reviewed by admin: {actor_admin_id}\n"
+        f"Note: {note_text}"
+    )
+    for admin_id in settings.admin_ids:
+        if int(admin_id) == int(actor_admin_id):
+            continue
+        try:
+            await client.send_message(chat_id=admin_id, text=text_msg)
+        except Exception:
+            continue
+
+
 async def submit_payment_with_utr(client: Client, user, request_id: str, utr: str) -> tuple[bool, str]:
     req = await store.get_payment_request(request_id)
     if not req:
@@ -377,6 +408,7 @@ async def approve_payment_request(client: Client, request_id: str, admin_id: int
             await client.send_message(user_id, f"Your payment {request_id} is approved. Premium activated for {PREMIUM_MONTHLY_DAYS} days.")
         except Exception:
             pass
+        await notify_other_admins_payment_updated(client, req, admin_id, "approved", note)
         return True, f"Approved {request_id}. Premium activated for {user_id} ({PREMIUM_MONTHLY_DAYS} days)."
 
     credits = int(req.get("credits", 0) or 0)
@@ -390,6 +422,7 @@ async def approve_payment_request(client: Client, request_id: str, admin_id: int
         await client.send_message(user_id, f"Your payment {request_id} is approved. Credits added: {credits}. Balance: {balance}")
     except Exception:
         pass
+    await notify_other_admins_payment_updated(client, req, admin_id, "approved", note)
     return True, f"Approved {request_id}. Added {credits} credits to {user_id}. New balance: {balance}"
 
 
@@ -412,6 +445,7 @@ async def reject_payment_request(client: Client, request_id: str, admin_id: int,
         await client.send_message(user_id, f"Your payment {request_id} was rejected. Reason: {reason}")
     except Exception:
         pass
+    await notify_other_admins_payment_updated(client, req, admin_id, "rejected", reason)
     return True, f"Rejected {request_id}."
 
 
