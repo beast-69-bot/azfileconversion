@@ -9,7 +9,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 from openpyxl import Workbook
-from pyrogram import Client, filters
+from pyrogram import Client, filters, enums
 from pyrogram.types import BotCommand, InlineKeyboardButton, InlineKeyboardMarkup
 from pyrogram.errors import FloodWait
 
@@ -294,7 +294,7 @@ async def send_payment_request_message(client: Client, chat_id: int, req: dict, 
             photo=qr_url,
             caption=caption,
             reply_markup=keyboard,
-            parse_mode="html",
+            parse_mode=enums.ParseMode.HTML,
         )
     except Exception:
         sent = await client.send_message(
@@ -302,7 +302,7 @@ async def send_payment_request_message(client: Client, chat_id: int, req: dict, 
             text=caption + f"\n\n\U0001F517 <b>UPI Link:</b>\n<code>{escape(upi_uri)}</code>",
             disable_web_page_preview=True,
             reply_markup=keyboard,
-            parse_mode="html",
+            parse_mode=enums.ParseMode.HTML,
         )
     if sent:
         await store.set_payment_prompt(request_id, chat_id, sent.id)
@@ -575,7 +575,7 @@ async def start_handler(client: Client, message):
                 "<code>/paid &lt;request_id&gt; &lt;UTR&gt;</code> - submit payment proof",
                 "<code>/redeem &lt;token&gt;</code> - redeem token",
             ]),
-            parse_mode="html",
+            parse_mode=enums.ParseMode.HTML,
             disable_web_page_preview=True,
         )
         return
@@ -756,7 +756,7 @@ async def credit_balance(client: Client, message):
                 "<b>Premium plan:</b> Active \u2705",
                 "<b>Credits:</b> <i>Unlimited</i> \u267E\uFE0F",
             ]),
-            parse_mode="html",
+            parse_mode=enums.ParseMode.HTML,
         )
         return
 
@@ -766,7 +766,7 @@ async def credit_balance(client: Client, message):
             "<b>Premium plan:</b> Not active \u274C",
             f"<b>Credits:</b> <code>{balance}</code>",
         ]),
-        parse_mode="html",
+        parse_mode=enums.ParseMode.HTML,
     )
 
 
@@ -822,7 +822,7 @@ async def pay_info(client: Client, message):
         + f"<i>{plan_text}</i>",
         reply_markup=keyboard,
         disable_web_page_preview=True,
-        parse_mode="html",
+        parse_mode=enums.ParseMode.HTML,
     )
 
 
