@@ -1606,7 +1606,10 @@ async def runner() -> None:
 
 
 if __name__ == "__main__":
-    app.run(runner())
+    try:
+        asyncio.run(runner())
+    except KeyboardInterrupt:
+        pass
 
 
 
