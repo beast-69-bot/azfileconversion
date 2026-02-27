@@ -1591,10 +1591,7 @@ async def runner() -> None:
     while True:
         try:
             await app.start()
-            try:
-                await app.set_bot_commands(build_bot_commands())
-            except Exception as exc:
-                logger.warning("Failed to set bot commands: %s", exc)
+            # Commands are managed via BotFather to avoid Telegram API restrictions
             logger.info("Bot started")
             break
         except FloodWait as exc:
