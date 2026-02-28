@@ -361,7 +361,7 @@ async def resetpaydb_cmd(message: Message) -> None:
     await message.reply(f"Payment DB reset done. Removed keys/entries: {deleted}. Next request ID starts from 001.")
 
 
-@dp.message(Command("addsection"))
+@dp.message(Command("addsection", "addsections"))
 async def addsection_cmd(message: Message) -> None:
     if not is_admin(message.from_user.id if message.from_user else None):
         await message.reply("Not allowed.")
@@ -375,7 +375,11 @@ async def addsection_cmd(message: Message) -> None:
     if not sid:
         await message.reply("Section already exists or invalid.")
         return
-    await message.reply(f"Section set: {section_name} -> {sid}")
+    section_link = f"{settings.base_url}/section/{sid}"
+    await message.reply(
+        f"Section set: {section_name} -> {sid}\n"
+        f"Section link: {section_link}"
+    )
 
 
 @dp.message(Command("delsection"))
