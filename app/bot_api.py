@@ -698,11 +698,6 @@ async def redeem_cmd(message: Message) -> None:
     await message.reply("Redeem command will be added in next patch.")
 
 
-@dp.message(Command("addsections", "endsection"))
-async def aliases_cmd(message: Message) -> None:
-    await message.reply("Use /addsection and /showsections in this version.")
-
-
 @dp.message(Command("paymentsdb"))
 async def alias_paydb(message: Message) -> None:
     await paydb_cmd(message)
