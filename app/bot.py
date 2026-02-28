@@ -1604,6 +1604,18 @@ async def handle_channel_media(client: Client, message):
         logger.exception("Failed to send link: %s", exc)
 
 
+async def notify_admin_restart(client: Client) -> None:
+    if not settings.admin_ids:
+        return
+    stamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+    text = f"? Bot restarted and is online.\n?? {stamp}"
+    for admin_id in settings.admin_ids:
+        try:
+            await client.send_message(chat_id=admin_id, text=text)
+        except Exception as exc:
+            logger.warning("Restart notify failed for %s: %s", admin_id, exc)
+
+
 async def runner() -> None:
     await store.connect()
     await db.connect()
@@ -1616,6 +1628,7 @@ async def runner() -> None:
             await app.start()
             # Commands are managed via BotFather to avoid Telegram API restrictions
             logger.info("Bot started")
+            await notify_admin_restart(app)
             break
         except FloodWait as exc:
             logger.warning("FloodWait %s seconds", exc.value)
