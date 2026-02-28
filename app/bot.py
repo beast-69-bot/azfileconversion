@@ -30,7 +30,6 @@ app = Client(
     api_hash=settings.api_hash,
     bot_token=settings.bot_token,
     sleep_threshold=10000,
-    in_memory=True,
 )
 
 VIDEO_EXTS = {".mp4", ".mkv", ".mov", ".webm", ".avi", ".mpeg", ".mpg", ".m4v"}
@@ -42,6 +41,13 @@ MIN_CUSTOM_PAY_INR = 10.0
 DEFAULT_UPI_PAYEE_NAME = "AZ File Conversion"
 PREMIUM_MONTHLY_PRICE_INR = 499.0
 PREMIUM_MONTHLY_DAYS = 30
+KNOWN_COMMANDS = [
+    "start", "pay", "paid", "add", "addsection", "addsections", "endsection",
+    "delsection", "showsections", "showsection", "sections", "setcreditprice",
+    "setupi", "payments", "paydb", "approve", "reject", "credit", "credit_add",
+    "credit_remove", "db", "premium", "premiumlist", "history", "stats",
+    "redeem", "setpay", "editplan", "broadcast", "resetpaydb"
+]
 
 
 def bullet_lines(items: list[str]) -> str:
@@ -925,7 +931,7 @@ async def mark_paid(client: Client, message):
     await message.reply_text(msg)
 
 
-@app.on_message(filters.private & filters.text & ~filters.command(["start", "pay", "paid", "add", "addsection", "addsections", "endsection", "delsection", "showsections", "showsection", "sections", "setcreditprice", "setupi", "payments", "paydb", "approve", "reject", "credit", "credit_add", "credit_remove", "db", "premium", "premiumlist", "history", "stats", "redeem", "setpay", "editplan", "broadcast", "resetpaydb"]))
+@app.on_message(filters.private & filters.text & ~filters.command(KNOWN_COMMANDS))
 async def collect_pending_utr(client: Client, message):
     if not message.from_user:
         return
@@ -1089,6 +1095,14 @@ async def reset_payment_db(client: Client, message):
 
     deleted = await store.reset_payment_requests()
     await message.reply_text(f"Payment DB reset done. Removed keys/entries: {deleted}. Next request ID starts from 001.")
+
+
+@app.on_message(filters.private & filters.regex(r"^/[A-Za-z0-9_]+") & ~filters.command(KNOWN_COMMANDS))
+async def unknown_command(client: Client, message):
+    await message.reply_text(
+        "Unknown command. Use /start to see available commands.\n"
+        "Quick: /credit, /pay, /premium"
+    )
 
 
 @app.on_message(filters.command("broadcast") & filters.private)
