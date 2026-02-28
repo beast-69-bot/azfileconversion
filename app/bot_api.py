@@ -113,7 +113,7 @@ async def health_cmd(message: Message) -> None:
     await message.reply("I am alive!")
 
 
-@dp.message(Command(["addsection", "showsections", "credit_add", "credit_remove", "add", "stats", "db", "broadcast", "payments", "paydb", "approve", "reject", "resetpaydb", "setpay", "editplan", "setupi", "setcreditprice", "paid", "redeem", "premiumlist", "history"]))
+@dp.message(Command("addsection", "showsections", "credit_add", "credit_remove", "add", "stats", "db", "broadcast", "payments", "paydb", "approve", "reject", "resetpaydb", "setpay", "editplan", "setupi", "setcreditprice", "paid", "redeem", "premiumlist", "history"))
 async def migrating_cmds(message: Message) -> None:
     await message.reply("This command is being migrated. Core commands are active.")
 
