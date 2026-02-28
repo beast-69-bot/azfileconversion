@@ -36,6 +36,16 @@ _client_lock = asyncio.Lock()
 _warm_lock = asyncio.Lock()
 
 
+@app.get("/")
+async def root():
+    return {"ok": True, "service": "azfileconversion", "docs": "/docs"}
+
+
+@app.get("/health")
+async def health():
+    return {"status": "healthy"}
+
+
 async def warm_client() -> None:
     async with _warm_lock:
         if _client_started:
