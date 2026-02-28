@@ -713,7 +713,14 @@ async def private_media_handler(message: Message) -> None:
     if message.chat.type not in {"private", "channel"}:
         return
 
-    media = message.document or message.video or message.audio
+    media = (
+        message.document
+        or message.video
+        or message.audio
+        or message.animation
+        or message.voice
+        or message.video_note
+    )
     if not media:
         if (message.text or "").startswith("/"):
             await message.reply("Unknown command. Use /start")
@@ -740,6 +747,12 @@ async def private_media_handler(message: Message) -> None:
         media_type = "video"
     elif message.audio:
         media_type = "audio"
+    elif message.animation:
+        media_type = "animation"
+    elif message.voice:
+        media_type = "voice"
+    elif message.video_note:
+        media_type = "video_note"
 
     base_ref = dict(
         file_id=media.file_id,
