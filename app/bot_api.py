@@ -720,10 +720,14 @@ async def private_media_handler(message: Message) -> None:
         or message.animation
         or message.voice
         or message.video_note
+        or (message.photo[-1] if message.photo else None)
     )
     if not media:
         if (message.text or "").startswith("/"):
             await message.reply("Unknown command. Use /start")
+            return
+        if message.chat.type == "private" and is_admin(message.from_user.id if message.from_user else None):
+            await message.reply("Unsupported media type. Send document/video/audio/animation/voice/video_note/photo.")
         return
 
     if message.chat.type == "private" and not is_admin(message.from_user.id if message.from_user else None):
@@ -753,6 +757,8 @@ async def private_media_handler(message: Message) -> None:
         media_type = "voice"
     elif message.video_note:
         media_type = "video_note"
+    elif message.photo:
+        media_type = "photo"
 
     base_ref = dict(
         file_id=media.file_id,
