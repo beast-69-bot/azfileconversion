@@ -382,6 +382,15 @@ async def addsection_cmd(message: Message) -> None:
     )
 
 
+@dp.message(Command("endsection"))
+async def endsection_cmd(message: Message) -> None:
+    if not is_admin(message.from_user.id if message.from_user else None):
+        await message.reply("Not allowed.")
+        return
+    await store.set_section(None)
+    await message.reply("Section ended. Uploads will not be mapped until /addsection is set.")
+
+
 @dp.message(Command("delsection"))
 async def delsection_cmd(message: Message) -> None:
     if not is_admin(message.from_user.id if message.from_user else None):
