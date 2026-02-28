@@ -30,6 +30,7 @@ app = Client(
     api_hash=settings.api_hash,
     bot_token=settings.bot_token,
     sleep_threshold=10000,
+    in_memory=True,
 )
 
 VIDEO_EXTS = {".mp4", ".mkv", ".mov", ".webm", ".avi", ".mpeg", ".mpg", ".m4v"}
@@ -548,8 +549,16 @@ async def deliver_token(client: Client, user_id: int, token: str, include_guidan
     return True
 
 
-@app.on_message(filters.command("start") & filters.private)
+@app.on_message(
+    filters.private & filters.regex(r"^/start(?:@[A-Za-z0-9_]+)?(?:\s|$)"),
+    group=-1,
+)
 async def start_handler(client: Client, message):
+    logger.info(
+        "START HIT uid=%s text=%r",
+        message.from_user.id if message.from_user else None,
+        message.text,
+    )
     text = message.text or ""
     parts = text.split(maxsplit=1)
     if len(parts) < 2:
