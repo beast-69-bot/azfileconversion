@@ -3,6 +3,7 @@ import io
 import logging
 import secrets
 import time
+from html import escape as _esc
 
 from aiogram import Bot, Dispatcher
 from aiogram.filters import Command, CommandStart
@@ -52,6 +53,77 @@ BOT_COMMANDS = [
 ]
 
 
+# ---------------------------------------------------------------------------
+#  Format helpers
+# ---------------------------------------------------------------------------
+
+def esc(text: str) -> str:
+    """Escape user-supplied text for safe HTML embedding."""
+    return _esc(str(text), quote=False)
+
+
+def code(text: str) -> str:
+    """Wrap text in <code> tags."""
+    return f"<code>{esc(str(text))}</code>"
+
+
+def link(text: str, url: str) -> str:
+    """Create a safe HTML hyperlink."""
+    return f'<a href="{esc(url)}">{esc(text)}</a>'
+
+
+def bold(text: str) -> str:
+    return f"<b>{esc(str(text))}</b>"
+
+
+def format_msg(
+    title: str,
+    sections: list[tuple[str, str]] | None = None,
+    tip: str | None = None,
+    status: str | None = None,
+) -> str:
+    """
+    Build a consistently styled HTML message.
+
+    title:    emoji + title text, e.g. "💳 Credits"
+    sections: list of (label, value) pairs; label="" means plain line
+    tip:      Optional tip line shown at bottom
+    status:   Optional line prepended as ✅/⚠️/❌ etc.
+    """
+    parts: list[str] = []
+
+    if status:
+        parts.append(status)
+
+    parts.append(f"<b>{esc(title)}</b>")
+    parts.append("")  # blank line
+
+    if sections:
+        for label, value in sections:
+            if label:
+                parts.append(f"<b>{esc(label)}:</b> {value}")
+            else:
+                parts.append(value)
+
+    if tip:
+        parts.append("")
+        parts.append(f"💡 <i>{esc(tip)}</i>")
+
+    return "\n".join(parts)
+
+
+def bullet(items: list[str]) -> str:
+    return "\n".join(f"• {item}" for item in items)
+
+
+def _format_money(v: float) -> str:
+    return f"{v:.2f}"
+
+
+# ---------------------------------------------------------------------------
+#  Core helpers
+# ---------------------------------------------------------------------------
+
 def is_admin(user_id: int | None) -> bool:
     return bool(user_id and user_id in settings.admin_ids)
 
@@ -67,16 +139,15 @@ def parse_period(value: str) -> int | None:
     return int(value)
 
 
-def _format_money(v: float) -> str:
-    return f"{v:.2f}"
-
-
 async def _notify_restart() -> None:
     stamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-    text = f"✅ Bot restarted and is online.\n🕒 {stamp}"
+    text = format_msg(
+        "🟢 Bot Online",
+        sections=[("Restarted at", esc(stamp))],
+    )
     for admin_id in settings.admin_ids:
         try:
-            await bot.send_message(admin_id, text)
+            await bot.send_message(admin_id, text, parse_mode="HTML")
         except Exception as exc:
             logger.warning("Restart notify failed for %s: %s", admin_id, exc)
 
@@ -84,12 +155,18 @@ async def _notify_restart() -> None:
 async def _deliver_token(message: Message, token: str) -> None:
     ref = await store.get(token, settings.token_ttl_seconds)
     if not ref:
-        await message.reply("Invalid or expired link.")
+        await message.reply(
+            format_msg("❌ Not Found", sections=[("", "This link is invalid or has expired.")]),
+            parse_mode="HTML",
+        )
         return
 
     user_id = message.from_user.id if message.from_user else 0
     if user_id <= 0:
-        await message.reply("User not found.")
+        await message.reply(
+            format_msg("❌ Error", sections=[("", "Could not identify your user account.")]),
+            parse_mode="HTML",
+        )
         return
 
     premium = await db.is_premium(user_id)
@@ -97,10 +174,30 @@ async def _deliver_token(message: Message, token: str) -> None:
         ok, bal = await store.charge_credits(user_id, CREDIT_COST)
         if not ok:
             await message.reply(
-                f"Premium/Credit required.\nBalance: {bal}\nUse /pay or /premium"
+                format_msg(
+                    "✨ Premium / Credits Required",
+                    sections=[
+                        ("Balance", f"{code(bal)} credits"),
+                        ("", ""),
+                        ("", bullet([
+                            "Use /pay to buy credits",
+                            "Use /premium to upgrade your plan",
+                        ])),
+                    ],
+                ),
+                parse_mode="HTML",
             )
             return
-        await message.reply(f"1 credit used. Remaining: {bal}")
+        await message.reply(
+            format_msg(
+                "💳 Credit Used",
+                sections=[
+                    ("Deducted", "1 credit"),
+                    ("Remaining", f"{code(bal)} credits"),
+                ],
+            ),
+            parse_mode="HTML",
+        )
 
     try:
         await bot.copy_message(
@@ -111,8 +208,15 @@ async def _deliver_token(message: Message, token: str) -> None:
         )
     except Exception as exc:
         logger.exception("copy_message failed: %s", exc)
-        await message.reply("Failed to deliver file.")
+        await message.reply(
+            format_msg("❌ Delivery Failed", sections=[("", "Could not send the file. Please try again.")]),
+            parse_mode="HTML",
+        )
 
+
+# ---------------------------------------------------------------------------
+#  Commands — User
+# ---------------------------------------------------------------------------
 
 @dp.message(CommandStart())
 async def start_cmd(message: Message) -> None:
@@ -124,40 +228,90 @@ async def start_cmd(message: Message) -> None:
         return
 
     await message.reply(
-        "👋 Welcome to FileLord\n\n"
-        "Use your website link to receive files in Telegram.\n"
-        "Normal users: play-only protected files\n"
-        "Premium/Credit users: downloadable files\n\n"
-        "Commands:\n"
-        "/credit\n/pay\n/premium\n/paid <request_id> <utr>"
+        format_msg(
+            "👋 Welcome to FileLord",
+            sections=[
+                ("", "Use your website link to receive files directly in Telegram."),
+                ("", ""),
+                ("", "<b>Plans:</b>"),
+                ("", bullet([
+                    "Normal — stream files (play only)",
+                    "✨ Premium / Credits — downloadable files",
+                ])),
+                ("", ""),
+                ("", "<b>Quick Actions:</b>"),
+                ("", bullet([
+                    "/credit — check your balance",
+                    "/pay — buy credits",
+                    "/premium — view premium plan",
+                    "/paid &lt;req_id&gt; &lt;UTR&gt; — submit payment",
+                ])),
+            ],
+        ),
+        parse_mode="HTML",
     )
 
 
 @dp.message(Command("health"))
 async def health_cmd(message: Message) -> None:
-    await message.reply("I am alive!")
+    await message.reply(
+        format_msg("🟢 Bot Status", sections=[("", "I am alive and running.")]),
+        parse_mode="HTML",
+    )
 
 
 @dp.message(Command("credit"))
 async def credit_cmd(message: Message) -> None:
     uid = message.from_user.id if message.from_user else 0
     if not uid:
-        await message.reply("User not found.")
+        await message.reply(
+            format_msg("❌ Error", sections=[("", "Could not identify your user account.")]),
+            parse_mode="HTML",
+        )
         return
     premium = await db.is_premium(uid)
     bal = await store.get_credits(uid)
     if premium:
-        await message.reply("Plan: Premium\nCredits: Unlimited")
+        await message.reply(
+            format_msg(
+                "💳 Your Credits",
+                sections=[
+                    ("Plan", "✨ Premium"),
+                    ("Credits", "Unlimited"),
+                ],
+                tip="Premium users enjoy unlimited access.",
+            ),
+            parse_mode="HTML",
+        )
     else:
-        await message.reply(f"Plan: Free\nCredits: {bal}")
+        await message.reply(
+            format_msg(
+                "💳 Your Credits",
+                sections=[
+                    ("Plan", "Free"),
+                    ("Credits", code(bal)),
+                ],
+                tip="Use /pay to top-up or /premium to upgrade.",
+            ),
+            parse_mode="HTML",
+        )
 
 
 @dp.message(Command("premium"))
 async def premium_cmd(message: Message) -> None:
     await message.reply(
-        f"Premium Plan\nPrice: INR {PREMIUM_MONTHLY_PRICE_INR:.0f}\n"
-        f"Duration: {PREMIUM_MONTHLY_DAYS} days\n"
-        "Unlimited credits"
+        format_msg(
+            "✨ Premium Plan",
+            sections=[
+                ("Price", f"INR {PREMIUM_MONTHLY_PRICE_INR:.0f}"),
+                ("Duration", f"{PREMIUM_MONTHLY_DAYS} days"),
+                ("Credits", "Unlimited"),
+                ("", ""),
+                ("", f"Contact {esc(ADMIN_CONTACT)} to subscribe."),
+            ],
+            tip="Premium users can directly download files without credit deductions.",
+        ),
+        parse_mode="HTML",
     )
 
 
@@ -167,21 +321,39 @@ async def pay_cmd(message: Message) -> None:
     price, template = await store.get_pay_plan(DEFAULT_CREDIT_PRICE_INR, DEFAULT_PAY_TEXT)
 
     if len(parts) == 1:
+        pay_info = template.replace("{price}", _format_money(price))
         await message.reply(
-            template.replace("{price}", _format_money(price))
-            + f"\nContact: {ADMIN_CONTACT}\n\n"
-            + "Create request: /pay <amount_inr>"
+            format_msg(
+                "💰 Buy Credits",
+                sections=[
+                    ("", esc(pay_info)),
+                    ("Contact", esc(ADMIN_CONTACT)),
+                    ("", ""),
+                    ("", "To create a payment request:"),
+                    ("", code("/pay <amount_inr>")),
+                ],
+            ),
+            parse_mode="HTML",
         )
         return
 
     try:
         amount = float(parts[1].strip())
     except Exception:
-        await message.reply("Usage: /pay <amount_inr>")
+        await message.reply(
+            format_msg("⚠️ Invalid Input", sections=[("Usage", code("/pay <amount_inr>"))]),
+            parse_mode="HTML",
+        )
         return
 
     if amount < MIN_CUSTOM_PAY_INR:
-        await message.reply(f"Minimum amount is INR {MIN_CUSTOM_PAY_INR:.0f}")
+        await message.reply(
+            format_msg(
+                "⚠️ Amount Too Low",
+                sections=[("Minimum", f"INR {MIN_CUSTOM_PAY_INR:.0f}")],
+            ),
+            parse_mode="HTML",
+        )
         return
 
     credits = max(1, int(amount / max(price, 0.01)))
@@ -190,11 +362,16 @@ async def pay_cmd(message: Message) -> None:
     await store.create_payment_request(req_id, user_id, amount, credits, plan_type="credits")
 
     await message.reply(
-        f"Payment request created.\n"
-        f"Request ID: {req_id}\n"
-        f"Amount: INR {_format_money(amount)}\n"
-        f"Credits: {credits}\n"
-        f"After payment send: /paid {req_id} <UTR>"
+        format_msg(
+            "🧾 Payment Request Created",
+            sections=[
+                ("Request ID", code(req_id)),
+                ("Amount", f"INR {_format_money(amount)}"),
+                ("Credits", code(credits)),
+            ],
+            tip=f"After payment, send: /paid {req_id} &lt;UTR&gt;",
+        ),
+        parse_mode="HTML",
     )
 
 
@@ -203,34 +380,57 @@ async def paid_cmd(message: Message) -> None:
     user_id = message.from_user.id if message.from_user else 0
     parts = (message.text or "").split(maxsplit=2)
     if len(parts) < 3:
-        await message.reply("Usage: /paid <request_id> <UTR>")
+        await message.reply(
+            format_msg("⚠️ Usage", sections=[("", code("/paid <request_id> <UTR>"))]),
+            parse_mode="HTML",
+        )
         return
 
     req_id = parts[1].strip()
     utr = parts[2].strip()
     req = await store.get_payment_request(req_id)
     if not req:
-        await message.reply("Request not found.")
+        await message.reply(
+            format_msg("❌ Not Found", sections=[("", f"No payment request with ID {code(req_id)} found.")]),
+            parse_mode="HTML",
+        )
         return
     if req.get("user_id") != user_id and not is_admin(user_id):
-        await message.reply("This request does not belong to you.")
+        await message.reply(
+            format_msg("❌ Access Denied", sections=[("", "This request does not belong to you.")]),
+            parse_mode="HTML",
+        )
         return
 
     await store.set_payment_request_status(req_id, "submitted", note=f"UTR:{utr}", admin_id=0)
-    await message.reply("Payment submitted to admin. You will be notified after review.")
+    await message.reply(
+        format_msg(
+            "✅ Payment Submitted",
+            sections=[
+                ("Request ID", code(req_id)),
+                ("UTR", code(esc(utr))),
+                ("Status", "Pending admin review"),
+            ],
+            tip="You will be notified once your payment is verified.",
+        ),
+        parse_mode="HTML",
+    )
 
-    text = (
-        f"New payment submitted\n"
-        f"Request ID: {req_id}\n"
-        f"User ID: {req.get('user_id')}\n"
-        f"Amount: INR {_format_money(float(req.get('amount_inr', 0)))}\n"
-        f"Credits: {req.get('credits', 0)}\n"
-        f"UTR: {utr}\n"
-        f"Use /approve {req_id} or /reject {req_id}"
+    admin_text = format_msg(
+        "🔔 New Payment Submitted",
+        sections=[
+            ("Request ID", code(req_id)),
+            ("User ID", code(req.get("user_id"))),
+            ("Amount", f"INR {_format_money(float(req.get('amount_inr', 0)))}"),
+            ("Credits", code(req.get("credits", 0))),
+            ("UTR", code(esc(utr))),
+            ("", ""),
+            ("", f"• /approve {esc(req_id)}\n• /reject {esc(req_id)}"),
+        ],
     )
     for admin_id in settings.admin_ids:
         try:
-            await bot.send_message(admin_id, text)
+            await bot.send_message(admin_id, admin_text, parse_mode="HTML")
         except Exception:
             pass
 
@@ -239,18 +439,27 @@ async def paid_cmd(message: Message) -> None:
 async def approve_cmd(message: Message) -> None:
     admin_id = message.from_user.id if message.from_user else 0
     if not is_admin(admin_id):
-        await message.reply("Not allowed.")
+        await message.reply(
+            format_msg("❌ Access Denied", sections=[("", "This command is for admins only.")]),
+            parse_mode="HTML",
+        )
         return
 
     parts = (message.text or "").split(maxsplit=1)
     if len(parts) < 2:
-        await message.reply("Usage: /approve <request_id>")
+        await message.reply(
+            format_msg("⚠️ Usage", sections=[("", code("/approve <request_id>"))]),
+            parse_mode="HTML",
+        )
         return
 
     req_id = parts[1].strip()
     req = await store.get_payment_request(req_id)
     if not req:
-        await message.reply("Request not found.")
+        await message.reply(
+            format_msg("❌ Not Found", sections=[("", f"No request with ID {code(req_id)}.")]),
+            parse_mode="HTML",
+        )
         return
 
     credits = int(req.get("credits", 0) or 0)
@@ -258,9 +467,32 @@ async def approve_cmd(message: Message) -> None:
     balance = await store.add_credits(user_id, credits)
     await store.set_payment_request_status(req_id, "approved", note="approved", admin_id=admin_id)
 
-    await message.reply(f"Approved {req_id}. Added {credits} credits to {user_id}. Balance:{balance}")
+    await message.reply(
+        format_msg(
+            "✅ Payment Approved",
+            sections=[
+                ("Request ID", code(req_id)),
+                ("User ID", code(user_id)),
+                ("Credits Added", code(credits)),
+                ("New Balance", code(balance)),
+            ],
+        ),
+        parse_mode="HTML",
+    )
     try:
-        await bot.send_message(user_id, f"Your payment {req_id} is approved. Credits added: {credits}. Balance:{balance}")
+        await bot.send_message(
+            user_id,
+            format_msg(
+                "✅ Payment Approved",
+                sections=[
+                    ("Request ID", code(req_id)),
+                    ("Credits Added", code(credits)),
+                    ("New Balance", code(balance)),
+                ],
+                tip="Your credits are now available. Use them via your stream link.",
+            ),
+            parse_mode="HTML",
+        )
     except Exception:
         pass
 
@@ -269,25 +501,54 @@ async def approve_cmd(message: Message) -> None:
 async def reject_cmd(message: Message) -> None:
     admin_id = message.from_user.id if message.from_user else 0
     if not is_admin(admin_id):
-        await message.reply("Not allowed.")
+        await message.reply(
+            format_msg("❌ Access Denied", sections=[("", "This command is for admins only.")]),
+            parse_mode="HTML",
+        )
         return
 
     parts = (message.text or "").split(maxsplit=2)
     if len(parts) < 2:
-        await message.reply("Usage: /reject <request_id> [reason]")
+        await message.reply(
+            format_msg("⚠️ Usage", sections=[("", code("/reject <request_id> [reason]"))]),
+            parse_mode="HTML",
+        )
         return
 
     req_id = parts[1].strip()
-    reason = parts[2].strip() if len(parts) >= 3 else "rejected"
+    reason = parts[2].strip() if len(parts) >= 3 else "No reason provided"
     req = await store.get_payment_request(req_id)
     if not req:
-        await message.reply("Request not found.")
+        await message.reply(
+            format_msg("❌ Not Found", sections=[("", f"No request with ID {code(req_id)}.")]),
+            parse_mode="HTML",
+        )
         return
 
     await store.set_payment_request_status(req_id, "rejected", note=reason, admin_id=admin_id)
-    await message.reply(f"Rejected {req_id}")
+    await message.reply(
+        format_msg(
+            "⚠️ Payment Rejected",
+            sections=[
+                ("Request ID", code(req_id)),
+                ("Reason", esc(reason)),
+            ],
+        ),
+        parse_mode="HTML",
+    )
     try:
-        await bot.send_message(int(req.get("user_id", 0) or 0), f"Your payment {req_id} was rejected. Reason: {reason}")
+        await bot.send_message(
+            int(req.get("user_id", 0) or 0),
+            format_msg(
+                "⚠️ Payment Rejected",
+                sections=[
+                    ("Request ID", code(req_id)),
+                    ("Reason", esc(reason)),
+                ],
+                tip="For help, contact the admin.",
+            ),
+            parse_mode="HTML",
+        )
     except Exception:
         pass
 
@@ -295,7 +556,10 @@ async def reject_cmd(message: Message) -> None:
 @dp.message(Command("payments"))
 async def payments_cmd(message: Message) -> None:
     if not is_admin(message.from_user.id if message.from_user else None):
-        await message.reply("Not allowed.")
+        await message.reply(
+            format_msg("❌ Access Denied", sections=[("", "This command is for admins only.")]),
+            parse_mode="HTML",
+        )
         return
     parts = (message.text or "").split()
     status = parts[1].strip().lower() if len(parts) >= 2 else "all"
@@ -308,21 +572,37 @@ async def payments_cmd(message: Message) -> None:
 
     rows = await store.list_payment_requests(status=status, limit=limit)
     if not rows:
-        await message.reply("No payment requests.")
+        await message.reply(
+            format_msg("ℹ️ Payments", sections=[("", f"No payment requests found for status: {code(status)}")]),
+            parse_mode="HTML",
+        )
         return
 
-    out = [f"Payments ({status}):"]
+    lines = []
     for r in rows:
-        out.append(
-            f"{r.get('id')} | {r.get('status')} | uid:{r.get('user_id')} | INR {_format_money(float(r.get('amount_inr', 0)))} | c:{r.get('credits', 0)}"
+        lines.append(
+            f"• {code(r.get('id'))} — {esc(str(r.get('status')))} "
+            f"| uid:{code(r.get('user_id'))} "
+            f"| INR {_format_money(float(r.get('amount_inr', 0)))} "
+            f"| {code(r.get('credits', 0))} cr"
         )
-    await message.reply("\n".join(out))
+
+    await message.reply(
+        format_msg(
+            f"📋 Payments ({esc(status)})",
+            sections=[("", "\n".join(lines))],
+        ),
+        parse_mode="HTML",
+    )
 
 
 @dp.message(Command("paydb"))
 async def paydb_cmd(message: Message) -> None:
     if not is_admin(message.from_user.id if message.from_user else None):
-        await message.reply("Not allowed.")
+        await message.reply(
+            format_msg("❌ Access Denied", sections=[("", "This command is for admins only.")]),
+            parse_mode="HTML",
+        )
         return
 
     rows = await store.list_payment_requests(status="all", limit=1000)
@@ -352,161 +632,303 @@ async def paydb_cmd(message: Message) -> None:
 @dp.message(Command("resetpaydb"))
 async def resetpaydb_cmd(message: Message) -> None:
     if not is_admin(message.from_user.id if message.from_user else None):
-        await message.reply("Not allowed.")
+        await message.reply(
+            format_msg("❌ Access Denied", sections=[("", "This command is for admins only.")]),
+            parse_mode="HTML",
+        )
         return
     parts = (message.text or "").split(maxsplit=1)
     if len(parts) < 2 or parts[1].strip().lower() != "confirm":
-        await message.reply("Usage: /resetpaydb confirm")
+        await message.reply(
+            format_msg("⚠️ Confirm Required", sections=[("Usage", code("/resetpaydb confirm"))]),
+            parse_mode="HTML",
+        )
         return
     deleted = await store.reset_payment_requests()
-    await message.reply(f"Payment DB reset done. Removed keys/entries: {deleted}. Next request ID starts from 001.")
+    await message.reply(
+        format_msg(
+            "✅ Payment DB Reset",
+            sections=[
+                ("Removed entries", code(deleted)),
+                ("Next request ID", "001"),
+            ],
+        ),
+        parse_mode="HTML",
+    )
 
 
 @dp.message(Command("addsection", "addsections"))
 async def addsection_cmd(message: Message) -> None:
     if not is_admin(message.from_user.id if message.from_user else None):
-        await message.reply("Not allowed.")
+        await message.reply(
+            format_msg("❌ Access Denied", sections=[("", "This command is for admins only.")]),
+            parse_mode="HTML",
+        )
         return
     parts = (message.text or "").split(maxsplit=1)
     if len(parts) < 2:
-        await message.reply("Usage: /addsection <name>")
+        await message.reply(
+            format_msg("⚠️ Usage", sections=[("", code("/addsection <name>"))]),
+            parse_mode="HTML",
+        )
         return
     section_name = parts[1].strip()
     sid = await store.set_section(section_name)
     if not sid:
-        await message.reply("Section already exists or invalid.")
+        await message.reply(
+            format_msg("⚠️ Failed", sections=[("", "Section already exists or the name is invalid.")]),
+            parse_mode="HTML",
+        )
         return
     section_link = f"{settings.base_url}/section/{sid}"
     await message.reply(
-        f"Section set: {section_name} -> {sid}\n"
-        f"Section link: {section_link}"
+        format_msg(
+            "✅ Section Created",
+            sections=[
+                ("Name", esc(section_name)),
+                ("ID", code(sid)),
+                ("Link", link("Open Section", section_link)),
+            ],
+            tip="Uploads will now be mapped to this section.",
+        ),
+        parse_mode="HTML",
     )
 
 
 @dp.message(Command("endsection"))
 async def endsection_cmd(message: Message) -> None:
     if not is_admin(message.from_user.id if message.from_user else None):
-        await message.reply("Not allowed.")
+        await message.reply(
+            format_msg("❌ Access Denied", sections=[("", "This command is for admins only.")]),
+            parse_mode="HTML",
+        )
         return
     await store.set_section(None)
-    await message.reply("Section ended. Uploads will not be mapped until /addsection is set.")
+    await message.reply(
+        format_msg(
+            "✅ Section Ended",
+            sections=[("", "Uploads will not be mapped to any section until you use /addsection again.")],
+        ),
+        parse_mode="HTML",
+    )
 
 
 @dp.message(Command("delsection"))
 async def delsection_cmd(message: Message) -> None:
     if not is_admin(message.from_user.id if message.from_user else None):
-        await message.reply("Not allowed.")
+        await message.reply(
+            format_msg("❌ Access Denied", sections=[("", "This command is for admins only.")]),
+            parse_mode="HTML",
+        )
         return
     parts = (message.text or "").split(maxsplit=1)
     if len(parts) < 2:
-        await message.reply("Usage: /delsection <name>")
+        await message.reply(
+            format_msg("⚠️ Usage", sections=[("", code("/delsection <name>"))]),
+            parse_mode="HTML",
+        )
         return
     ok = await store.delete_section(parts[1].strip())
-    await message.reply("Section deleted." if ok else "Section not found.")
+    if ok:
+        await message.reply(
+            format_msg("✅ Section Deleted", sections=[("Name", code(esc(parts[1].strip())))]),
+            parse_mode="HTML",
+        )
+    else:
+        await message.reply(
+            format_msg("❌ Not Found", sections=[("", "No section with that name exists.")]),
+            parse_mode="HTML",
+        )
 
 
 @dp.message(Command("showsections", "showsection", "sections"))
 async def showsections_cmd(message: Message) -> None:
     rows = await store.list_sections()
     if not rows:
-        await message.reply("No sections yet.")
+        await message.reply(
+            format_msg("ℹ️ Sections", sections=[("", "No sections exist yet. Use /addsection to create one.")]),
+            parse_mode="HTML",
+        )
         return
     rows.sort(key=lambda x: x[0].lower())
-    lines = ["Sections:"]
+    lines = []
     for name, section_id in rows:
-        lines.append(f"{name} -> {settings.base_url}/section/{section_id}")
-    await message.reply("\n".join(lines))
+        section_link = f"{settings.base_url}/section/{section_id}"
+        lines.append(f"• {link(esc(name), section_link)}")
+    await message.reply(
+        format_msg("📂 Sections", sections=[("", "\n".join(lines))]),
+        parse_mode="HTML",
+    )
 
 
 @dp.message(Command("addadmin"))
 async def addadmin_cmd(message: Message) -> None:
     if not is_admin(message.from_user.id if message.from_user else None):
-        await message.reply("Not allowed.")
+        await message.reply(
+            format_msg("❌ Access Denied", sections=[("", "This command is for admins only.")]),
+            parse_mode="HTML",
+        )
         return
     parts = (message.text or "").split()
     if len(parts) < 2:
-        await message.reply("Usage: /addadmin <user_id>")
+        await message.reply(
+            format_msg("⚠️ Usage", sections=[("", code("/addadmin <user_id>"))]),
+            parse_mode="HTML",
+        )
         return
     try:
         uid = int(parts[1])
     except Exception:
-        await message.reply("Invalid user id")
+        await message.reply(
+            format_msg("❌ Invalid", sections=[("", "Please provide a valid numeric user ID.")]),
+            parse_mode="HTML",
+        )
         return
     await db.add_admin(uid)
     settings.admin_ids.add(uid)
-    await message.reply(f"Admin added: {uid}")
+    await message.reply(
+        format_msg("✅ Admin Added", sections=[("User ID", code(uid))]),
+        parse_mode="HTML",
+    )
 
 
 @dp.message(Command("showadminlist"))
 async def showadminlist_cmd(message: Message) -> None:
     if not is_admin(message.from_user.id if message.from_user else None):
-        await message.reply("Not allowed.")
+        await message.reply(
+            format_msg("❌ Access Denied", sections=[("", "This command is for admins only.")]),
+            parse_mode="HTML",
+        )
         return
     admins = await db.list_admins()
     if not admins:
-        await message.reply("No admins.")
+        await message.reply(
+            format_msg("ℹ️ Admins", sections=[("", "No admins configured.")]),
+            parse_mode="HTML",
+        )
         return
-    await message.reply("Admins:\n" + "\n".join(str(x) for x in admins))
+    lines = [f"• {code(x)}" for x in admins]
+    await message.reply(
+        format_msg("👑 Admin List", sections=[("", "\n".join(lines))]),
+        parse_mode="HTML",
+    )
 
 
 @dp.message(Command("credit_add"))
 async def credit_add_cmd(message: Message) -> None:
     if not is_admin(message.from_user.id if message.from_user else None):
-        await message.reply("Not allowed.")
+        await message.reply(
+            format_msg("❌ Access Denied", sections=[("", "This command is for admins only.")]),
+            parse_mode="HTML",
+        )
         return
     parts = (message.text or "").split()
     if len(parts) < 3:
-        await message.reply("Usage: /credit_add <user_id> <amount>")
+        await message.reply(
+            format_msg("⚠️ Usage", sections=[("", code("/credit_add <user_id> <amount>"))]),
+            parse_mode="HTML",
+        )
         return
     try:
         uid = int(parts[1]); amt = int(parts[2])
     except Exception:
-        await message.reply("Invalid format")
+        await message.reply(
+            format_msg("❌ Invalid", sections=[("", "User ID and amount must be valid integers.")]),
+            parse_mode="HTML",
+        )
         return
     bal = await store.add_credits(uid, amt)
-    await message.reply(f"Added {amt}. New balance: {bal}")
+    await message.reply(
+        format_msg(
+            "✅ Credits Added",
+            sections=[
+                ("User ID", code(uid)),
+                ("Added", code(amt)),
+                ("New Balance", code(bal)),
+            ],
+        ),
+        parse_mode="HTML",
+    )
 
 
 @dp.message(Command("credit_remove"))
 async def credit_remove_cmd(message: Message) -> None:
     if not is_admin(message.from_user.id if message.from_user else None):
-        await message.reply("Not allowed.")
+        await message.reply(
+            format_msg("❌ Access Denied", sections=[("", "This command is for admins only.")]),
+            parse_mode="HTML",
+        )
         return
     parts = (message.text or "").split()
     if len(parts) < 3:
-        await message.reply("Usage: /credit_remove <user_id> <amount>")
+        await message.reply(
+            format_msg("⚠️ Usage", sections=[("", code("/credit_remove <user_id> <amount>"))]),
+            parse_mode="HTML",
+        )
         return
     try:
         uid = int(parts[1]); amt = int(parts[2])
     except Exception:
-        await message.reply("Invalid format")
+        await message.reply(
+            format_msg("❌ Invalid", sections=[("", "User ID and amount must be valid integers.")]),
+            parse_mode="HTML",
+        )
         return
     ok, bal = await store.charge_credits(uid, amt)
     if not ok:
-        await message.reply(f"Cannot remove {amt}. Current balance: {bal}")
+        await message.reply(
+            format_msg(
+                "⚠️ Insufficient Credits",
+                sections=[
+                    ("Requested", code(amt)),
+                    ("Current Balance", code(bal)),
+                ],
+            ),
+            parse_mode="HTML",
+        )
         return
-    await message.reply(f"Removed {amt}. New balance: {bal}")
+    await message.reply(
+        format_msg(
+            "✅ Credits Removed",
+            sections=[
+                ("User ID", code(uid)),
+                ("Removed", code(amt)),
+                ("New Balance", code(bal)),
+            ],
+        ),
+        parse_mode="HTML",
+    )
 
 
 @dp.message(Command("db"))
 async def db_cmd(message: Message) -> None:
     if not is_admin(message.from_user.id if message.from_user else None):
-        await message.reply("Not allowed.")
+        await message.reply(
+            format_msg("❌ Access Denied", sections=[("", "This command is for admins only.")]),
+            parse_mode="HTML",
+        )
         return
     rows = await store.list_credit_balances(limit=20)
     if not rows:
-        await message.reply("No credit data.")
+        await message.reply(
+            format_msg("ℹ️ Credit DB", sections=[("", "No credit data found.")]),
+            parse_mode="HTML",
+        )
         return
-    lines = ["Credit DB (top):"]
-    for uid, bal in rows:
-        lines.append(f"{uid} -> {bal}")
-    await message.reply("\n".join(lines))
+    lines = [f"• {code(uid)} → {code(bal)}" for uid, bal in rows]
+    await message.reply(
+        format_msg("🗄️ Credit DB (Top 20)", sections=[("", "\n".join(lines))]),
+        parse_mode="HTML",
+    )
 
 
 @dp.message(Command("stats"))
 async def stats_cmd(message: Message) -> None:
     if not is_admin(message.from_user.id if message.from_user else None):
-        await message.reply("Not allowed.")
+        await message.reply(
+            format_msg("❌ Access Denied", sections=[("", "This command is for admins only.")]),
+            parse_mode="HTML",
+        )
         return
     users = await store.list_known_user_ids(limit=100000)
     admins = await db.list_admins()
@@ -517,18 +939,26 @@ async def stats_cmd(message: Message) -> None:
         if await db.is_premium(row.user_id):
             active_premium += 1
     await message.reply(
-        "Bot Stats\n"
-        f"users:{len(users)}\n"
-        f"admins:{len(admins)}\n"
-        f"sections:{len(sections)}\n"
-        f"premium_active:{active_premium}"
+        format_msg(
+            "📊 Bot Stats",
+            sections=[
+                ("Users", code(len(users))),
+                ("Admins", code(len(admins))),
+                ("Sections", code(len(sections))),
+                ("Active Premium", code(active_premium)),
+            ],
+        ),
+        parse_mode="HTML",
     )
 
 
 @dp.message(Command("history"))
 async def history_cmd(message: Message) -> None:
     if not is_admin(message.from_user.id if message.from_user else None):
-        await message.reply("Not allowed.")
+        await message.reply(
+            format_msg("❌ Access Denied", sections=[("", "This command is for admins only.")]),
+            parse_mode="HTML",
+        )
         return
     parts = (message.text or "").split()
     limit = 20
@@ -543,145 +973,258 @@ async def history_cmd(message: Message) -> None:
         ref = await store.get(token, settings.token_ttl_seconds)
         if not ref:
             continue
-        lines.append(f"{ref.access} [{ref.section_name or '-'}]: {build_link(token)}")
+        section = esc(ref.section_name or "-")
+        player_url = build_link(token)
+        lines.append(f"• [{esc(ref.access)}] {section}: {link('▶️ Open', player_url)}")
         if len(lines) >= limit:
             break
     if not lines:
-        await message.reply("No history yet.")
+        await message.reply(
+            format_msg("ℹ️ History", sections=[("", "No upload history yet.")]),
+            parse_mode="HTML",
+        )
         return
-    await message.reply("\n".join(lines))
+    await message.reply(
+        format_msg("🕓 Recent Uploads", sections=[("", "\n".join(lines))]),
+        parse_mode="HTML",
+    )
 
 
 @dp.message(Command("premiumlist"))
 async def premiumlist_cmd(message: Message) -> None:
     if not is_admin(message.from_user.id if message.from_user else None):
-        await message.reply("Not allowed.")
+        await message.reply(
+            format_msg("❌ Access Denied", sections=[("", "This command is for admins only.")]),
+            parse_mode="HTML",
+        )
         return
     rows = await db.list_premium_users()
     if not rows:
-        await message.reply("No premium users.")
+        await message.reply(
+            format_msg("ℹ️ Premium Users", sections=[("", "No premium users yet.")]),
+            parse_mode="HTML",
+        )
         return
     now = int(time.time())
-    lines = ["Premium users:"]
+    lines = []
     for row in rows[:100]:
         if row.expires_at is None:
-            exp = "lifetime"
+            exp = "lifetime ♾️"
         elif row.expires_at < now:
             exp = "expired"
         else:
             exp = str(row.expires_at)
-        lines.append(f"{row.user_id} -> {exp}")
-    await message.reply("\n".join(lines))
+        lines.append(f"• {code(row.user_id)} → {esc(exp)}")
+    await message.reply(
+        format_msg("✨ Premium Users", sections=[("", "\n".join(lines))]),
+        parse_mode="HTML",
+    )
 
 
 @dp.message(Command("add"))
 async def add_cmd(message: Message) -> None:
     if not is_admin(message.from_user.id if message.from_user else None):
-        await message.reply("Not allowed.")
+        await message.reply(
+            format_msg("❌ Access Denied", sections=[("", "This command is for admins only.")]),
+            parse_mode="HTML",
+        )
         return
     parts = (message.text or "").split()
     if len(parts) < 3:
-        await message.reply("Usage: /add <userid> <period_days|life>")
+        await message.reply(
+            format_msg("⚠️ Usage", sections=[("", code("/add <userid> <period_days|life>"))]),
+            parse_mode="HTML",
+        )
         return
     try:
         uid = int(parts[1]); period = parse_period(parts[2])
     except Exception:
-        await message.reply("Invalid format")
+        await message.reply(
+            format_msg("❌ Invalid", sections=[("", "User ID must be a number. Period can be days or 'life'.")]),
+            parse_mode="HTML",
+        )
         return
     await db.add_user(uid, period)
-    await message.reply("Premium updated")
+    await message.reply(
+        format_msg(
+            "✅ Premium Updated",
+            sections=[
+                ("User ID", code(uid)),
+                ("Period", "Lifetime ♾️" if period is None else f"{code(period)} days"),
+            ],
+        ),
+        parse_mode="HTML",
+    )
 
 
 @dp.message(Command("setcreditprice"))
 async def setcreditprice_cmd(message: Message) -> None:
     if not is_admin(message.from_user.id if message.from_user else None):
-        await message.reply("Not allowed.")
+        await message.reply(
+            format_msg("❌ Access Denied", sections=[("", "This command is for admins only.")]),
+            parse_mode="HTML",
+        )
         return
     parts = (message.text or "").split()
     if len(parts) < 2:
-        await message.reply("Usage: /setcreditprice <price>")
+        await message.reply(
+            format_msg("⚠️ Usage", sections=[("", code("/setcreditprice <price>"))]),
+            parse_mode="HTML",
+        )
         return
     try:
         price = float(parts[1])
     except Exception:
-        await message.reply("Invalid price")
+        await message.reply(
+            format_msg("❌ Invalid", sections=[("", "Price must be a valid number.")]),
+            parse_mode="HTML",
+        )
         return
     _, template = await store.get_pay_plan(DEFAULT_CREDIT_PRICE_INR, DEFAULT_PAY_TEXT)
     await store.set_pay_plan(price, template)
-    await message.reply(f"Credit price set: INR {_format_money(price)}")
+    await message.reply(
+        format_msg(
+            "✅ Credit Price Updated",
+            sections=[("New Price", f"INR {_format_money(price)} per credit")],
+        ),
+        parse_mode="HTML",
+    )
 
 
 @dp.message(Command("setpay"))
 async def setpay_cmd(message: Message) -> None:
     if not is_admin(message.from_user.id if message.from_user else None):
-        await message.reply("Not allowed.")
+        await message.reply(
+            format_msg("❌ Access Denied", sections=[("", "This command is for admins only.")]),
+            parse_mode="HTML",
+        )
         return
     parts = (message.text or "").split(maxsplit=2)
     if len(parts) < 2:
-        await message.reply("Usage: /setpay view | /setpay text <msg>")
+        await message.reply(
+            format_msg(
+                "⚠️ Usage",
+                sections=[("", bullet([
+                    code("/setpay view"),
+                    code("/setpay text <msg>"),
+                ]))],
+            ),
+            parse_mode="HTML",
+        )
         return
     sub = parts[1].strip().lower()
     price, template = await store.get_pay_plan(DEFAULT_CREDIT_PRICE_INR, DEFAULT_PAY_TEXT)
     if sub == "view":
-        await message.reply(f"Price: INR {_format_money(price)}\nTemplate:\n{template}")
+        await message.reply(
+            format_msg(
+                "⚙️ Pay Plan",
+                sections=[
+                    ("Price", f"INR {_format_money(price)} per credit"),
+                    ("Template", f"\n{esc(template)}"),
+                ],
+            ),
+            parse_mode="HTML",
+        )
         return
     if sub == "text":
         if len(parts) < 3:
-            await message.reply("Usage: /setpay text <payment_text>")
+            await message.reply(
+                format_msg("⚠️ Usage", sections=[("", code("/setpay text <payment_text>"))]),
+                parse_mode="HTML",
+            )
             return
         await store.set_pay_plan(price, parts[2].strip())
-        await message.reply("Payment text updated.")
+        await message.reply(
+            format_msg("✅ Payment Text Updated", sections=[]),
+            parse_mode="HTML",
+        )
         return
-    await message.reply("Unknown setpay option.")
+    await message.reply(
+        format_msg("❌ Unknown Option", sections=[("", "Valid options: view, text")]),
+        parse_mode="HTML",
+    )
 
 
 @dp.message(Command("editplan"))
 async def editplan_cmd(message: Message) -> None:
     if not is_admin(message.from_user.id if message.from_user else None):
-        await message.reply("Not allowed.")
+        await message.reply(
+            format_msg("❌ Access Denied", sections=[("", "This command is for admins only.")]),
+            parse_mode="HTML",
+        )
         return
     parts = (message.text or "").split(maxsplit=2)
     if len(parts) < 2:
-        await message.reply("Usage: /editplan <price> [template]")
+        await message.reply(
+            format_msg("⚠️ Usage", sections=[("", code("/editplan <price> [template]"))]),
+            parse_mode="HTML",
+        )
         return
     try:
         price = float(parts[1])
     except Exception:
-        await message.reply("Invalid price")
+        await message.reply(
+            format_msg("❌ Invalid", sections=[("", "Price must be a valid number.")]),
+            parse_mode="HTML",
+        )
         return
     _, current = await store.get_pay_plan(DEFAULT_CREDIT_PRICE_INR, DEFAULT_PAY_TEXT)
     template = parts[2].strip() if len(parts) >= 3 else current
     await store.set_pay_plan(price, template)
-    await message.reply(f"Plan updated. Price: INR {_format_money(price)}")
+    await message.reply(
+        format_msg(
+            "✅ Plan Updated",
+            sections=[("New Price", f"INR {_format_money(price)} per credit")],
+        ),
+        parse_mode="HTML",
+    )
 
 
 @dp.message(Command("setupi"))
 async def setupi_cmd(message: Message) -> None:
     if not is_admin(message.from_user.id if message.from_user else None):
-        await message.reply("Not allowed.")
+        await message.reply(
+            format_msg("❌ Access Denied", sections=[("", "This command is for admins only.")]),
+            parse_mode="HTML",
+        )
         return
     parts = (message.text or "").split(maxsplit=1)
     if len(parts) < 2:
         current = await store.get_upi_id()
-        await message.reply(f"Current UPI: {current or '-'}")
+        await message.reply(
+            format_msg("💳 UPI ID", sections=[("Current", code(current or "Not set"))]),
+            parse_mode="HTML",
+        )
         return
     upi = await store.set_upi_id(parts[1].strip())
-    await message.reply(f"UPI updated: {upi}")
+    await message.reply(
+        format_msg("✅ UPI Updated", sections=[("New UPI", code(esc(upi)))]),
+        parse_mode="HTML",
+    )
 
 
 @dp.message(Command("broadcast"))
 async def broadcast_cmd(message: Message) -> None:
     if not is_admin(message.from_user.id if message.from_user else None):
-        await message.reply("Not allowed.")
+        await message.reply(
+            format_msg("❌ Access Denied", sections=[("", "This command is for admins only.")]),
+            parse_mode="HTML",
+        )
         return
     parts = (message.text or "").split(maxsplit=1)
     if len(parts) < 2:
-        await message.reply("Usage: /broadcast <text>")
+        await message.reply(
+            format_msg("⚠️ Usage", sections=[("", code("/broadcast <text>"))]),
+            parse_mode="HTML",
+        )
         return
     txt = parts[1].strip()
     users = await store.list_known_user_ids(limit=50000)
     if not users:
-        await message.reply("No users to broadcast.")
+        await message.reply(
+            format_msg("ℹ️ Broadcast", sections=[("", "No users to broadcast to yet.")]),
+            parse_mode="HTML",
+        )
         return
     sent = 0
     failed = 0
@@ -691,12 +1234,27 @@ async def broadcast_cmd(message: Message) -> None:
             sent += 1
         except Exception:
             failed += 1
-    await message.reply(f"Broadcast done. Sent:{sent} Failed:{failed}")
+    await message.reply(
+        format_msg(
+            "📣 Broadcast Complete",
+            sections=[
+                ("Sent", code(sent)),
+                ("Failed", code(failed)),
+            ],
+        ),
+        parse_mode="HTML",
+    )
 
 
 @dp.message(Command("redeem"))
 async def redeem_cmd(message: Message) -> None:
-    await message.reply("Redeem command will be added in next patch.")
+    await message.reply(
+        format_msg(
+            "ℹ️ Redeem",
+            sections=[("", "Redeem command will be available in the next update.")],
+        ),
+        parse_mode="HTML",
+    )
 
 
 @dp.message(Command("paymentsdb"))
@@ -706,7 +1264,10 @@ async def alias_paydb(message: Message) -> None:
 
 @dp.message(Command("bot"))
 async def bot_cmd(message: Message) -> None:
-    await message.reply("I am alive!")
+    await message.reply(
+        format_msg("🟢 Bot Status", sections=[("", "I am alive and running.")]),
+        parse_mode="HTML",
+    )
 
 
 @dp.message()
@@ -725,20 +1286,38 @@ async def private_media_handler(message: Message) -> None:
     )
     if not media:
         if (message.text or "").startswith("/"):
-            await message.reply("Unknown command. Use /start")
+            await message.reply(
+                format_msg("❌ Unknown Command", sections=[("", "Use /start to see available commands.")]),
+                parse_mode="HTML",
+            )
             return
         if message.chat.type == "private" and is_admin(message.from_user.id if message.from_user else None):
-            await message.reply("Unsupported media type. Send document/video/audio/animation/voice/video_note/photo.")
+            await message.reply(
+                format_msg(
+                    "⚠️ Unsupported Media",
+                    sections=[("", "Please send a document, video, audio, animation, voice, video note, or photo.")],
+                ),
+                parse_mode="HTML",
+            )
         return
 
     if message.chat.type == "private" and not is_admin(message.from_user.id if message.from_user else None):
-        await message.reply("Not allowed.")
+        await message.reply(
+            format_msg("❌ Access Denied", sections=[("", "Only admins can upload files.")]),
+            parse_mode="HTML",
+        )
         return
 
     section_id, section_name = await store.get_section()
     if not section_id:
         if message.chat.type == "private":
-            await message.reply("Set a section first using /addsection <name>.")
+            await message.reply(
+                format_msg(
+                    "⚠️ No Active Section",
+                    sections=[("", f"Set a section first: {code('/addsection <name>')}.")],
+                ),
+                parse_mode="HTML",
+            )
         return
 
     normal_token = secrets.token_urlsafe(24)
@@ -780,9 +1359,16 @@ async def private_media_handler(message: Message) -> None:
 
     if message.chat.type == "private":
         await message.reply(
-            f"Stream (Normal): {build_link(normal_token)}\n"
-            f"Stream (Premium): {build_link(premium_token)}\n"
-            f"Section: {section_name}"
+            format_msg(
+                "✅ File Uploaded",
+                sections=[
+                    ("Section", esc(section_name or section_id)),
+                    ("Normal", link("▶️ Open Stream", build_link(normal_token))),
+                    ("Premium", link("⬇️ Download Stream", build_link(premium_token))),
+                ],
+                tip="Normal link = stream only. Premium link = downloadable.",
+            ),
+            parse_mode="HTML",
         )
 
 
