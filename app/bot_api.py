@@ -195,8 +195,9 @@ async def _send_payment_instructions(
         ],
         tip="Use the exact amount shown. Wrong amounts delay verification.",
     )
+    sent_msg = None
     try:
-        await bot.send_photo(
+        sent_msg = await bot.send_photo(
             chat_id,
             photo=URLInputFile(qr_url, filename="qr.png"),
             caption=caption,
@@ -205,12 +206,15 @@ async def _send_payment_instructions(
         )
     except Exception:
         # Fallback if QR fails
-        await bot.send_message(
+        sent_msg = await bot.send_message(
             chat_id,
             caption,
             parse_mode="HTML",
             reply_markup=_payment_action_kb(req_id),
         )
+    # Store message reference so we can edit it later
+    if sent_msg is not None:
+        await store.set_payment_prompt(req_id, chat_id, sent_msg.message_id)
 
 
 async def _notify_admin_payment(req_id: str, user_id: int, amount: float, credits: int, plan_type: str, proof: str) -> None:
@@ -483,14 +487,43 @@ async def pay_utr_text_handler(message: Message, state: FSMContext) -> None:
         await store.set_payment_request_status(req_id, "submitted", note=f"UTR:{utr}", admin_id=0)
 
     await state.clear()
-    await message.reply(
-        format_msg("✅ UTR Submitted", sections=[
-            ("Request ID", code(req_id)),
-            ("UTR", code(esc(utr))),
-            ("Status", "Pending admin review"),
-        ], tip="You will be notified once verified."),
-        parse_mode="HTML",
-    )
+
+    # Edit the original QR payment message to show pending status
+    prompt = await store.get_payment_prompt(req_id)
+    if prompt:
+        pending_caption = format_msg(
+            "🕐 Verification In Progress",
+            sections=[
+                ("Request ID", code(req_id)),
+                ("UTR", code(esc(utr))),
+                ("", ""),
+                ("", "✅ Payment details received.\nWaiting for manual approval by admin."),
+            ],
+            tip="You will be notified once your payment is approved.",
+        )
+        try:
+            await bot.edit_message_caption(
+                chat_id=prompt[0], message_id=prompt[1],
+                caption=pending_caption, parse_mode="HTML", reply_markup=None,
+            )
+        except Exception:
+            try:
+                await bot.edit_message_text(
+                    pending_caption, chat_id=prompt[0], message_id=prompt[1],
+                    parse_mode="HTML", reply_markup=None,
+                )
+            except Exception:
+                pass
+    else:
+        # Fallback reply if original message not found
+        await message.reply(
+            format_msg("✅ UTR Submitted", sections=[
+                ("Request ID", code(req_id)),
+                ("UTR", code(esc(utr))),
+                ("Status", "Pending admin review"),
+            ], tip="You will be notified once verified."),
+            parse_mode="HTML",
+        )
 
     if req:
         amount = float(req.get("amount_inr", 0))
@@ -526,13 +559,32 @@ async def pay_screenshot_photo_handler(message: Message, state: FSMContext) -> N
     if req:
         await store.set_payment_request_status(req_id, "submitted", note="screenshot", admin_id=0)
 
-    await message.reply(
-        format_msg("✅ Screenshot Received", sections=[
-            ("Request ID", code(req_id)),
-            ("Status", "Pending admin review"),
-        ], tip="You will be notified once verified."),
-        parse_mode="HTML",
-    )
+    # Edit the original QR payment message to show pending status
+    prompt = await store.get_payment_prompt(req_id)
+    if prompt:
+        pending_caption = format_msg(
+            "🕐 Verification In Progress",
+            sections=[
+                ("Request ID", code(req_id)),
+                ("Proof", "📸 Screenshot received"),
+                ("", ""),
+                ("", "✅ Payment details received.\nWaiting for manual approval by admin."),
+            ],
+            tip="You will be notified once your payment is approved.",
+        )
+        try:
+            await bot.edit_message_caption(
+                chat_id=prompt[0], message_id=prompt[1],
+                caption=pending_caption, parse_mode="HTML", reply_markup=None,
+            )
+        except Exception:
+            try:
+                await bot.edit_message_text(
+                    pending_caption, chat_id=prompt[0], message_id=prompt[1],
+                    parse_mode="HTML", reply_markup=None,
+                )
+            except Exception:
+                pass
 
     if req:
         amount = float(req.get("amount_inr", 0))
@@ -541,7 +593,7 @@ async def pay_screenshot_photo_handler(message: Message, state: FSMContext) -> N
         user_id = message.from_user.id if message.from_user else 0
 
         # Forward screenshot to admins with approve/reject buttons
-        caption = format_msg("🔔 Payment Screenshot — Action Required", sections=[
+        admin_caption = format_msg("🔔 Payment Screenshot — Action Required", sections=[
             ("Request ID", code(req_id)),
             ("User ID", code(user_id)),
             ("Plan", "✨ Premium 30d" if plan_type == "premium_30d" else f"{credits} credits"),
@@ -552,7 +604,7 @@ async def pay_screenshot_photo_handler(message: Message, state: FSMContext) -> N
                 await bot.send_photo(
                     admin_id,
                     photo=message.photo[-1].file_id,
-                    caption=caption,
+                    caption=admin_caption,
                     parse_mode="HTML",
                     reply_markup=_admin_action_kb(req_id),
                 )
