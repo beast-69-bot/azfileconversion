@@ -55,6 +55,10 @@ class PayState(StatesGroup):
     waiting_screenshot = State()   # screenshot photo
 
 
+class ThumbState(StatesGroup):
+    waiting_photo = State()        # waiting for admin to send thumbnail photo
+
+
 # ---------------------------------------------------------------------------
 #  Format helpers
 # ---------------------------------------------------------------------------
@@ -115,6 +119,9 @@ BOT_COMMANDS = [
     BotCommand(command="reject", description="Reject payment (admin)"),
     BotCommand(command="paydb", description="Export payments sheet (admin)"),
     BotCommand(command="setautodelete", description="Set file auto-delete time (admin)"),
+    BotCommand(command="setthumbnail", description="Set delivery thumbnail (admin)"),
+    BotCommand(command="delthumbnail", description="Remove thumbnail (admin)"),
+    BotCommand(command="thumbnail", description="Toggle thumbnail on/off (admin)"),
     BotCommand(command="setupi", description="Set UPI ID (admin)"),
 ]
 
@@ -284,12 +291,36 @@ async def _deliver_token(message: Message, token: str) -> None:
             return
         await message.reply(format_msg("💳 Credit Used", sections=[("Deducted", "1 credit"), ("Remaining", code(bal))]), parse_mode="HTML")
     try:
-        sent = await bot.copy_message(
-            chat_id=message.chat.id,
-            from_chat_id=ref.chat_id,
-            message_id=ref.message_id,
-            protect_content=(ref.access != "premium"),
-        )
+        # Check if thumbnail should be used
+        thumb_fid: str | None = None
+        if await store.get_thumbnail_enabled():
+            t = await store.get_thumbnail()
+            if t:
+                thumb_fid = t
+
+        protect = (ref.access != "premium")
+        _THUMB_TYPES = {"video", "document", "audio", "animation"}
+
+        if thumb_fid and ref.media_type in _THUMB_TYPES:
+            _send_map = {
+                "video": bot.send_video,
+                "document": bot.send_document,
+                "audio": bot.send_audio,
+                "animation": bot.send_animation,
+            }
+            sent = await _send_map[ref.media_type](
+                message.chat.id,
+                ref.file_id,
+                thumbnail=thumb_fid,
+                protect_content=protect,
+            )
+        else:
+            sent = await bot.copy_message(
+                chat_id=message.chat.id,
+                from_chat_id=ref.chat_id,
+                message_id=ref.message_id,
+                protect_content=protect,
+            )
     except Exception as exc:
         logger.exception("copy_message failed: %s", exc)
         await message.reply(format_msg("❌ Delivery Failed", sections=[("", "Could not send the file. Please try again.")]), parse_mode="HTML")
@@ -1126,6 +1157,64 @@ async def setautodelete_cmd(message: Message) -> None:
             parse_mode="HTML",
         )
 
+@dp.message(Command("setthumbnail"))
+async def setthumbnail_cmd(message: Message, state: FSMContext) -> None:
+    if not is_admin(message.from_user.id if message.from_user else None):
+        await message.reply(format_msg("❌ Access Denied", sections=[("", "Admins only.")]), parse_mode="HTML")
+        return
+    await state.set_state(ThumbState.waiting_photo)
+    await message.reply(format_msg("🖼️ Set Thumbnail", sections=[("", "Please send a photo to be used as a thumbnail for delivered media.")]), parse_mode="HTML")
+
+@dp.message(StateFilter(ThumbState.waiting_photo), F.photo)
+async def wait_thumb_photo(message: Message, state: FSMContext) -> None:
+    fid = message.photo[-1].file_id
+    await store.set_thumbnail(fid)
+    await store.set_thumbnail_enabled(True)
+    await state.clear()
+    await message.reply(format_msg("✅ Thumbnail Set", sections=[("", "This photo will now be attached to videos and documents.")]), parse_mode="HTML")
+
+@dp.message(StateFilter(ThumbState.waiting_photo))
+async def wait_thumb_not_photo(message: Message, state: FSMContext) -> None:
+    await message.reply(format_msg("⚠️ Invalid", sections=[("", "Please send a photo. /cancel to abort.")]), parse_mode="HTML")
+
+@dp.message(Command("delthumbnail"))
+async def delthumbnail_cmd(message: Message) -> None:
+    if not is_admin(message.from_user.id if message.from_user else None):
+        await message.reply(format_msg("❌ Access Denied", sections=[("", "Admins only.")]), parse_mode="HTML")
+        return
+    await store.del_thumbnail()
+    await message.reply(format_msg("🗑️ Thumbnail Removed", sections=[("", "No thumbnail will be sent.")]), parse_mode="HTML")
+
+@dp.message(Command("thumbnail"))
+async def thumbnail_toggle_cmd(message: Message) -> None:
+    if not is_admin(message.from_user.id if message.from_user else None):
+        await message.reply(format_msg("❌ Access Denied", sections=[("", "Admins only.")]), parse_mode="HTML")
+        return
+    parts = (message.text or "").split()
+    if len(parts) < 2:
+        enabled = await store.get_thumbnail_enabled()
+        has_thumb = bool(await store.get_thumbnail())
+        status = "🟢 Enabled" if enabled else "🔴 Disabled"
+        if enabled and not has_thumb:
+            status += " (But no photo set)"
+        await message.reply(
+            format_msg("🖼️ Thumbnail Status", sections=[
+                ("Status", status),
+                ("", ""),
+                ("Usage", bullet([code("/thumbnail on"), code("/thumbnail off")])),
+            ]),
+            parse_mode="HTML",
+        )
+        return
+    val = parts[1].strip().lower()
+    if val in {"on", "yes", "true", "1"}:
+        await store.set_thumbnail_enabled(True)
+        await message.reply(format_msg("✅ Settings Updated", sections=[("Thumbnail", "🟢 Enabled")]), parse_mode="HTML")
+    elif val in {"off", "no", "false", "0"}:
+        await store.set_thumbnail_enabled(False)
+        await message.reply(format_msg("✅ Settings Updated", sections=[("Thumbnail", "🔴 Disabled")]), parse_mode="HTML")
+    else:
+        await message.reply(format_msg("❌ Invalid", sections=[("", "Use 'on' or 'off'.")]), parse_mode="HTML")
 
 
 @dp.message(Command("broadcast"))

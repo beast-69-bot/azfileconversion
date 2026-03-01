@@ -420,6 +420,41 @@ return {1, newval}
         self._auto_delete_seconds = seconds
         return seconds
 
+    # ------------------------------------------------------------------
+    #  Thumbnail
+    # ------------------------------------------------------------------
+
+    async def get_thumbnail(self) -> str:
+        """Return stored thumbnail file_id or empty string."""
+        if self._redis is not None:
+            return (await self._redis.hget(self._pay_plan_key, "thumb_file_id") or "").strip()
+        return (getattr(self, "_thumb_file_id", None) or "").strip()
+
+    async def set_thumbnail(self, file_id: str) -> str:
+        fid = str(file_id or "").strip()
+        if self._redis is not None:
+            if fid:
+                await self._redis.hset(self._pay_plan_key, mapping={"thumb_file_id": fid})
+            else:
+                await self._redis.hdel(self._pay_plan_key, "thumb_file_id")
+            return fid
+        self._thumb_file_id = fid or None
+        return fid
+
+    async def del_thumbnail(self) -> None:
+        await self.set_thumbnail("")
+
+    async def get_thumbnail_enabled(self) -> bool:
+        if self._redis is not None:
+            raw = await self._redis.hget(self._pay_plan_key, "thumb_enabled")
+            return (raw or "1") not in {"0", "false", "off"}
+        return bool(getattr(self, "_thumb_enabled", True))
+
+    async def set_thumbnail_enabled(self, enabled: bool) -> None:
+        if self._redis is not None:
+            await self._redis.hset(self._pay_plan_key, mapping={"thumb_enabled": "1" if enabled else "0"})
+            return
+        self._thumb_enabled = enabled
 
     async def set_payment_prompt(self, request_id: str, chat_id: int, message_id: int) -> None:
         req_id = str(request_id).strip()
