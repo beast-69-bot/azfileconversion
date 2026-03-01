@@ -811,43 +811,85 @@ body.is-loading .content {
 
 @media (max-width: 720px) {
   .container {
-    padding: 16px 12px 40px;
+    padding: 12px 0 30px;
+    /* remove horizontal padding */
+    width: 100%;
+  }
+
+  .site-header {
+    padding: 16px;
+  }
+
+  /* Make cards edge-to-edge on mobile */
+  .card,
+  .file-card {
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+  }
+
+  /* specifically space the main content cards */
+  .card {
+    padding: 16px;
   }
 
   h1 {
-    font-size: 28px;
+    font-size: 24px;
+    margin-bottom: 6px;
   }
 
   .file-name {
     max-width: 100%;
     white-space: normal;
+    font-size: 15px;
   }
 
   .file-card {
     flex-direction: column;
     align-items: stretch;
-    gap: 16px;
+    gap: 12px;
     padding: 16px;
   }
 
   .file-actions {
     flex-direction: column;
     width: 100%;
+    margin-top: 4px;
   }
 
   .file-actions .btn {
     width: 100%;
     text-align: center;
+    padding: 10px 16px;
+  }
+
+  /* Section header layout on phone */
+  .section-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
   }
 
   .section-controls {
     flex-direction: column;
     align-items: stretch;
+    width: 100%;
+    gap: 10px;
+  }
+
+  .section-controls .btn {
+    width: 100%;
+  }
+
+  .section-controls label,
+  .section-controls select {
+    width: 100%;
   }
 
   .pagination {
     flex-direction: column;
     gap: 16px;
+    padding: 20px 16px 0;
   }
 
   .actions-row {
