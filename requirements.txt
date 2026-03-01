@@ -6,5 +6,7 @@ tgcrypto>=1.2.5
 redis>=5.0.0
 aiosqlite>=0.20.0
 python-multipart
+jinja2>=3.1.0
+aiofiles>=23.0.0
 openpyxl>=3.1.0
 aiogram>=3.13.0

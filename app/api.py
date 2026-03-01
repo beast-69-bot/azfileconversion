@@ -9,6 +9,8 @@ from urllib.parse import urlencode
 
 from fastapi import FastAPI, Form, Header, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 from pyrogram import Client
 from pyrogram.errors import FloodWait
 
@@ -19,6 +21,10 @@ settings = get_settings()
 store = TokenStore(settings.redis_url, history_limit=settings.history_limit)
 
 app = FastAPI()
+
+# --- Jinja2 Templates + Static Files ---
+templates = Jinja2Templates(directory="app/templates")
+app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 client = Client(
     "stream_api",
@@ -309,114 +315,31 @@ async def download(token: str, request: Request, range: Optional[str] = Header(N
     )
 
 
+# ---------------------------------------------------------------------------
+#  Section password form (now uses Jinja2 template)
+# ---------------------------------------------------------------------------
 
+def _render_password_template(request: Request, **ctx):
+    """Render the shared password.html template."""
+    return templates.TemplateResponse("password.html", {"request": request, **ctx})
 
-
-
-
-
-
-def section_password_form_html(section_id: str, access_filter: str, error: str = "") -> str:
-    error_block = f"<p class=\"error\">{error}</p>" if error else ""
-    return f"""
-<!doctype html>
-<html>
-  <head>
-    <meta charset=\"utf-8\" />
-    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />
-    <title>Protected Section</title>
-    <style>
-      @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
-      :root {{
-        --bg-1: #0b0f1a;
-        --bg-2: #101a2c;
-        --accent: #7bdff2;
-        --accent-2: #f2a07b;
-        --card: rgba(15, 22, 36, 0.92);
-        --border: rgba(255, 255, 255, 0.08);
-        --text: #e9eef8;
-        --muted: #9fb0c9;
-      }}
-      * {{ box-sizing: border-box; }}
-      body {{
-        margin: 0;
-        font-family: 'Space Grotesk', system-ui, sans-serif;
-        color: var(--text);
-        display: grid;
-        place-items: center;
-        min-height: 100vh;
-        background:
-          radial-gradient(900px 420px at 20% 0%, rgba(123, 223, 242, 0.14), transparent 60%),
-          radial-gradient(700px 520px at 90% 20%, rgba(242, 160, 123, 0.18), transparent 60%),
-          linear-gradient(135deg, var(--bg-1), var(--bg-2));
-      }}
-      body::before {{
-        content: '';
-        position: fixed;
-        inset: 0;
-        background: repeating-linear-gradient(
-          115deg,
-          rgba(255,255,255,0.03) 0px,
-          rgba(255,255,255,0.03) 1px,
-          transparent 1px,
-          transparent 6px
-        );
-        opacity: 0.35;
-        pointer-events: none;
-      }}
-      .card {{
-        width: min(460px, 92vw);
-        background: var(--card);
-        padding: 30px;
-        border-radius: 20px;
-        text-align: center;
-        border: 1px solid var(--border);
-        box-shadow: 0 20px 60px rgba(0,0,0,0.35);
-        backdrop-filter: blur(12px);
-      }}
-      h2 {{ margin: 0 0 10px; font-size: 22px; }}
-      p {{ color: var(--muted); margin: 0 0 16px; font-size: 14px; }}
-      input {{
-        width: 100%;
-        padding: 12px 14px;
-        border-radius: 12px;
-        border: 1px solid var(--border);
-        background: rgba(255,255,255,0.04);
-        color: var(--text);
-        font-size: 14px;
-      }}
-      button {{
-        margin-top: 14px;
-        width: 100%;
-        padding: 12px 14px;
-        border: 0;
-        border-radius: 12px;
-        background: linear-gradient(135deg, var(--accent), #b9f3ff);
-        color: #0b0f1a;
-        font-weight: 700;
-        cursor: pointer;
-      }}
-      .error {{ color: #ffb3b3; font-size: 13px; margin: 12px 0 0; }}
-    </style>
-  </head>
-  <body>
-    <div class=\"card\">
-      <h2>Section Locked</h2>
-      <p>Enter the password to unlock this section.</p>
-      <form method=\"post\" action=\"/section/{section_id}/auth?access={access_filter}\">
-        <input type=\"password\" name=\"password\" placeholder=\"Password\" required />
-        <button type=\"submit\">Unlock Section</button>
-      </form>
-      {error_block}
-    </div>
-  </body>
-</html>
-"""
 
 async def render_section(section_id: str, access_filter: str, request: Request) -> HTMLResponse:
     access_filter = (access_filter or "all").strip().lower()
     if password_enabled() and not is_authed(request):
-        return HTMLResponse(content=section_password_form_html(section_id, access_filter), status_code=401)
+        return templates.TemplateResponse(
+            "password.html",
+            {
+                "request": request,
+                "page_title": "Protected Section",
+                "heading": "Section Locked",
+                "subtext": "Enter the password to unlock this section.",
+                "form_action": f"/section/{section_id}/auth?access={access_filter}",
+                "button_text": "Unlock Section",
+                "error": "",
+            },
+            status_code=401,
+        )
 
     if settings.redis_url and getattr(store, "_redis", None) is None:
         await store.connect()
@@ -520,6 +443,10 @@ async def render_section(section_id: str, access_filter: str, request: Request) 
 
     max_views = max((item["views_total"] for item in entries), default=0)
 
+    # Mark trending
+    for item in page_entries:
+        item["is_trending"] = bool(max_views and item["views_total"] == max_views)
+
     def build_query(**overrides: str) -> str:
         current = dict(request.query_params)
         current.update({k: str(v) for k, v in overrides.items() if v is not None})
@@ -527,39 +454,39 @@ async def render_section(section_id: str, access_filter: str, request: Request) 
 
     def sort_option(value: str, label: str) -> str:
         selected = " selected" if sort == value else ""
-        return f"<option value=\"{value}\"{selected}>{label}</option>"
-
-    items = []
-    if empty_section:
-        items.append(
-            "<li class=\"card empty\">No files yet. Upload to this section to see items here.</li>"
-        )
-    for idx, item in enumerate(page_entries, start=show_start if total_items else 1):
-        view_text = f"👁 {item['views_total']}"
-        if item["views_unique"]:
-            view_text = f"{view_text} · {item['views_unique']} unique"
-        badge = ""
-        if max_views and item["views_total"] == max_views:
-            badge = "<span class=\"badge\">Trending</span>"
-        items.append(
-            "<li class=\"card\">"
-            "<div class=\"card-main\">"
-            f"<div class=\"file-name\" title=\"{item['name']}\">{idx}. {item['name']}</div>"
-            "<div class=\"file-meta\">"
-            f"<span>{item['size_text']}</span>"
-            f"<span>{item['mime']}</span>"
-            f"<span>{view_text}</span>"
-            f"{badge}"
-            "</div>"
-            "</div>"
-            "<div class=\"card-actions\">"
-            f"<a class=\"btn{'' if item['normal_link'] else ' disabled'}\" href=\"{item['normal_link'] or '#'}\">Normal Open</a>"
-            f"<a class=\"btn ghost{'' if item['premium_link'] else ' disabled'}\" href=\"{item['premium_link'] or '#'}\">Premium Open</a>"
-            "</div>"
-            "</li>"
-        )
+        return f'<option value="{value}"{selected}>{label}</option>'
 
     if request.query_params.get("debug") == "2":
+        # Keep debug JSON response identical
+        items = []
+        if empty_section:
+            items.append(
+                '<li class="card empty">No files yet. Upload to this section to see items here.</li>'
+            )
+        for idx, item in enumerate(page_entries, start=show_start if total_items else 1):
+            view_text = f"👁 {item['views_total']}"
+            if item["views_unique"]:
+                view_text = f"{view_text} · {item['views_unique']} unique"
+            badge = ""
+            if max_views and item["views_total"] == max_views:
+                badge = '<span class="badge">Trending</span>'
+            items.append(
+                '<li class="card">'
+                '<div class="card-main">'
+                f'<div class="file-name" title="{item["name"]}">{idx}. {item["name"]}</div>'
+                '<div class="file-meta">'
+                f'<span>{item["size_text"]}</span>'
+                f'<span>{item["mime"]}</span>'
+                f'<span>{view_text}</span>'
+                f'{badge}'
+                '</div>'
+                '</div>'
+                '<div class="card-actions">'
+                f'<a class="btn{"" if item["normal_link"] else " disabled"}" href="{item["normal_link"] or "#"}">Normal Open</a>'
+                f'<a class="btn ghost{"" if item["premium_link"] else " disabled"}" href="{item["premium_link"] or "#"}">Premium Open</a>'
+                '</div>'
+                '</li>'
+            )
         return JSONResponse(
             {
                 "section_id": section_id,
@@ -571,19 +498,15 @@ async def render_section(section_id: str, access_filter: str, request: Request) 
             }
         )
 
-    skeleton_items = "".join(["<li class=\"card skeleton\"><div class=\"line w-60\"></div><div class=\"line w-40\"></div><div class=\"line w-30\"></div></li>" for _ in range(min(6, per_page))])
-
-    title = f"Section: {section_id}"
-    breadcrumb = f"<a href=\"{settings.base_url}\">Home</a> <span>→</span> <span>Section</span> <span>→</span> <span>{section_id}</span>"
     send_all_normal_link = "#"
-    send_all_normal_class = "btn disabled"
+    send_all_normal_class = "btn btn-secondary btn-disabled"
     send_all_premium_link = "#"
-    send_all_premium_class = "btn disabled"
+    send_all_premium_class = "btn btn-ghost btn-disabled"
     if settings.bot_username and total_items > 0:
         send_all_normal_link = f"https://t.me/{settings.bot_username}?start=sa_{section_id}_normal"
         send_all_premium_link = f"https://t.me/{settings.bot_username}?start=sa_{section_id}_premium"
-        send_all_normal_class = "btn"
-        send_all_premium_class = "btn"
+        send_all_normal_class = "btn btn-secondary"
+        send_all_premium_class = "btn btn-ghost"
 
     prev_link = build_query(page=page - 1) if page > 1 else ""
     next_link = build_query(page=page + 1) if page < page_count else ""
@@ -596,389 +519,33 @@ async def render_section(section_id: str, access_filter: str, request: Request) 
         sort_option("size", "Size"),
     ]
 
-    prev_class = "page disabled" if not prev_link else "page"
-    next_class = "page disabled" if not next_link else "page"
     show_end = min(end, total_items)
 
-    html = """
-<!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>__TITLE__</title>
-    <style>
-      @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
-      :root {
-        --bg-1: #0b0f1a;
-        --bg-2: #111a2b;
-        --accent: #7bdff2;
-        --accent-2: #f2a07b;
-        --card: rgba(15, 22, 36, 0.92);
-        --border: rgba(255, 255, 255, 0.08);
-        --text: #e9eef8;
-        --muted: #9fb0c9;
-        --shadow: 0 20px 60px rgba(0,0,0,0.35);
-      }
-      * { box-sizing: border-box; }
-      body {
-        margin: 0;
-        font-family: 'Space Grotesk', system-ui, sans-serif;
-        color: var(--text);
-        min-height: 100vh;
-        background:
-          radial-gradient(1100px 540px at 10% 0%, rgba(123, 223, 242, 0.12), transparent 60%),
-          radial-gradient(900px 700px at 90% 20%, rgba(242, 160, 123, 0.16), transparent 60%),
-          linear-gradient(135deg, var(--bg-1), var(--bg-2));
-        padding: 28px 18px 60px;
-      }
-      body::before {
-        content: '';
-        position: fixed;
-        inset: 0;
-        background: repeating-linear-gradient(
-          115deg,
-          rgba(255,255,255,0.03) 0px,
-          rgba(255,255,255,0.03) 1px,
-          transparent 1px,
-          transparent 6px
-        );
-        opacity: 0.35;
-        pointer-events: none;
-      }
-      .shell {
-        width: min(1080px, 96vw);
-        margin: 0 auto;
-        background: var(--card);
-        border: 1px solid var(--border);
-        border-radius: 24px;
-        padding: 24px;
-        box-shadow: var(--shadow);
-        backdrop-filter: blur(12px);
-      }
-      .breadcrumb {
-        font-size: 13px;
-        color: var(--muted);
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        flex-wrap: wrap;
-        margin-bottom: 16px;
-      }
-      .breadcrumb a { color: var(--accent); text-decoration: none; }
-      .breadcrumb span { color: var(--muted); }
-      .header {
-        display: flex;
-        flex-wrap: wrap;
-        align-items: center;
-        justify-content: space-between;
-        gap: 16px;
-        margin-bottom: 18px;
-      }
-      .title { font-size: 22px; font-weight: 700; }
-      .meta { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
-      .chip {
-        font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, monospace;
-        font-size: 12px;
-        color: var(--muted);
-        padding: 6px 10px;
-        border-radius: 999px;
-        border: 1px solid var(--border);
-        background: rgba(255,255,255,0.03);
-      }
-      .controls { display: flex; gap: 10px; align-items: center; }
-      .controls label { font-size: 12px; color: var(--muted); }
-      select {
-        background: rgba(255,255,255,0.04);
-        color: var(--text);
-        border: 1px solid var(--border);
-        border-radius: 12px;
-        padding: 8px 12px;
-        font-size: 13px;
-        font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, monospace;
-      }
-      select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-      .list { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; }
-      .card {
-        display: flex;
-        flex-wrap: wrap;
-        align-items: center;
-        justify-content: space-between;
-        gap: 12px;
-        padding: 16px 18px;
-        border-radius: 16px;
-        border: 1px solid var(--border);
-        background: rgba(255,255,255,0.02);
-        transition: transform 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
-      }
-      .card.empty {
-        justify-content: center;
-        color: var(--muted);
-        font-size: 13px;
-        border-style: dashed;
-      }
-      .card:hover {
-        transform: translateY(-1px);
-        border-color: rgba(123, 223, 242, 0.35);
-        box-shadow: 0 14px 30px rgba(0,0,0,0.25);
-      }
-      .card:focus-within { border-color: rgba(123, 223, 242, 0.6); }
-      .card-main { min-width: 0; }
-      .file-name {
-        font-size: 16px;
-        font-weight: 600;
-        color: var(--text);
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        max-width: 560px;
-      }
-      .file-meta {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 10px;
-        font-size: 12px;
-        color: var(--muted);
-        margin-top: 6px;
-      }
-      .badge {
-        background: rgba(242, 160, 123, 0.2);
-        color: #f2a07b;
-        border: 1px solid rgba(242, 160, 123, 0.4);
-        padding: 2px 8px;
-        border-radius: 999px;
-        font-size: 11px;
-        font-weight: 600;
-      }
-      .card-actions { display: flex; gap: 8px; flex-wrap: wrap; }
-      .btn {
-        text-decoration: none;
-        color: #0b0f1a;
-        background: linear-gradient(135deg, var(--accent), #b9f3ff);
-        padding: 8px 12px;
-        border-radius: 10px;
-        font-weight: 600;
-        border: none;
-        cursor: pointer;
-        transition: transform 120ms ease, box-shadow 120ms ease;
-      }
-      .btn:hover {
-        transform: translateY(-1px);
-        box-shadow: 0 8px 18px rgba(123, 223, 242, 0.18);
-      }
-      .btn.ghost:hover { border-color: rgba(123, 223, 242, 0.4); }
-      .btn.disabled {
-        opacity: 0.5;
-        cursor: not-allowed;
-        box-shadow: none;
-      }
-      .btn.disabled:hover {
-        transform: none;
-        box-shadow: none;
-      }
-      .btn.ghost {
-        background: transparent;
-        color: var(--text);
-        border: 1px solid var(--border);
-      }
-      .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-      a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-      .pagination {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 12px;
-        margin-top: 18px;
-      }
-      .page {
-        text-decoration: none;
-        color: var(--text);
-        border: 1px solid var(--border);
-        padding: 8px 12px;
-        border-radius: 10px;
-      }
-      .page:hover { border-color: rgba(123, 223, 242, 0.35); }
-      .page.disabled { opacity: 0.45; pointer-events: none; }
-      .hint { margin-top: 16px; font-size: 12px; color: var(--muted); }
-      .skeleton {
-        border-style: dashed;
-        background: rgba(255,255,255,0.02);
-        position: relative;
-        overflow: hidden;
-      }
-      .skeleton .line {
-        height: 10px;
-        border-radius: 999px;
-        background: rgba(255,255,255,0.12);
-        margin: 6px 0;
-      }
-      .skeleton .w-60 { width: 60%; }
-      .skeleton .w-40 { width: 40%; }
-      .skeleton .w-30 { width: 30%; }
-      .content { opacity: 1; transition: opacity 200ms ease; }
-      body.is-loading .content { opacity: 0; height: 0; overflow: hidden; }
-      body.is-loading .skeleton-list { display: grid; }
-      .skeleton-list { display: none; list-style: none; padding: 0; margin: 0; gap: 12px; }
-      @media (max-width: 720px) {
-        .shell { padding: 18px; }
-        .file-name { max-width: 280px; }
-        .card { flex-direction: column; align-items: flex-start; }
-        .card-actions { width: 100%; }
-        .card-actions .btn { flex: 1; text-align: center; }
-        .pagination { flex-direction: column; align-items: stretch; }
-      }
-    </style>
-  </head>
-  <body class="is-loading">
-    <div class="shell">
-      <nav class="breadcrumb" aria-label="Breadcrumb">__BREADCRUMB__</nav>
-      <div class="header">
-        <div>
-          <div class="title">__TITLE__</div>
-          <div class="meta">
-            <div class="chip">__TOTAL__ files</div>
-            <div class="chip">Page __PAGE__ of __PAGE_COUNT__</div>
-          </div>
-        </div>
-        <div class="controls">
-          <a class="__SEND_ALL_NORMAL_CLASS__" href="__SEND_ALL_NORMAL_LINK__">Send All Normal</a>
-          <a class="__SEND_ALL_PREMIUM_CLASS__" href="__SEND_ALL_PREMIUM_LINK__">Send All Premium</a>
-          <label for="sort">Sort</label>
-          <select id="sort" name="sort">
-            __SORT_OPTIONS__
-          </select>
-        </div>
-      </div>
-      <ul class="skeleton-list">__SKELETON__</ul>
-      <div class="content">
-        <ul class="list">
-          __ITEMS__
-        </ul>
-      </div>
-      <div class="pagination">
-        <a class="__PREV_CLASS__" href="__PREV_HREF__">Prev</a>
-        <div class="chip">Showing __SHOW_START__-__SHOW_END__ of __TOTAL__</div>
-        <a class="__NEXT_CLASS__" href="__NEXT_HREF__">Next</a>
-      </div>
-      <div class="hint">Tip: If a file does not open, refresh once or try again later.</div>
-    </div>
-    <script>
-      const sortSelect = document.getElementById('sort');
-      if (sortSelect) {
-        sortSelect.addEventListener('change', () => {
-          const url = new URL(window.location.href);
-          url.searchParams.set('sort', sortSelect.value);
-          url.searchParams.set('page', '1');
-          window.location.href = url.toString();
-        });
-      }
-      // copy button removed
-      document.body.classList.remove('is-loading');
-    </script>
-  </body>
-</html>
-"""
-    html = (html
-            .replace("__TITLE__", title)
-            .replace("__BREADCRUMB__", breadcrumb)
-            .replace("__TOTAL__", str(total_items))
-            .replace("__PAGE__", str(page))
-            .replace("__PAGE_COUNT__", str(page_count))
-            .replace("__SORT_OPTIONS__", "".join(sort_options))
-            .replace("__SEND_ALL_NORMAL_LINK__", send_all_normal_link)
-            .replace("__SEND_ALL_NORMAL_CLASS__", send_all_normal_class)
-            .replace("__SEND_ALL_PREMIUM_LINK__", send_all_premium_link)
-            .replace("__SEND_ALL_PREMIUM_CLASS__", send_all_premium_class)
-            .replace("__SKELETON__", skeleton_items)
-            .replace("__ITEMS__", "".join(items))
-            .replace("__PREV_CLASS__", prev_class)
-            .replace("__NEXT_CLASS__", next_class)
-            .replace("__PREV_HREF__", prev_link or "#")
-            .replace("__NEXT_HREF__", next_link or "#")
-            .replace("__SHOW_START__", str(show_start))
-            .replace("__SHOW_END__", str(show_end))
+    return templates.TemplateResponse(
+        "section.html",
+        {
+            "request": request,
+            "section_id": section_id,
+            "base_url": settings.base_url,
+            "total_items": total_items,
+            "page": page,
+            "page_count": page_count,
+            "sort_options": sort_options,
+            "send_all_normal_link": send_all_normal_link,
+            "send_all_normal_class": send_all_normal_class,
+            "send_all_premium_link": send_all_premium_link,
+            "send_all_premium_class": send_all_premium_class,
+            "skeleton_range": range(min(6, per_page)),
+            "empty_section": empty_section,
+            "page_entries": page_entries,
+            "show_start_offset": show_start - 1 if total_items else 0,
+            "max_views": max_views,
+            "prev_link": prev_link,
+            "next_link": next_link,
+            "show_start": show_start,
+            "show_end": show_end,
+        },
     )
-    return HTMLResponse(content=html)
-
-
-def section_picker_html(section_id: str) -> str:
-    return f"""
-<!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Section: {section_id}</title>
-    <style>
-      @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap');
-      :root {{
-        --bg-1: #0b0f1a;
-        --bg-2: #111a2b;
-        --accent: #7bdff2;
-        --accent-2: #f2a07b;
-        --card: rgba(15, 22, 36, 0.92);
-        --border: rgba(255, 255, 255, 0.08);
-        --text: #e9eef8;
-        --muted: #9fb0c9;
-      }}
-      * {{ box-sizing: border-box; }}
-      body {{
-        margin: 0;
-        font-family: 'Space Grotesk', system-ui, sans-serif;
-        color: var(--text);
-        min-height: 100vh;
-        display: grid;
-        place-items: center;
-        background:
-          radial-gradient(900px 420px at 10% 0%, rgba(123, 223, 242, 0.12), transparent 60%),
-          radial-gradient(700px 520px at 90% 20%, rgba(242, 160, 123, 0.16), transparent 60%),
-          linear-gradient(135deg, var(--bg-1), var(--bg-2));
-      }}
-      .card {{
-        width: min(520px, 92vw);
-        background: var(--card);
-        border: 1px solid var(--border);
-        border-radius: 20px;
-        padding: 28px;
-        box-shadow: 0 20px 60px rgba(0,0,0,0.35);
-        text-align: center;
-      }}
-      h2 {{ margin: 0 0 8px; }}
-      p {{ margin: 0 0 18px; color: var(--muted); font-size: 14px; }}
-      .actions {{
-        display: grid;
-        gap: 12px;
-        margin-top: 10px;
-      }}
-      .btn {{
-        text-decoration: none;
-        color: #0b0f1a;
-        background: linear-gradient(135deg, var(--accent), #b9f3ff);
-        padding: 12px 16px;
-        border-radius: 12px;
-        font-weight: 600;
-      }}
-      .btn.secondary {{
-        background: transparent;
-        color: var(--text);
-        border: 1px solid var(--border);
-      }}
-    </style>
-  </head>
-  <body>
-    <div class="card">
-      <h2>Section: {section_id}</h2>
-      <p>Select access type</p>
-      <div class="actions">
-        <a class="btn" href="/section/{section_id}?access=normal">Normal</a>
-        <a class="btn secondary" href="/section/{section_id}/premium">Premium</a>
-      </div>
-    </div>
-  </body>
-</html>
-"""
-
-
 
 
 @app.get("/debug/section/{section_id}")
@@ -1007,6 +574,7 @@ async def debug_section(section_id: str, access: str = "premium"):
         "entries_filtered": len(entries),
         "entries": entries[:5],
     }
+
 @app.get("/section/{section_id}")
 async def section_page(section_id: str, request: Request):
     return await render_section(section_id, "all", request)
@@ -1025,41 +593,22 @@ async def section_auth(section_id: str, request: Request, password: str = Form(.
     if not password_enabled():
         return RedirectResponse(url=f"/section/{section_id}" if access != "premium" else f"/section/{section_id}/premium", status_code=302)
     if not hmac.compare_digest(password, settings.stream_password):
-        return HTMLResponse(content=section_password_form_html(section_id, access, "Invalid password."), status_code=401)
+        return templates.TemplateResponse(
+            "password.html",
+            {
+                "request": request,
+                "page_title": "Protected Section",
+                "heading": "Section Locked",
+                "subtext": "Enter the password to unlock this section.",
+                "form_action": f"/section/{section_id}/auth?access={access}",
+                "button_text": "Unlock Section",
+                "error": "Invalid password.",
+            },
+            status_code=401,
+        )
     response = RedirectResponse(url=f"/section/{section_id}" if access != "premium" else f"/section/{section_id}/premium", status_code=302)
     response.set_cookie("stream_auth", password_cookie_value(), httponly=True, max_age=60 * 60 * 12, samesite="lax")
     return response
-
-
-def password_form_html(token: str, error: str = "") -> str:
-    error_block = f"<p class=\"error\">{error}</p>" if error else ""
-    return f"""
-<!doctype html>
-<html>
-  <head>
-    <meta charset=\"utf-8\" />
-    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />
-    <title>Protected Stream</title>
-    <style>
-      body {{ font-family: Arial, sans-serif; background: #0b1020; color: #fff; margin: 0; display: grid; place-items: center; height: 100vh; }}
-      .card {{ width: min(420px, 92vw); background: #111b33; padding: 28px; border-radius: 16px; text-align: center; }}
-      input {{ width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid #2a3a5f; background: #0f1a33; color: #fff; }}
-      button {{ margin-top: 12px; width: 100%; padding: 10px 12px; border: 0; border-radius: 10px; background: #7bdff2; color: #0b0f1a; font-weight: 700; cursor: pointer; }}
-      .error {{ color: #ffb3b3; font-size: 13px; margin: 10px 0 0; }}
-    </style>
-  </head>
-  <body>
-    <div class=\"card\">
-      <h2>Enter Password</h2>
-      <form method=\"post\" action=\"/player/{token}\">
-        <input type=\"password\" name=\"password\" placeholder=\"Password\" required />
-        <button type=\"submit\">Unlock Stream</button>
-      </form>
-      {error_block}
-    </div>
-  </body>
-</html>
-"""
 
 
 @app.get("/player/{token}")
@@ -1068,32 +617,22 @@ async def player(token: str, request: Request):
     if not ref:
         raise HTTPException(status_code=404, detail="Invalid or expired token")
     if ref.access == "normal" and not settings.public_stream:
-        html = """
-<!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Premium Required</title>
-    <style>
-      body { font-family: Arial, sans-serif; background: #0b1020; color: #fff; margin: 0; display: grid; place-items: center; height: 100vh; }
-      .card { width: min(640px, 95vw); background: #111b33; padding: 32px; border-radius: 16px; text-align: center; }
-      a { color: #8ab4ff; }
-    </style>
-  </head>
-  <body>
-    <div class="card">
-      <h2>Premium Required</h2>
-      <p>This stream is available for premium users only.</p>
-      <p>Please contact the admin to upgrade.</p>
-    </div>
-  </body>
-</html>
-"""
-        return HTMLResponse(content=html, status_code=403)
+        return templates.TemplateResponse("premium.html", {"request": request}, status_code=403)
 
     if password_enabled() and not is_authed(request):
-        return HTMLResponse(content=password_form_html(token), status_code=401)
+        return templates.TemplateResponse(
+            "password.html",
+            {
+                "request": request,
+                "page_title": "Protected Stream",
+                "heading": "Enter Password",
+                "subtext": "This stream is password protected.",
+                "form_action": f"/player/{token}",
+                "button_text": "Unlock Stream",
+                "error": "",
+            },
+            status_code=401,
+        )
 
     viewer_cookie = request.cookies.get("stream_viewer_id")
     viewer_id = viewer_cookie or secrets.token_hex(16)
@@ -1108,333 +647,25 @@ async def player(token: str, request: Request):
     views_total, _ = await store.get_views(token)
     likes_total, liked = await store.get_likes(token, viewer_id)
 
-    html = """
-<!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Stream</title>
-    <style>
-      @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
-      :root {
-        --bg-1: #0b0f1a;
-        --bg-2: #111a2b;
-        --accent: #7bdff2;
-        --accent-2: #f2a07b;
-        --card: rgba(15, 22, 36, 0.92);
-        --border: rgba(255, 255, 255, 0.08);
-        --text: #e9eef8;
-        --muted: #9fb0c9;
-      }
-      * { box-sizing: border-box; }
-      body {
-        margin: 0;
-        font-family: 'Space Grotesk', system-ui, sans-serif;
-        color: var(--text);
-        min-height: 100vh;
-        background:
-          radial-gradient(1200px 500px at 10% 0%, rgba(123, 223, 242, 0.12), transparent 60%),
-          radial-gradient(900px 600px at 90% 10%, rgba(242, 160, 123, 0.14), transparent 60%),
-          linear-gradient(135deg, var(--bg-1), var(--bg-2));
-        overflow-x: hidden;
-      }
-      body::before {
-        content: '';
-        position: fixed;
-        inset: 0;
-        background: repeating-linear-gradient(
-          115deg,
-          rgba(255,255,255,0.03) 0px,
-          rgba(255,255,255,0.03) 1px,
-          transparent 1px,
-          transparent 6px
-        );
-        pointer-events: none;
-        opacity: 0.35;
-      }
-      .shell {
-        width: min(1180px, 94vw);
-        margin: 32px auto 42px;
-        padding: 24px;
-        border-radius: 26px;
-        background: var(--card);
-        border: 1px solid var(--border);
-        box-shadow: 0 20px 60px rgba(0,0,0,0.35);
-        backdrop-filter: blur(12px);
-        animation: float-in 600ms ease-out;
-      }
-      .topbar {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 16px;
-        margin-bottom: 18px;
-      }
-      .brand {
-        font-weight: 700;
-        letter-spacing: 0.4px;
-        font-size: 16px;
-        text-transform: uppercase;
-        color: var(--muted);
-      }
-      .status {
-        font-size: 12px;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-        padding: 6px 10px;
-        border-radius: 999px;
-        border: 1px solid rgba(123, 223, 242, 0.4);
-        color: var(--accent);
-        background: rgba(123, 223, 242, 0.08);
-      }
-      .layout {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) 320px;
-        gap: 18px;
-        align-items: start;
-      }
-      .media-card {
-        display: grid;
-        gap: 12px;
-        padding: 16px;
-        border-radius: 20px;
-        border: 1px solid var(--border);
-        background: rgba(8, 14, 26, 0.7);
-      }
-      .file-title {
-        font-size: 22px;
-        font-weight: 700;
-        letter-spacing: 0.2px;
-        word-break: break-word;
-      }
-      .file-sub {
-        color: var(--muted);
-        font-size: 13px;
-        font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, monospace;
-      }
-      .player {
-        width: 100%;
-        border-radius: 16px;
-        overflow: hidden;
-        border: 1px solid var(--border);
-        background: #000;
-        max-height: 70vh;
-      }
-      __MEDIA_TAG__ {
-        width: 100%;
-        height: auto;
-        max-height: 70vh;
-        display: block;
-        background: #000;
-        object-fit: contain;
-      }
-      .player audio {
-        width: 100%;
-        height: 52px;
-      }
-      .panel {
-        padding: 16px;
-        border-radius: 18px;
-        border: 1px solid var(--border);
-        background: linear-gradient(145deg, rgba(11, 17, 30, 0.92), rgba(15, 23, 40, 0.92));
-        display: grid;
-        gap: 12px;
-      }
-      .panel-title {
-        font-size: 14px;
-        font-weight: 600;
-        color: var(--muted);
-        text-transform: uppercase;
-        letter-spacing: 1px;
-      }
-      .actions {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 12px;
-        align-items: center;
-      }
-      .btn {
-        text-decoration: none;
-        color: #0b0f1a;
-        background: linear-gradient(135deg, var(--accent), #b9f3ff);
-        padding: 10px 16px;
-        border-radius: 12px;
-        font-weight: 600;
-        border: none;
-        cursor: pointer;
-        transition: transform 120ms ease, box-shadow 120ms ease;
-      }
-      .btn.secondary {
-        background: transparent;
-        color: var(--text);
-        border: 1px solid var(--border);
-      }
-      .btn.ghost {
-        background: transparent;
-        color: var(--text);
-        border: 1px solid var(--border);
-      }
-      .btn.ghost.active {
-        border-color: rgba(242, 160, 123, 0.7);
-        color: #f2a07b;
-        background: rgba(242, 160, 123, 0.08);
-      }
-      .btn[aria-disabled="true"] {
-        opacity: 0.5;
-        cursor: not-allowed;
-        pointer-events: none;
-      }
-      .btn:hover {
-        transform: translateY(-1px);
-        box-shadow: 0 8px 20px rgba(123, 223, 242, 0.2);
-      }
-      .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-      .hint {
-        font-size: 12px;
-        color: var(--muted);
-        line-height: 1.5;
-      }
-      .stats {
-        display: grid;
-        gap: 10px;
-      }
-      .stat-row {
-        display: flex;
-        justify-content: space-between;
-        font-size: 13px;
-      }
-      .stat-row span:first-child {
-        color: var(--muted);
-      }
-      .chip-row {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-      }
-      .chip {
-        font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, monospace;
-        font-size: 11px;
-        color: var(--muted);
-        padding: 6px 10px;
-        border-radius: 999px;
-        border: 1px solid var(--border);
-        background: rgba(255,255,255,0.03);
-      }
-      @keyframes float-in {
-        from { opacity: 0; transform: translateY(10px); }
-        to { opacity: 1; transform: translateY(0); }
-      }
-      @media (max-width: 960px) {
-        .layout { grid-template-columns: 1fr; }
-      }
-      @media (max-width: 700px) {
-        .shell { padding: 18px; }
-        .file-title { font-size: 18px; }
-        .actions { flex-direction: column; align-items: stretch; }
-        .actions .btn { width: 100%; text-align: center; }
-      }
-    </style>
-  </head>
-  <body>
-    <div class="shell">
-      <div class="topbar">
-        <div class="brand">AZ Stream</div>
-        <div class="status">Live</div>
-      </div>
-      <div class="layout">
-        <section class="main">
-          <div class="media-card">
-            <div>
-              <div class="file-title">__FILE__</div>
-              <div class="file-sub">__SIZE__ • __MIME__</div>
-            </div>
-            <div class="player">
-              <__MEDIA_TAG__ controls autoplay preload="auto" controlsList="nodownload">
-                <source src="/stream/__TOKEN__" type="__MIME__" />
-              </__MEDIA_TAG__>
-            </div>
-            <div class="chip-row">
-              <div class="chip">Views __VIEWS__</div>
-              <div class="chip">Likes __LIKES__</div>
-              <div class="chip">Token __TOKEN__</div>
-            </div>
-          </div>
-        </section>
-        <aside class="side">
-          <div class="panel">
-            <div class="panel-title">Controls</div>
-            <div class="actions">
-              <a class="btn secondary" href="/stream/__TOKEN__">Direct stream</a>
-              __DOWNLOAD_BUTTON__
-              <button id="like-btn" class="btn ghost __LIKE_ACTIVE__" data-liked="__LIKED__" data-token="__TOKEN__">
-                Like <span id="like-count">__LIKES__</span>
-              </button>
-            </div>
-            <div class="hint">If playback stalls, refresh once. Some files need a few seconds to start.</div>
-          </div>
-          <div class="panel stats">
-            <div class="panel-title">Stats</div>
-            <div class="stat-row"><span>Views</span><strong>__VIEWS__</strong></div>
-            <div class="stat-row"><span>Likes</span><strong>__LIKES__</strong></div>
-            <div class="stat-row"><span>File size</span><strong>__SIZE__</strong></div>
-          </div>
-          <div class="panel">
-            <div class="panel-title">Playback Tips</div>
-            <div class="hint">Use direct stream for external players. For large files, wait a few seconds after pressing play.</div>
-          </div>
-        </aside>
-      </div>
-    </div>
-    <script>
-      const likeBtn = document.getElementById('like-btn');
-      const likeCount = document.getElementById('like-count');
-      if (likeBtn) {
-        likeBtn.addEventListener('click', async () => {
-          const token = likeBtn.dataset.token;
-          const liked = likeBtn.dataset.liked === 'true';
-          const action = liked ? 'unlike' : 'like';
-          likeBtn.disabled = true;
-          try {
-            const res = await fetch(`/player/${token}/like`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ action })
-            });
-            if (res.ok) {
-              const data = await res.json();
-              likeBtn.dataset.liked = data.liked ? 'true' : 'false';
-              likeBtn.classList.toggle('active', data.liked);
-              likeCount.textContent = data.total;
-            }
-          } finally {
-            likeBtn.disabled = false;
-          }
-        });
-      }
-    </script>
-  </body>
-</html>
-"""
-
-
-    download_button = ""
+    download_button_url = ""
     if ref.access == "premium" and settings.bot_username:
-        download_button = f'<a class="btn" href="https://t.me/{settings.bot_username}?start=dl_{token}">Download</a>'
+        download_button_url = f"https://t.me/{settings.bot_username}?start=dl_{token}"
 
-    html = (html
-            .replace("__TOKEN__", token)
-            .replace("__FILE__", file_name)
-            .replace("__SIZE__", size_text)
-            .replace("__MIME__", resolve_mime(ref))
-            .replace("__MEDIA_TAG__", media_tag)
-            .replace("__VIEWS__", str(views_total))
-            .replace("__LIKES__", str(likes_total))
-            .replace("__LIKED__", "true" if liked else "false")
-            .replace("__LIKE_ACTIVE__", "active" if liked else "")
-            .replace("__DOWNLOAD_BUTTON__", download_button)
+    response = templates.TemplateResponse(
+        "player.html",
+        {
+            "request": request,
+            "token": token,
+            "file_name": file_name,
+            "size_text": size_text,
+            "mime_type": resolve_mime(ref),
+            "media_tag": media_tag,
+            "views_total": views_total,
+            "likes_total": likes_total,
+            "liked": liked,
+            "download_button_url": download_button_url,
+        },
     )
-    response = HTMLResponse(content=html)
     if not viewer_cookie:
         response.set_cookie("stream_viewer_id", viewer_id, httponly=True, max_age=60 * 60 * 24 * 30, samesite="lax")
     return response
@@ -1473,16 +704,26 @@ async def player_like(token: str, request: Request):
 
 
 @app.post("/player/{token}")
-async def player_password(token: str, password: str = Form(...)):
+async def player_password(token: str, request: Request, password: str = Form(...)):
     ref = await store.get(token, settings.token_ttl_seconds)
     if not ref:
         raise HTTPException(status_code=404, detail="Invalid or expired token")
     if not password_enabled():
         return RedirectResponse(url=f"/player/{token}", status_code=302)
     if not hmac.compare_digest(password, settings.stream_password):
-        return HTMLResponse(content=password_form_html(token, "Invalid password."), status_code=401)
+        return templates.TemplateResponse(
+            "password.html",
+            {
+                "request": request,
+                "page_title": "Protected Stream",
+                "heading": "Enter Password",
+                "subtext": "This stream is password protected.",
+                "form_action": f"/player/{token}",
+                "button_text": "Unlock Stream",
+                "error": "Invalid password.",
+            },
+            status_code=401,
+        )
     response = RedirectResponse(url=f"/player/{token}", status_code=302)
     response.set_cookie("stream_auth", password_cookie_value(), httponly=True, max_age=60 * 60 * 12, samesite="lax")
     return response
-
-
