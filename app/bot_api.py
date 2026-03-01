@@ -147,11 +147,14 @@ def _plan_kb() -> InlineKeyboardMarkup:
 
 
 def _payment_action_kb(req_id: str) -> InlineKeyboardMarkup:
-    """After plan selected — UTR or screenshot buttons."""
+    """After plan selected — UTR, screenshot, or cancel buttons."""
     return InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="📋 Submit UTR", callback_data=f"utr:{req_id}"),
             InlineKeyboardButton(text="📸 Send Screenshot", callback_data=f"sc:{req_id}"),
+        ],
+        [
+            InlineKeyboardButton(text="❌ Cancel Request", callback_data=f"cxl:{req_id}"),
         ],
     ])
 
@@ -377,6 +380,53 @@ async def pay_plan_callback(callback: CallbackQuery, state: FSMContext) -> None:
     req_id = await store.next_payment_request_id()
     await store.create_payment_request(req_id, user_id, amount, credits, plan_type=plan_type)
     await _send_payment_instructions(callback.message.chat.id, req_id, amount, credits, plan_type)
+
+
+# ---------------------------------------------------------------------------
+#  Cancel Request
+# ---------------------------------------------------------------------------
+
+@dp.callback_query(F.data.startswith("cxl:"))
+async def pay_cancel_callback(callback: CallbackQuery, state: FSMContext) -> None:
+    await callback.answer("Cancelling...")
+    req_id = callback.data.split(":", 1)[1]
+    user_id = callback.from_user.id
+
+    req = await store.get_payment_request(req_id)
+    if not req:
+        await callback.answer("Request not found or already cancelled.", show_alert=True)
+        return
+
+    # Only the owner can cancel
+    if int(req.get("user_id", 0) or 0) != user_id and not is_admin(user_id):
+        await callback.answer("❌ This request does not belong to you.", show_alert=True)
+        return
+
+    # Delete the record
+    try:
+        await store.delete_payment_request(req_id)
+    except Exception:
+        # Fallback: mark as cancelled if delete not available
+        await store.set_payment_request_status(req_id, "cancelled", note="user_cancelled", admin_id=0)
+
+    # Edit message to show cancelled state (remove buttons)
+    cancelled_text = format_msg(
+        "🚫 Request Cancelled",
+        sections=[
+            ("Request ID", code(req_id)),
+            ("", "Your payment request has been cancelled and removed."),
+        ],
+        tip="Use /pay anytime to start a new request.",
+    )
+    try:
+        await callback.message.edit_caption(caption=cancelled_text, parse_mode="HTML", reply_markup=None)
+    except Exception:
+        try:
+            await callback.message.edit_text(cancelled_text, parse_mode="HTML", reply_markup=None)
+        except Exception:
+            await callback.message.reply(cancelled_text, parse_mode="HTML")
+
+    await state.clear()
 
 
 # ---------------------------------------------------------------------------

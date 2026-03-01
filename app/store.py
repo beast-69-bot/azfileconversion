@@ -585,6 +585,20 @@ return {1, newval}
         self._pay_requests[req["id"]] = req
         return req
 
+    async def delete_payment_request(self, request_id: str) -> bool:
+        request_id = str(request_id).strip()
+        if not request_id:
+            return False
+        if self._redis is not None:
+            key = f"{self._pay_req_prefix}{request_id}"
+            deleted = await self._redis.delete(key)
+            await self._redis.zrem(self._pay_req_index, request_id)
+            return deleted > 0
+        if request_id in self._pay_requests:
+            del self._pay_requests[request_id]
+            return True
+        return False
+
     async def list_payment_requests(self, status: str = "all", limit: int = 20) -> list[dict]:
         status = (status or "all").strip().lower()
         limit = max(1, int(limit))
