@@ -26,6 +26,49 @@
             Powered by AZ Stream &middot; Built with ❤️
         </footer>
     </div>
+    <script>
+        document.addEventListener('click', function (e) {
+            const btn = e.target.closest('.btn-primary, .btn, button');
+            if (!btn) return;
+            if (btn.disabled || btn.classList.contains('btn-disabled') || btn.getAttribute('aria-disabled') === 'true') return;
+
+            const colors = ['#ff2a85', '#00f5ff', '#9d4edd', '#ff6b00', '#ffea00', '#19c37d'];
+            const x = e.clientX;
+            const y = e.clientY;
+
+            const container = document.createElement('div');
+            container.className = 'gulal-burst-container';
+            container.style.left = x + 'px';
+            container.style.top = y + 'px';
+
+            // Create powder clouds (blur elements)
+            for (let i = 0; i < 5; i++) {
+                const cloud = document.createElement('div');
+                cloud.className = 'gulal-cloud';
+                cloud.style.background = colors[Math.floor(Math.random() * colors.length)];
+                const angle = Math.random() * Math.PI * 2;
+                const velocity = 20 + Math.random() * 40;
+                cloud.style.setProperty('--tx', Math.cos(angle) * velocity + 'px');
+                cloud.style.setProperty('--ty', Math.sin(angle) * velocity + 'px');
+                container.appendChild(cloud);
+            }
+
+            // Create particles (confetti dots)
+            for (let i = 0; i < 15; i++) {
+                const p = document.createElement('div');
+                p.className = 'gulal-particle';
+                p.style.background = colors[Math.floor(Math.random() * colors.length)];
+                const angle = Math.random() * Math.PI * 2;
+                const velocity = 40 + Math.random() * 80;
+                p.style.setProperty('--tx', Math.cos(angle) * velocity + 'px');
+                p.style.setProperty('--ty', Math.sin(angle) * velocity + 'px');
+                container.appendChild(p);
+            }
+
+            document.body.appendChild(container);
+            setTimeout(() => container.remove(), 1000);
+        });
+    </script>
     </body>
 
 </html>
