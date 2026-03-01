@@ -38,7 +38,6 @@ BOT_COMMANDS = [
     BotCommand(command="credit", description="Check credits and plan"),
     BotCommand(command="pay", description="Buy credits"),
     BotCommand(command="premium", description="Premium plan"),
-    BotCommand(command="paid", description="Submit payment UTR"),
     BotCommand(command="health", description="Health check"),
     BotCommand(command="showsections", description="Show sections (admin)"),
     BotCommand(command="addsection", description="Set upload section (admin)"),
@@ -242,9 +241,8 @@ async def start_cmd(message: Message) -> None:
                 ("", "<b>Quick Actions:</b>"),
                 ("", bullet([
                     "/credit — check your balance",
-                    "/pay — buy credits",
+                    "/pay — buy credits (contact admin)",
                     "/premium — view premium plan",
-                    "/paid &lt;req_id&gt; &lt;UTR&gt; — submit payment",
                 ])),
             ],
         ),
@@ -317,122 +315,22 @@ async def premium_cmd(message: Message) -> None:
 
 @dp.message(Command("pay"))
 async def pay_cmd(message: Message) -> None:
-    parts = (message.text or "").split(maxsplit=1)
     price, template = await store.get_pay_plan(DEFAULT_CREDIT_PRICE_INR, DEFAULT_PAY_TEXT)
-
-    if len(parts) == 1:
-        pay_info = template.replace("{price}", _format_money(price))
-        await message.reply(
-            format_msg(
-                "💰 Buy Credits",
-                sections=[
-                    ("", esc(pay_info)),
-                    ("Contact", esc(ADMIN_CONTACT)),
-                    ("", ""),
-                    ("", "To create a payment request:"),
-                    ("", code("/pay <amount_inr>")),
-                ],
-            ),
-            parse_mode="HTML",
-        )
-        return
-
-    try:
-        amount = float(parts[1].strip())
-    except Exception:
-        await message.reply(
-            format_msg("⚠️ Invalid Input", sections=[("Usage", code("/pay <amount_inr>"))]),
-            parse_mode="HTML",
-        )
-        return
-
-    if amount < MIN_CUSTOM_PAY_INR:
-        await message.reply(
-            format_msg(
-                "⚠️ Amount Too Low",
-                sections=[("Minimum", f"INR {MIN_CUSTOM_PAY_INR:.0f}")],
-            ),
-            parse_mode="HTML",
-        )
-        return
-
-    credits = max(1, int(amount / max(price, 0.01)))
-    req_id = await store.next_payment_request_id()
-    user_id = message.from_user.id if message.from_user else 0
-    await store.create_payment_request(req_id, user_id, amount, credits, plan_type="credits")
-
+    pay_info = template.replace("{price}", _format_money(price))
     await message.reply(
         format_msg(
-            "🧾 Payment Request Created",
+            "💰 Buy Credits",
             sections=[
-                ("Request ID", code(req_id)),
-                ("Amount", f"INR {_format_money(amount)}"),
-                ("Credits", code(credits)),
+                ("", esc(pay_info)),
+                ("", ""),
+                ("Contact Admin", esc(ADMIN_CONTACT)),
             ],
-            tip=f"After payment, send: /paid {req_id} &lt;UTR&gt;",
+            tip="Message the admin with your payment screenshot to get credits added.",
         ),
         parse_mode="HTML",
     )
 
 
-@dp.message(Command("paid"))
-async def paid_cmd(message: Message) -> None:
-    user_id = message.from_user.id if message.from_user else 0
-    parts = (message.text or "").split(maxsplit=2)
-    if len(parts) < 3:
-        await message.reply(
-            format_msg("⚠️ Usage", sections=[("", code("/paid <request_id> <UTR>"))]),
-            parse_mode="HTML",
-        )
-        return
-
-    req_id = parts[1].strip()
-    utr = parts[2].strip()
-    req = await store.get_payment_request(req_id)
-    if not req:
-        await message.reply(
-            format_msg("❌ Not Found", sections=[("", f"No payment request with ID {code(req_id)} found.")]),
-            parse_mode="HTML",
-        )
-        return
-    if req.get("user_id") != user_id and not is_admin(user_id):
-        await message.reply(
-            format_msg("❌ Access Denied", sections=[("", "This request does not belong to you.")]),
-            parse_mode="HTML",
-        )
-        return
-
-    await store.set_payment_request_status(req_id, "submitted", note=f"UTR:{utr}", admin_id=0)
-    await message.reply(
-        format_msg(
-            "✅ Payment Submitted",
-            sections=[
-                ("Request ID", code(req_id)),
-                ("UTR", code(esc(utr))),
-                ("Status", "Pending admin review"),
-            ],
-            tip="You will be notified once your payment is verified.",
-        ),
-        parse_mode="HTML",
-    )
-
-    admin_text = format_msg(
-        "🔔 New Payment Submitted",
-        sections=[
-            ("Request ID", code(req_id)),
-            ("User ID", code(req.get("user_id"))),
-            ("Amount", f"INR {_format_money(float(req.get('amount_inr', 0)))}"),
-            ("Credits", code(req.get("credits", 0))),
-            ("UTR", code(esc(utr))),
-            ("", ""),
-            ("", f"• /approve {esc(req_id)}\n• /reject {esc(req_id)}"),
-        ],
-    )
-    for admin_id in settings.admin_ids:
-        try:
-            await bot.send_message(admin_id, admin_text, parse_mode="HTML")
-        except Exception:
-            pass
 
 
 @dp.message(Command("approve"))
