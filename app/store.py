@@ -593,9 +593,27 @@ return {1, newval}
             key = f"{self._pay_req_prefix}{request_id}"
             deleted = await self._redis.delete(key)
             await self._redis.zrem(self._pay_req_index, request_id)
+            # Decrement seq only if this was the last issued ID
+            try:
+                current_seq = int(await self._redis.get(self._pay_req_seq_key) or 0)
+                try:
+                    req_num = int(request_id)
+                except Exception:
+                    req_num = -1
+                if req_num > 0 and req_num == current_seq:
+                    await self._redis.decr(self._pay_req_seq_key)
+            except Exception:
+                pass
             return deleted > 0
         if request_id in self._pay_requests:
             del self._pay_requests[request_id]
+            # Decrement seq only if this was the last issued ID
+            try:
+                req_num = int(request_id)
+                if req_num == self._pay_req_seq:
+                    self._pay_req_seq = max(0, self._pay_req_seq - 1)
+            except Exception:
+                pass
             return True
         return False
 
