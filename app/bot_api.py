@@ -918,8 +918,19 @@ async def stats_cmd(message: Message) -> None:
     admins = await db.list_admins()
     sections = await store.list_sections()
     premium_rows = await db.list_premium_users()
-    active_premium = sum(1 for row in premium_rows if asyncio.get_event_loop().run_until_complete(db.is_premium(row.user_id)))
-    await message.reply(format_msg("📊 Bot Stats", sections=[("Users", code(len(users))), ("Admins", code(len(admins))), ("Sections", code(len(sections))), ("Active Premium", code(active_premium))]), parse_mode="HTML")
+    active_premium = 0
+    for row in premium_rows:
+        if await db.is_premium(row.user_id):
+            active_premium += 1
+    await message.reply(
+        format_msg("📊 Bot Stats", sections=[
+            ("Users", code(len(users))),
+            ("Admins", code(len(admins))),
+            ("Sections", code(len(sections))),
+            ("Active Premium", code(active_premium)),
+        ]),
+        parse_mode="HTML",
+    )
 
 
 @dp.message(Command("history"))
