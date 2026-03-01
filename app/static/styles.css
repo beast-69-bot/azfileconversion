@@ -841,6 +841,7 @@ body.is-loading .content {
   .file-name {
     max-width: 100%;
     white-space: normal;
+    word-break: break-all;
     font-size: 15px;
   }
 
@@ -852,7 +853,9 @@ body.is-loading .content {
   }
 
   .file-actions {
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
     width: 100%;
     margin-top: 4px;
   }
@@ -860,7 +863,8 @@ body.is-loading .content {
   .file-actions .btn {
     width: 100%;
     text-align: center;
-    padding: 10px 16px;
+    padding: 10px 8px;
+    font-size: 12px;
   }
 
   /* Section header layout on phone */
@@ -871,25 +875,49 @@ body.is-loading .content {
   }
 
   .section-controls {
-    flex-direction: column;
-    align-items: stretch;
-    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
     gap: 10px;
+    width: 100%;
   }
 
   .section-controls .btn {
     width: 100%;
+    font-size: 12px;
+    padding: 10px 8px;
   }
 
-  .section-controls label,
+  .section-controls label {
+    display: none;
+    /* hide label on narrow lines */
+  }
+
   .section-controls select {
+    grid-column: 1 / -1;
     width: 100%;
   }
 
   .pagination {
-    flex-direction: column;
-    gap: 16px;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
     padding: 20px 16px 0;
+  }
+
+  .pagination .chip {
+    flex: 1;
+    text-align: center;
+    font-size: 11px;
+    padding: 6px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .pagination .page-link {
+    padding: 8px 12px;
+    font-size: 12px;
   }
 
   .actions-row {
