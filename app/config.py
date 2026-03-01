@@ -26,6 +26,7 @@ class Settings:
     send_link_as_message: bool
     stream_password: str
     history_limit: int
+    auto_delete_seconds: int   # 0 = disabled
 
 
 def _parse_admin_ids(value: str) -> set[int]:
@@ -58,6 +59,7 @@ def get_settings() -> Settings:
     send_link_as_message = os.getenv("SEND_LINK_AS_MESSAGE", "false").lower() in {"1", "true", "yes", "y"}
     stream_password = os.getenv("STREAM_PASSWORD", "")
     history_limit = int(os.getenv("HISTORY_LIMIT", "200"))
+    auto_delete_seconds = int(os.getenv("AUTO_DELETE_SECONDS", "0"))
     dump_chat_id_raw = os.getenv("DUMP_CHAT_ID", "").strip()
     dump_chat_id_val: int | str | None = None
     if dump_chat_id_raw:
@@ -95,4 +97,5 @@ def get_settings() -> Settings:
         send_link_as_message=send_link_as_message,
         stream_password=stream_password,
         history_limit=history_limit,
+        auto_delete_seconds=auto_delete_seconds,
     )

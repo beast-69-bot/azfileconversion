@@ -246,6 +246,20 @@ async def _notify_restart() -> None:
             logger.warning("Restart notify failed for %s: %s", admin_id, exc)
 
 
+async def _auto_delete_task(chat_id: int, message_id: int, delay: int, notice_msg_id: int | None = None) -> None:
+    """Wait `delay` seconds then delete the delivered message (and notice if any)."""
+    await asyncio.sleep(delay)
+    try:
+        await bot.delete_message(chat_id, message_id)
+    except Exception:
+        pass
+    if notice_msg_id:
+        try:
+            await bot.delete_message(chat_id, notice_msg_id)
+        except Exception:
+            pass
+
+
 async def _deliver_token(message: Message, token: str) -> None:
     ref = await store.get(token, settings.token_ttl_seconds)
     if not ref:
@@ -269,10 +283,35 @@ async def _deliver_token(message: Message, token: str) -> None:
             return
         await message.reply(format_msg("💳 Credit Used", sections=[("Deducted", "1 credit"), ("Remaining", code(bal))]), parse_mode="HTML")
     try:
-        await bot.copy_message(chat_id=message.chat.id, from_chat_id=ref.chat_id, message_id=ref.message_id, protect_content=(ref.access != "premium"))
+        sent = await bot.copy_message(
+            chat_id=message.chat.id,
+            from_chat_id=ref.chat_id,
+            message_id=ref.message_id,
+            protect_content=(ref.access != "premium"),
+        )
     except Exception as exc:
         logger.exception("copy_message failed: %s", exc)
         await message.reply(format_msg("❌ Delivery Failed", sections=[("", "Could not send the file. Please try again.")]), parse_mode="HTML")
+        return
+
+    # Auto-delete if configured
+    delay = settings.auto_delete_seconds
+    if delay and delay > 0:
+        mins = delay // 60
+        secs = delay % 60
+        duration_str = f"{mins}m {secs}s" if mins else f"{secs}s"
+        notice = await message.reply(
+            format_msg(
+                "⏳ Auto-Delete Enabled",
+                sections=[("", f"This file will be deleted in <b>{esc(duration_str)}</b>.")],
+            ),
+            parse_mode="HTML",
+        )
+        asyncio.create_task(
+            _auto_delete_task(message.chat.id, sent.message_id, delay, notice.message_id)
+        )
+
+
 
 
 # ---------------------------------------------------------------------------
