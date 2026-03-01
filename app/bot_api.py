@@ -114,7 +114,8 @@ BOT_COMMANDS = [
     BotCommand(command="approve", description="Approve payment (admin)"),
     BotCommand(command="reject", description="Reject payment (admin)"),
     BotCommand(command="paydb", description="Export payments sheet (admin)"),
-    BotCommand(command="stats", description="Bot stats (admin)"),
+    BotCommand(command="setautodelete", description="Set file auto-delete time (admin)"),
+    BotCommand(command="setupi", description="Set UPI ID (admin)"),
 ]
 
 
@@ -294,8 +295,8 @@ async def _deliver_token(message: Message, token: str) -> None:
         await message.reply(format_msg("❌ Delivery Failed", sections=[("", "Could not send the file. Please try again.")]), parse_mode="HTML")
         return
 
-    # Auto-delete if configured
-    delay = settings.auto_delete_seconds
+    # Auto-delete: read from store first, fallback to env
+    delay = await store.get_auto_delete(default=settings.auto_delete_seconds)
     if delay and delay > 0:
         mins = delay // 60
         secs = delay % 60
@@ -1080,6 +1081,51 @@ async def setupi_cmd(message: Message) -> None:
         return
     upi = await store.set_upi_id(parts[1].strip())
     await message.reply(format_msg("✅ UPI Updated", sections=[("New UPI", code(esc(upi)))]), parse_mode="HTML")
+
+
+@dp.message(Command("setautodelete"))
+async def setautodelete_cmd(message: Message) -> None:
+    if not is_admin(message.from_user.id if message.from_user else None):
+        await message.reply(format_msg("❌ Access Denied", sections=[("", "Admins only.")]), parse_mode="HTML")
+        return
+    parts = (message.text or "").split(maxsplit=1)
+    if len(parts) < 2:
+        current = await store.get_auto_delete()
+        if current:
+            mins = current // 60; secs = current % 60
+            display = f"{mins}m {secs}s" if mins else f"{secs}s"
+            status = f"{code(current)}s ({esc(display)})"
+        else:
+            status = "Disabled"
+        await message.reply(
+            format_msg("⏳ Auto-Delete Setting", sections=[
+                ("Current", status),
+                ("", ""),
+                ("Usage", code("/setautodelete <seconds>")),
+                ("", bullet(["e.g. /setautodelete 300 → 5 minutes", "/setautodelete 0 → disable"])),
+            ]),
+            parse_mode="HTML",
+        )
+        return
+    try:
+        seconds = int(parts[1].strip())
+    except Exception:
+        await message.reply(format_msg("❌ Invalid", sections=[("", "Provide a number in seconds. e.g. /setautodelete 300")]), parse_mode="HTML")
+        return
+    saved = await store.set_auto_delete(seconds)
+    if saved == 0:
+        await message.reply(format_msg("✅ Auto-Delete Disabled", sections=[("", "Delivered files will no longer be auto-deleted.")]), parse_mode="HTML")
+    else:
+        mins = saved // 60; secs = saved % 60
+        display = f"{mins}m {secs}s" if mins else f"{secs}s"
+        await message.reply(
+            format_msg("✅ Auto-Delete Updated", sections=[
+                ("Delay", f"{code(saved)}s ({esc(display)})"),
+                ("", "Delivered files will be deleted after this time."),
+            ]),
+            parse_mode="HTML",
+        )
+
 
 
 @dp.message(Command("broadcast"))

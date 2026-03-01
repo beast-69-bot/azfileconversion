@@ -401,6 +401,25 @@ return {1, newval}
         self._upi_id = clean or None
         return clean
 
+    async def get_auto_delete(self, default: int = 0) -> int:
+        """Return auto-delete seconds (0 = disabled)."""
+        if self._redis is not None:
+            raw = await self._redis.hget(self._pay_plan_key, "auto_delete_seconds")
+            try:
+                return max(0, int(raw or 0))
+            except Exception:
+                return default
+        return getattr(self, "_auto_delete_seconds", default)
+
+    async def set_auto_delete(self, seconds: int) -> int:
+        """Set auto-delete seconds (0 = disable)."""
+        seconds = max(0, int(seconds))
+        if self._redis is not None:
+            await self._redis.hset(self._pay_plan_key, mapping={"auto_delete_seconds": str(seconds)})
+            return seconds
+        self._auto_delete_seconds = seconds
+        return seconds
+
 
     async def set_payment_prompt(self, request_id: str, chat_id: int, message_id: int) -> None:
         req_id = str(request_id).strip()
