@@ -89,6 +89,27 @@ def bullet(items: list[str]) -> str:
 def _format_money(v: float) -> str:
     return f"{v:.2f}"
 
+
+def _format_expiry(expires_at: int | None, now_ts: int | None = None) -> str:
+    if expires_at is None:
+        return "lifetime ♾️"
+    now = int(now_ts or time.time())
+    exp = int(expires_at)
+    stamp = time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime(exp))
+    if exp <= now:
+        return f"expired on {stamp}"
+    remaining = exp - now
+    days = remaining // 86400
+    hours = (remaining % 86400) // 3600
+    mins = (remaining % 3600) // 60
+    if days > 0:
+        left = f"{days}d {hours}h left"
+    elif hours > 0:
+        left = f"{hours}h {mins}m left"
+    else:
+        left = f"{max(1, mins)}m left"
+    return f"{stamp} ({left})"
+
 def format_msg(title, sections=None, tip=None, status=None) -> str:
     parts: list[str] = []
     if status:
@@ -163,10 +184,9 @@ def _plan_kb() -> InlineKeyboardMarkup:
 
 
 def _payment_action_kb(req_id: str) -> InlineKeyboardMarkup:
-    """After plan selected — UTR, screenshot, or cancel buttons."""
+    """After plan selected — screenshot or cancel buttons."""
     return InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text="📋 Submit UTR", callback_data=f"utr:{req_id}"),
             InlineKeyboardButton(text="📸 Send Screenshot", callback_data=f"sc:{req_id}"),
         ],
         [
@@ -207,7 +227,7 @@ async def _send_payment_instructions(
             ("Amount", f"INR {_format_money(amount)}"),
             ("UPI ID", code(upi_id)),
             ("", ""),
-            ("", "1️⃣ Scan the QR or copy UPI ID\n2️⃣ Pay the exact amount\n3️⃣ Submit UTR or screenshot below"),
+            ("", "1️⃣ Scan the QR or copy UPI ID\n2️⃣ Pay the exact amount\n3️⃣ Send payment screenshot below"),
         ],
         tip="Use the exact amount shown. Wrong amounts delay verification.",
     )
@@ -247,7 +267,8 @@ async def _notify_admin_payment(req_id: str, user_id: int, amount: float, credit
     )
     for admin_id in settings.admin_ids:
         try:
-            await bot.send_message(admin_id, text, parse_mode="HTML", reply_markup=_admin_action_kb(req_id))
+            sent = await bot.send_message(admin_id, text, parse_mode="HTML", reply_markup=_admin_action_kb(req_id))
+            await _track_payment_message(req_id, sent)
         except Exception:
             pass
 
@@ -290,6 +311,67 @@ async def _broadcast_payment_resolution(
             await bot.send_message(int(target_id), text, parse_mode="HTML")
         except Exception:
             pass
+
+
+async def _update_admin_payment_messages(
+    *,
+    req_id: str,
+    action: str,
+    actor_admin_id: int,
+    note: str = "",
+    skip_message: tuple[int, int] | None = None,
+) -> None:
+    action_norm = str(action or "").strip().lower()
+    if action_norm not in {"approved", "rejected"}:
+        return
+    status_title = "Approved" if action_norm == "approved" else "Rejected"
+    status_emoji = "✅" if action_norm == "approved" else "❌"
+    status_block = (
+        f"\n\n{status_emoji} <b>Final Status:</b> {esc(status_title)}"
+        f"\n<b>By:</b> {code(actor_admin_id)}"
+        f"\n<b>Note:</b> {esc(note or '-')}"
+    )
+
+    try:
+        refs = await store.list_payment_messages(req_id)
+    except Exception:
+        refs = []
+
+    seen: set[tuple[int, int]] = set()
+    for chat_id, message_id in refs:
+        key = (int(chat_id), int(message_id))
+        if key in seen:
+            continue
+        seen.add(key)
+        if int(chat_id) not in settings.admin_ids:
+            continue
+        if skip_message and key == (int(skip_message[0]), int(skip_message[1])):
+            continue
+
+        try:
+            await bot.edit_message_caption(
+                chat_id=int(chat_id),
+                message_id=int(message_id),
+                caption=(f"🔔 Payment Updated\nRequest: {code(req_id)}" + status_block),
+                parse_mode="HTML",
+                reply_markup=None,
+            )
+            continue
+        except Exception:
+            pass
+        try:
+            await bot.edit_message_text(
+                text=(f"🔔 Payment Updated\nRequest: {code(req_id)}" + status_block),
+                chat_id=int(chat_id),
+                message_id=int(message_id),
+                parse_mode="HTML",
+                reply_markup=None,
+            )
+        except Exception:
+            try:
+                await bot.edit_message_reply_markup(chat_id=int(chat_id), message_id=int(message_id), reply_markup=None)
+            except Exception:
+                pass
 
 
 async def _notify_restart() -> None:
@@ -948,13 +1030,14 @@ async def pay_screenshot_photo_handler(message: Message, state: FSMContext) -> N
         ])
         for admin_id in settings.admin_ids:
             try:
-                await bot.send_photo(
+                sent = await bot.send_photo(
                     admin_id,
                     photo=message.photo[-1].file_id,
                     caption=admin_caption,
                     parse_mode="HTML",
                     reply_markup=_admin_action_kb(req_id),
                 )
+                await _track_payment_message(req_id, sent)
             except Exception:
                 pass
 
@@ -1031,6 +1114,17 @@ async def admin_approve_callback(callback: CallbackQuery) -> None:
     except Exception:
         pass
 
+    skip_msg = None
+    if callback.message:
+        skip_msg = (callback.message.chat.id, callback.message.message_id)
+    await _update_admin_payment_messages(
+        req_id=req_id,
+        action="approved",
+        actor_admin_id=admin_id,
+        note=admin_note,
+        skip_message=skip_msg,
+    )
+
     await _broadcast_payment_resolution(
         req_id=req_id,
         user_id=user_id,
@@ -1096,6 +1190,17 @@ async def admin_reject_callback(callback: CallbackQuery) -> None:
     except Exception:
         pass
 
+    skip_msg = None
+    if callback.message:
+        skip_msg = (callback.message.chat.id, callback.message.message_id)
+    await _update_admin_payment_messages(
+        req_id=req_id,
+        action="rejected",
+        actor_admin_id=admin_id,
+        note=reason,
+        skip_message=skip_msg,
+    )
+
     await _broadcast_payment_resolution(
         req_id=req_id,
         user_id=user_id,
@@ -1145,6 +1250,12 @@ async def approve_cmd(message: Message) -> None:
         await bot.send_message(user_id, user_msg, parse_mode="HTML")
     except Exception:
         pass
+    await _update_admin_payment_messages(
+        req_id=req_id,
+        action="approved",
+        actor_admin_id=admin_id,
+        note=result,
+    )
     await _broadcast_payment_resolution(
         req_id=req_id,
         user_id=user_id,
@@ -1181,6 +1292,12 @@ async def reject_cmd(message: Message) -> None:
         await bot.send_message(user_id, format_msg("❌ Payment Rejected", sections=[("Request ID", code(req_id)), ("Reason", esc(reason))], tip=f"Contact {esc(ADMIN_CONTACT)} for help."), parse_mode="HTML")
     except Exception:
         pass
+    await _update_admin_payment_messages(
+        req_id=req_id,
+        action="rejected",
+        actor_admin_id=admin_id,
+        note=reason,
+    )
     await _broadcast_payment_resolution(
         req_id=req_id,
         user_id=user_id,
@@ -1412,18 +1529,18 @@ async def history_cmd(message: Message) -> None:
 @dp.message(Command("premiumlist"))
 async def premiumlist_cmd(message: Message) -> None:
     if not is_admin(message.from_user.id if message.from_user else None):
-        await message.reply(format_msg("? Access Denied", sections=[("", "Admins only.")]), parse_mode="HTML")
+        await message.reply(format_msg("❌ Access Denied", sections=[("", "Admins only.")]), parse_mode="HTML")
         return
     rows = await db.list_premium_users()
     if not rows:
-        await message.reply(format_msg("?? Premium Users", sections=[("", "No premium users yet.")]), parse_mode="HTML")
+        await message.reply(format_msg("✨ Premium Users", sections=[("", "No premium users yet.")]), parse_mode="HTML")
         return
     now = int(time.time())
     lines = []
     for row in rows[:100]:
-        exp = "lifetime ??" if row.expires_at is None else ("expired" if row.expires_at < now else str(row.expires_at))
-        lines.append(f"• {code(row.user_id)} ? {esc(exp)}")
-    await message.reply(format_msg("? Premium Users", sections=[("", "\n".join(lines))]), parse_mode="HTML")
+        exp = _format_expiry(row.expires_at, now_ts=now)
+        lines.append(f"• {code(row.user_id)} → {esc(exp)}")
+    await message.reply(format_msg("✨ Premium Users", sections=[("", "\n".join(lines))]), parse_mode="HTML")
 
 
 @dp.message(Command("setupi"))
