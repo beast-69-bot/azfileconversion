@@ -8,6 +8,11 @@ try:
 except Exception:
     redis = None
 
+try:
+    from redis.exceptions import WatchError
+except Exception:
+    WatchError = Exception
+
 
 @dataclass
 class FileRef:
@@ -701,6 +706,94 @@ return {1, newval}
             return req
         self._pay_requests[req["id"]] = req
         return req
+
+    async def transition_payment_request_status(
+        self,
+        request_id: str,
+        from_statuses: tuple[str, ...],
+        to_status: str,
+        note: str = "",
+        admin_id: int = 0,
+    ) -> tuple[Optional[dict], bool]:
+        req_id = str(request_id).strip()
+        if not req_id:
+            return None, False
+
+        allowed = {str(s).strip().lower() for s in (from_statuses or ()) if str(s).strip()}
+        if not allowed:
+            allowed = {"pending", "submitted"}
+        target_status = str(to_status or "").strip().lower()
+        if not target_status:
+            return None, False
+
+        now = int(time.time())
+        new_note = str(note or "").strip()
+        new_admin_id = int(admin_id or 0)
+
+        if self._redis is not None:
+            key = f"{self._pay_req_prefix}{req_id}"
+            for _ in range(8):
+                pipe = self._redis.pipeline()
+                try:
+                    await pipe.watch(key)
+                    data = await pipe.hgetall(key)
+                    if not data:
+                        return None, False
+                    req = {
+                        "id": data.get("id", req_id),
+                        "user_id": int(data.get("user_id", "0") or 0),
+                        "amount_inr": float(data.get("amount_inr", "0") or 0),
+                        "credits": int(data.get("credits", "0") or 0),
+                        "plan_type": data.get("plan_type", "credits"),
+                        "status": str(data.get("status", "pending") or "pending").strip().lower(),
+                        "created_at": int(data.get("created_at", "0") or 0),
+                        "updated_at": int(data.get("updated_at", "0") or 0),
+                        "note": data.get("note", ""),
+                        "admin_id": int(data.get("admin_id", "0") or 0),
+                    }
+                    if req["status"] not in allowed:
+                        return req, False
+
+                    req["status"] = target_status
+                    req["note"] = new_note
+                    req["admin_id"] = new_admin_id
+                    req["updated_at"] = now
+
+                    pipe.multi()
+                    await pipe.hset(
+                        key,
+                        mapping={
+                            "status": req["status"],
+                            "note": req["note"],
+                            "admin_id": str(req["admin_id"]),
+                            "updated_at": str(req["updated_at"]),
+                        },
+                    )
+                    await pipe.execute()
+                    return req, True
+                except WatchError:
+                    continue
+                finally:
+                    try:
+                        await pipe.reset()
+                    except Exception:
+                        pass
+
+            latest = await self.get_payment_request(req_id)
+            return latest, False
+
+        req = await self.get_payment_request(req_id)
+        if not req:
+            return None, False
+        current_status = str(req.get("status", "pending")).strip().lower()
+        if current_status not in allowed:
+            return req, False
+        req["status"] = target_status
+        req["note"] = new_note
+        req["admin_id"] = new_admin_id
+        req["updated_at"] = now
+        self._pay_requests[req["id"]] = req
+        return req, True
 
     async def delete_payment_request(self, request_id: str) -> bool:
         request_id = str(request_id).strip()

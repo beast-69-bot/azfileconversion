@@ -2,6 +2,7 @@
 import contextlib
 import io
 import logging
+import os
 import secrets
 import time
 import urllib.parse
@@ -47,6 +48,7 @@ MIN_CUSTOM_PAY_INR = 10.0
 BUTTON_COOLDOWN_SECONDS = 20
 PAY_REQUEST_COOLDOWN_SECONDS = 20
 PAY_ACTIVE_STATUSES = ("pending", "submitted")
+PAY_CLOSED_STATUSES = {"processed", "approved", "rejected", "cancelled", "expired"}
 PAYMENT_REQUEST_EXPIRY_SECONDS = 10 * 60
 PAYMENT_EXPIRY_SCAN_INTERVAL_SECONDS = 20
 
@@ -126,6 +128,28 @@ def format_msg(title, sections=None, tip=None, status=None) -> str:
         parts.append("")
         parts.append(f"💡 <i>{esc(tip)}</i>")
     return "\n".join(parts)
+
+
+def _admin_targets() -> set[int]:
+    targets = {int(x) for x in settings.admin_ids if int(x) > 0}
+    owner_raw = os.getenv("OWNER_ID", "").strip()
+    if owner_raw:
+        try:
+            owner_id = int(owner_raw)
+            if owner_id > 0:
+                targets.add(owner_id)
+        except Exception:
+            pass
+    return targets
+
+
+def _action_from_status(status: str) -> str:
+    s = str(status or "").strip().lower()
+    if s in {"processed", "approved"}:
+        return "approved"
+    if s == "rejected":
+        return "rejected"
+    return ""
 
 
 # ---------------------------------------------------------------------------
@@ -265,7 +289,7 @@ async def _notify_admin_payment(req_id: str, user_id: int, amount: float, credit
             ("Proof", esc(proof)),
         ],
     )
-    for admin_id in settings.admin_ids:
+    for admin_id in _admin_targets():
         try:
             sent = await bot.send_message(admin_id, text, parse_mode="HTML", reply_markup=_admin_action_kb(req_id))
             await _track_payment_message(req_id, sent)
@@ -337,13 +361,14 @@ async def _update_admin_payment_messages(
     except Exception:
         refs = []
 
+    admin_targets = _admin_targets()
     seen: set[tuple[int, int]] = set()
     for chat_id, message_id in refs:
         key = (int(chat_id), int(message_id))
         if key in seen:
             continue
         seen.add(key)
-        if int(chat_id) not in settings.admin_ids:
+        if int(chat_id) not in admin_targets:
             continue
         if skip_message and key == (int(skip_message[0]), int(skip_message[1])):
             continue
@@ -513,7 +538,7 @@ async def _submit_utr(message: Message, state: FSMContext, req_id: str, utr: str
         return
 
     current_status = str(req.get("status", "pending")).strip().lower()
-    if current_status in {"approved", "rejected", "cancelled", "expired"}:
+    if current_status in PAY_CLOSED_STATUSES:
         await state.clear()
         await store.clear_pending_utr(user_id)
         await message.reply(format_msg("⚠️ Request Closed", sections=[("Status", esc(current_status.title()))]), parse_mode="HTML")
@@ -895,7 +920,7 @@ async def pay_utr_callback(callback: CallbackQuery, state: FSMContext) -> None:
     if int(req.get("user_id", 0) or 0) != user_id and not is_admin(user_id):
         await callback.answer("This request does not belong to you.", show_alert=True)
         return
-    if str(req.get("status", "pending")).lower() in {"approved", "rejected", "cancelled", "expired"}:
+    if str(req.get("status", "pending")).lower() in PAY_CLOSED_STATUSES:
         await callback.answer("This request is already closed.", show_alert=True)
         return
     await callback.answer()
@@ -948,7 +973,7 @@ async def pay_screenshot_callback(callback: CallbackQuery, state: FSMContext) ->
     if int(req.get("user_id", 0) or 0) != user_id and not is_admin(user_id):
         await callback.answer("This request does not belong to you.", show_alert=True)
         return
-    if str(req.get("status", "pending")).lower() in {"approved", "rejected", "cancelled", "expired"}:
+    if str(req.get("status", "pending")).lower() in PAY_CLOSED_STATUSES:
         await callback.answer("This request is already closed.", show_alert=True)
         return
     await callback.answer()
@@ -1021,14 +1046,18 @@ async def pay_screenshot_photo_handler(message: Message, state: FSMContext) -> N
         plan_type = req.get("plan_type", "credits")
         user_id = message.from_user.id if message.from_user else 0
 
-        # Forward screenshot to admins with approve/reject buttons
+        # Forward screenshot proof to owner + all admins.
+        submitted_at = time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime())
         admin_caption = format_msg("🔔 Payment Screenshot — Action Required", sections=[
             ("Request ID", code(req_id)),
             ("User ID", code(user_id)),
             ("Plan", "✨ Premium 30d" if plan_type == "premium_30d" else f"{credits} credits"),
             ("Amount", f"INR {_format_money(amount)}"),
+            ("Proof", "Screenshot"),
+            ("Status", "Pending verification"),
+            ("Submitted At", esc(submitted_at)),
         ])
-        for admin_id in settings.admin_ids:
+        for admin_id in _admin_targets():
             try:
                 sent = await bot.send_photo(
                     admin_id,
@@ -1062,34 +1091,51 @@ async def admin_approve_callback(callback: CallbackQuery) -> None:
     await callback.answer("Processing...")
 
     req_id = callback.data.split(":", 1)[1]
-    req = await store.get_payment_request(req_id)
+    req, changed = await store.transition_payment_request_status(
+        req_id,
+        ("pending", "submitted"),
+        "processed",
+        note="verified",
+        admin_id=admin_id,
+    )
     if not req:
         await callback.message.reply(format_msg("❌ Not Found", sections=[("", f"Request {code(req_id)} not found.")]), parse_mode="HTML")
+        return
+    if not changed:
+        handled_status = str(req.get("status", "")).strip().lower()
+        handled_action = _action_from_status(handled_status)
+        if handled_action:
+            await _update_admin_payment_messages(
+                req_id=req_id,
+                action=handled_action,
+                actor_admin_id=int(req.get("admin_id", 0) or 0),
+                note=str(req.get("note", "") or ""),
+            )
+        await callback.answer("Already handled by another admin.", show_alert=True)
         return
 
     plan_type = req.get("plan_type", "credits")
     user_id = int(req.get("user_id", 0) or 0)
     credits = int(req.get("credits", 0) or 0)
     amount = float(req.get("amount_inr", 0))
-
-    await store.set_payment_request_status(req_id, "approved", note="approved", admin_id=admin_id)
     await store.clear_pending_utr(user_id)
 
     if plan_type == "premium_30d":
         await db.add_user(user_id, PREMIUM_MONTHLY_DAYS)
         admin_note = f"✨ Premium activated ({PREMIUM_MONTHLY_DAYS} days)"
-        user_msg = format_msg("✅ Payment Approved", sections=[
+        user_msg = format_msg("✅ Payment verified, premium activated", sections=[
             ("Request ID", code(req_id)),
             ("Plan", f"✨ Premium {PREMIUM_MONTHLY_DAYS} days activated"),
         ], tip="Enjoy unlimited access!")
     else:
         balance = await store.add_credits(user_id, credits)
         admin_note = f"{credits} credits added. New balance: {balance}"
-        user_msg = format_msg("✅ Payment Approved", sections=[
+        user_msg = format_msg("✅ Payment verified", sections=[
             ("Request ID", code(req_id)),
             ("Credits Added", code(credits)),
             ("New Balance", code(balance)),
         ], tip="Your credits are ready to use.")
+    await store.set_payment_request_status(req_id, "processed", note=admin_note, admin_id=admin_id)
 
     # Edit admin message to show approved state
     try:
@@ -1152,14 +1198,31 @@ async def admin_reject_callback(callback: CallbackQuery) -> None:
     await callback.answer("Rejected.")
 
     req_id = callback.data.split(":", 1)[1]
-    req = await store.get_payment_request(req_id)
+    reason = "Rejected by admin"
+    req, changed = await store.transition_payment_request_status(
+        req_id,
+        ("pending", "submitted"),
+        "rejected",
+        note=reason,
+        admin_id=admin_id,
+    )
     if not req:
         await callback.message.reply(format_msg("❌ Not Found", sections=[("", f"Request {code(req_id)} not found.")]), parse_mode="HTML")
         return
+    if not changed:
+        handled_status = str(req.get("status", "")).strip().lower()
+        handled_action = _action_from_status(handled_status)
+        if handled_action:
+            await _update_admin_payment_messages(
+                req_id=req_id,
+                action=handled_action,
+                actor_admin_id=int(req.get("admin_id", 0) or 0),
+                note=str(req.get("note", "") or ""),
+            )
+        await callback.answer("Already handled by another admin.", show_alert=True)
+        return
 
     user_id = int(req.get("user_id", 0) or 0)
-    reason = "Rejected by admin"
-    await store.set_payment_request_status(req_id, "rejected", note=reason, admin_id=admin_id)
     await store.clear_pending_utr(user_id)
 
     try:
@@ -1228,23 +1291,42 @@ async def approve_cmd(message: Message) -> None:
         await message.reply(format_msg("⚠️ Usage", sections=[("", code("/approve <request_id>"))]), parse_mode="HTML")
         return
     req_id = parts[1].strip()
-    req = await store.get_payment_request(req_id)
+    req, changed = await store.transition_payment_request_status(
+        req_id,
+        ("pending", "submitted"),
+        "processed",
+        note="verified",
+        admin_id=admin_id,
+    )
     if not req:
         await message.reply(format_msg("❌ Not Found", sections=[("", f"No request {code(req_id)}.")]), parse_mode="HTML")
         return
+    if not changed:
+        handled_status = str(req.get("status", "")).strip().lower()
+        handled_action = _action_from_status(handled_status)
+        if handled_action:
+            await _update_admin_payment_messages(
+                req_id=req_id,
+                action=handled_action,
+                actor_admin_id=int(req.get("admin_id", 0) or 0),
+                note=str(req.get("note", "") or ""),
+            )
+        await message.reply(format_msg("ℹ️ Already Handled", sections=[("Request", code(req_id))]), parse_mode="HTML")
+        return
+
     plan_type = req.get("plan_type", "credits")
     credits = int(req.get("credits", 0) or 0)
     user_id = int(req.get("user_id", 0) or 0)
-    await store.set_payment_request_status(req_id, "approved", note="approved", admin_id=admin_id)
     await store.clear_pending_utr(user_id)
     if plan_type == "premium_30d":
         await db.add_user(user_id, PREMIUM_MONTHLY_DAYS)
         result = f"✨ Premium {PREMIUM_MONTHLY_DAYS}d activated"
-        user_msg = format_msg("✅ Payment Approved", sections=[("Plan", f"✨ Premium {PREMIUM_MONTHLY_DAYS} days")], tip="Enjoy unlimited access!")
+        user_msg = format_msg("✅ Payment verified, premium activated", sections=[("Plan", f"✨ Premium {PREMIUM_MONTHLY_DAYS} days")], tip="Enjoy unlimited access!")
     else:
         balance = await store.add_credits(user_id, credits)
         result = f"{credits} credits • balance: {balance}"
-        user_msg = format_msg("✅ Payment Approved", sections=[("Credits Added", code(credits)), ("New Balance", code(balance))], tip="Credits are ready.")
+        user_msg = format_msg("✅ Payment verified", sections=[("Credits Added", code(credits)), ("New Balance", code(balance))], tip="Credits are ready.")
+    await store.set_payment_request_status(req_id, "processed", note=result, admin_id=admin_id)
     await message.reply(format_msg("✅ Approved", sections=[("Request", code(req_id)), ("Result", esc(result))]), parse_mode="HTML")
     try:
         await bot.send_message(user_id, user_msg, parse_mode="HTML")
@@ -1280,12 +1362,30 @@ async def reject_cmd(message: Message) -> None:
         return
     req_id = parts[1].strip()
     reason = parts[2].strip() if len(parts) >= 3 else "No reason provided"
-    req = await store.get_payment_request(req_id)
+    req, changed = await store.transition_payment_request_status(
+        req_id,
+        ("pending", "submitted"),
+        "rejected",
+        note=reason,
+        admin_id=admin_id,
+    )
     if not req:
         await message.reply(format_msg("❌ Not Found", sections=[("", f"No request {code(req_id)}.")]), parse_mode="HTML")
         return
+    if not changed:
+        handled_status = str(req.get("status", "")).strip().lower()
+        handled_action = _action_from_status(handled_status)
+        if handled_action:
+            await _update_admin_payment_messages(
+                req_id=req_id,
+                action=handled_action,
+                actor_admin_id=int(req.get("admin_id", 0) or 0),
+                note=str(req.get("note", "") or ""),
+            )
+        await message.reply(format_msg("ℹ️ Already Handled", sections=[("Request", code(req_id))]), parse_mode="HTML")
+        return
+
     user_id = int(req.get("user_id", 0) or 0)
-    await store.set_payment_request_status(req_id, "rejected", note=reason, admin_id=admin_id)
     await store.clear_pending_utr(user_id)
     await message.reply(format_msg("❌ Rejected", sections=[("Request", code(req_id)), ("Reason", esc(reason))]), parse_mode="HTML")
     try:
@@ -1317,6 +1417,8 @@ async def payments_cmd(message: Message) -> None:
         return
     parts = (message.text or "").split()
     status = parts[1].strip().lower() if len(parts) >= 2 else "all"
+    if status == "approved":
+        status = "processed"
     limit = 20
     if len(parts) >= 3:
         try:
