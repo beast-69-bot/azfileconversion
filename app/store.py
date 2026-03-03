@@ -71,7 +71,9 @@ class TokenStore:
         self._pay_req_index = "pay:req:index"
         self._pay_req_seq_key = "pay:req:seq"
         self._pay_req_msg_prefix = "pay:reqmsg:"
+        self._pay_req_msgs_prefix = "pay:reqmsgs:"
         self._pay_pending_utr_prefix = "pay:pending_utr:"
+        self._action_lock_prefix = "act:lock:"
         self._current_section: Optional[str] = None
         self._current_section_name: Optional[str] = None
         self._pay_price: Optional[float] = None
@@ -79,8 +81,10 @@ class TokenStore:
         self._upi_id: Optional[str] = None
         self._pay_pending_utr: dict[int, str] = {}
         self._pay_req_messages: dict[str, tuple[int, int]] = {}
+        self._pay_req_message_set: dict[str, set[tuple[int, int]]] = {}
         self._pay_req_seq: int = 0
         self._pay_requests: dict[str, dict] = {}
+        self._action_locks: dict[str, float] = {}
 
     async def connect(self) -> None:
         if self._redis_url and redis is not None:
@@ -465,8 +469,9 @@ return {1, newval}
                 f"{self._pay_req_msg_prefix}{req_id}",
                 mapping={"chat_id": str(int(chat_id)), "message_id": str(int(message_id))},
             )
-            return
-        self._pay_req_messages[req_id] = (int(chat_id), int(message_id))
+        else:
+            self._pay_req_messages[req_id] = (int(chat_id), int(message_id))
+        await self.add_payment_message(req_id, int(chat_id), int(message_id))
 
     async def get_payment_prompt(self, request_id: str) -> Optional[tuple[int, int]]:
         req_id = str(request_id).strip()
@@ -490,6 +495,57 @@ return {1, newval}
             await self._redis.delete(f"{self._pay_req_msg_prefix}{req_id}")
             return
         self._pay_req_messages.pop(req_id, None)
+
+    async def add_payment_message(self, request_id: str, chat_id: int, message_id: int) -> None:
+        req_id = str(request_id).strip()
+        if not req_id:
+            return
+        chat_id = int(chat_id)
+        message_id = int(message_id)
+        if chat_id == 0 or message_id <= 0:
+            return
+        if self._redis is not None:
+            await self._redis.sadd(f"{self._pay_req_msgs_prefix}{req_id}", f"{chat_id}:{message_id}")
+            return
+        bucket = self._pay_req_message_set.setdefault(req_id, set())
+        bucket.add((chat_id, message_id))
+
+    async def list_payment_messages(self, request_id: str) -> list[tuple[int, int]]:
+        req_id = str(request_id).strip()
+        if not req_id:
+            return []
+        results: set[tuple[int, int]] = set()
+
+        if self._redis is not None:
+            values = await self._redis.smembers(f"{self._pay_req_msgs_prefix}{req_id}")
+            for value in values or []:
+                try:
+                    chat_raw, msg_raw = str(value).split(":", 1)
+                    results.add((int(chat_raw), int(msg_raw)))
+                except Exception:
+                    continue
+        else:
+            for item in self._pay_req_message_set.get(req_id, set()):
+                try:
+                    chat_id, message_id = item
+                    results.add((int(chat_id), int(message_id)))
+                except Exception:
+                    continue
+
+        prompt = await self.get_payment_prompt(req_id)
+        if prompt:
+            results.add((int(prompt[0]), int(prompt[1])))
+        return sorted(results)
+
+    async def clear_payment_messages(self, request_id: str) -> None:
+        req_id = str(request_id).strip()
+        if not req_id:
+            return
+        await self.clear_payment_prompt(req_id)
+        if self._redis is not None:
+            await self._redis.delete(f"{self._pay_req_msgs_prefix}{req_id}")
+            return
+        self._pay_req_message_set.pop(req_id, None)
 
 
     async def set_pending_utr(self, user_id: int, request_id: str, ttl_seconds: int = 900) -> None:
@@ -532,6 +588,7 @@ return {1, newval}
             patterns = [
                 f"{self._pay_req_prefix}*",
                 f"{self._pay_req_msg_prefix}*",
+                f"{self._pay_req_msgs_prefix}*",
                 f"{self._pay_pending_utr_prefix}*",
             ]
             for pattern in patterns:
@@ -542,9 +599,15 @@ return {1, newval}
                 deleted = int(await self._redis.delete(*unique_keys))
             return deleted
 
-        deleted = len(self._pay_requests) + len(self._pay_req_messages) + len(self._pay_pending_utr)
+        deleted = (
+            len(self._pay_requests)
+            + len(self._pay_req_messages)
+            + len(self._pay_req_message_set)
+            + len(self._pay_pending_utr)
+        )
         self._pay_requests.clear()
         self._pay_req_messages.clear()
+        self._pay_req_message_set.clear()
         self._pay_pending_utr.clear()
         self._pay_req_seq = 0
         return deleted
@@ -647,6 +710,7 @@ return {1, newval}
             key = f"{self._pay_req_prefix}{request_id}"
             deleted = await self._redis.delete(key)
             await self._redis.zrem(self._pay_req_index, request_id)
+            await self.clear_payment_messages(request_id)
             # Decrement seq only if this was the last issued ID
             try:
                 current_seq = int(await self._redis.get(self._pay_req_seq_key) or 0)
@@ -661,6 +725,7 @@ return {1, newval}
             return deleted > 0
         if request_id in self._pay_requests:
             del self._pay_requests[request_id]
+            await self.clear_payment_messages(request_id)
             # Decrement seq only if this was the last issued ID
             try:
                 req_num = int(request_id)
@@ -694,6 +759,60 @@ return {1, newval}
             if len(items) >= limit:
                 break
         return items
+
+    async def get_user_active_payment_request(
+        self,
+        user_id: int,
+        statuses: tuple[str, ...] = ("pending", "submitted"),
+        scan_limit: int = 1000,
+    ) -> Optional[dict]:
+        uid = int(user_id or 0)
+        if uid <= 0:
+            return None
+        status_set = {str(s).strip().lower() for s in statuses if str(s).strip()}
+        if not status_set:
+            status_set = {"pending", "submitted"}
+        scan_limit = max(1, int(scan_limit))
+
+        if self._redis is not None:
+            request_ids = await self._redis.zrevrange(self._pay_req_index, 0, scan_limit - 1)
+            for request_id in request_ids:
+                req = await self.get_payment_request(request_id)
+                if not req:
+                    continue
+                if int(req.get("user_id", 0) or 0) != uid:
+                    continue
+                if str(req.get("status", "")).strip().lower() in status_set:
+                    return req
+            return None
+
+        for req in sorted(self._pay_requests.values(), key=lambda x: x.get("created_at", 0), reverse=True):
+            if int(req.get("user_id", 0) or 0) != uid:
+                continue
+            if str(req.get("status", "")).strip().lower() in status_set:
+                return req
+        return None
+
+    async def acquire_action_lock(self, key: str, ttl_seconds: int) -> bool:
+        lock_key = str(key or "").strip()
+        ttl = max(0, int(ttl_seconds or 0))
+        if not lock_key or ttl <= 0:
+            return True
+
+        if self._redis is not None:
+            result = await self._redis.set(f"{self._action_lock_prefix}{lock_key}", "1", ex=ttl, nx=True)
+            return bool(result)
+
+        now = time.time()
+        expires_at = float(self._action_locks.get(lock_key, 0.0) or 0.0)
+        if expires_at > now:
+            return False
+        self._action_locks[lock_key] = now + ttl
+
+        # Light cleanup for expired locks.
+        if len(self._action_locks) > 5000:
+            self._action_locks = {k: v for k, v in self._action_locks.items() if v > now}
+        return True
 
 
     async def list_known_user_ids(self, limit: int = 50000) -> list[int]:
