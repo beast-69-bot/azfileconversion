@@ -350,10 +350,23 @@ async def _update_admin_payment_messages(
         return
     status_title = "Approved" if action_norm == "approved" else "Rejected"
     status_emoji = "✅" if action_norm == "approved" else "❌"
-    status_block = (
-        f"\n\n{status_emoji} <b>Final Status:</b> {esc(status_title)}"
-        f"\n<b>By:</b> {code(actor_admin_id)}"
-        f"\n<b>Note:</b> {esc(note or '-')}"
+    req = await store.get_payment_request(req_id)
+    user_id = int(req.get("user_id", 0) or 0) if req else 0
+    amount = float(req.get("amount_inr", 0) or 0) if req else 0.0
+    credits = int(req.get("credits", 0) or 0) if req else 0
+    plan_type = str(req.get("plan_type", "credits")).strip().lower() if req else "credits"
+    plan_label = "✨ Premium 30d" if plan_type == "premium_30d" else f"{credits} credits"
+    status_block = format_msg(
+        f"{status_emoji} Payment {status_title}",
+        sections=[
+            ("Request ID", code(req_id)),
+            ("User ID", code(user_id)),
+            ("Plan", esc(plan_label)),
+            ("Amount", f"INR {_format_money(amount)}"),
+            ("Status", esc(status_title)),
+            ("Action By", code(actor_admin_id)),
+            ("Note", esc(note or "-")),
+        ],
     )
 
     try:
@@ -377,7 +390,7 @@ async def _update_admin_payment_messages(
             await bot.edit_message_caption(
                 chat_id=int(chat_id),
                 message_id=int(message_id),
-                caption=(f"🔔 Payment Updated\nRequest: {code(req_id)}" + status_block),
+                caption=status_block,
                 parse_mode="HTML",
                 reply_markup=None,
             )
@@ -386,7 +399,7 @@ async def _update_admin_payment_messages(
             pass
         try:
             await bot.edit_message_text(
-                text=(f"🔔 Payment Updated\nRequest: {code(req_id)}" + status_block),
+                text=status_block,
                 chat_id=int(chat_id),
                 message_id=int(message_id),
                 parse_mode="HTML",
