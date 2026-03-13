@@ -4,14 +4,25 @@
 
 {% block content %}
 <div class="centered-wrap">
-    <div class="card centered-card animate-in">
-        <div class="premium-icon">🎭</div>
-        <h2>Premium Required</h2>
-        <p>This stream is available for premium users only.</p>
-        <p>Please contact the admin to upgrade your access.</p>
-        <div style="margin-top: 20px;">
-            <span class="badge badge-premium">Premium Only</span>
-        </div>
+    <div class="premium-shell">
+        <section class="card hero-panel centered-card animate-in">
+            <div class="eyebrow">Restricted access</div>
+            <h1>Premium Required</h1>
+            <p class="lede">This file is locked behind premium delivery. Upgrade through the bot to unlock downloadable access and high-priority dispatch.</p>
+        </section>
+
+        <section class="panel centered-card animate-in">
+            <div class="panel-title">Why this is locked</div>
+            <ul class="feature-list">
+                <li>Premium routes enable downloadable delivery instead of stream-only access.</li>
+                <li>Restricted items stay behind account-level verification.</li>
+                <li>Use the bot payment flow to move from free access to premium delivery.</li>
+            </ul>
+            <div class="chip-row">
+                <span class="badge badge-premium">Premium only</span>
+                <span class="chip">Telegram approval flow</span>
+            </div>
+        </section>
     </div>
 </div>
 {% endblock %}

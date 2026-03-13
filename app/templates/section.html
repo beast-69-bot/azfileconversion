@@ -5,77 +5,99 @@
 {% block body_attrs %} class="is-loading"{% endblock %}
 
 {% block content %}
-<div class="card animate-in" style="padding: 24px;">
-    <nav class="breadcrumb" aria-label="Breadcrumb">
-        <span style="font-weight: 500; color: var(--text-main);">Home</span>
-        <span class="sep">→</span>
-        <span>Section</span>
-        <span class="sep">→</span>
-        <span style="color: #fff;">{{ section_id }}</span>
-    </nav>
-
-    <div class="section-header">
-        <div>
-            <h1>Section: {{ section_id }}</h1>
-            <div class="section-meta">
-                <div class="chip">{{ total_items }} files</div>
-                <div class="chip">Page {{ page }} of {{ page_count }}</div>
+<div class="page-frame">
+    <section class="card hero-panel animate-in">
+        <nav class="breadcrumb" aria-label="Breadcrumb">
+            <span>Home</span>
+            <span class="sep">/</span>
+            <span>Section</span>
+            <span class="sep">/</span>
+            <span>{{ section_id }}</span>
+        </nav>
+        <div class="section-head">
+            <div>
+                <div class="eyebrow">Curated archive</div>
+                <h1>{{ section_id }}</h1>
+                <p class="lede">A sharp index of stream-ready and premium-ready media. Open single files or dispatch the full set directly to Telegram.</p>
+            </div>
+            <div class="meta-strip">
+                <div class="meta-box">
+                    <span class="meta-label">Files</span>
+                    <span class="meta-value">{{ total_items }}</span>
+                </div>
+                <div class="meta-box">
+                    <span class="meta-label">Page</span>
+                    <span class="meta-value">{{ page }} / {{ page_count }}</span>
+                </div>
+                <div class="meta-box">
+                    <span class="meta-label">Window</span>
+                    <span class="meta-value">{{ show_start }}-{{ show_end }}</span>
+                </div>
             </div>
         </div>
-        <div class="section-controls">
-            <a class="{{ send_all_normal_class }}" href="{{ send_all_normal_link }}">Send All Normal</a>
-            <a class="{{ send_all_premium_class }}" href="{{ send_all_premium_link }}">Send All Premium</a>
-            <label for="sort" class="hint">Sort</label>
-            <select id="sort" name="sort" class="form-select">
-                {% for opt in sort_options %}{{ opt | safe }}{% endfor %}
-            </select>
+    </section>
+
+    <section class="card content-panel animate-in">
+        <div class="section-header">
+            <div class="section-meta">
+                <div class="chip">Archive listing</div>
+                <div class="chip">Telegram dispatch enabled</div>
+            </div>
+            <div class="section-controls">
+                <a class="{{ send_all_normal_class }}" href="{{ send_all_normal_link }}">Send All Normal</a>
+                <a class="{{ send_all_premium_class }}" href="{{ send_all_premium_link }}">Send All Premium</a>
+                <label for="sort" class="hint">Sort order</label>
+                <select id="sort" name="sort" class="form-select">
+                    {% for opt in sort_options %}{{ opt | safe }}{% endfor %}
+                </select>
+            </div>
         </div>
-    </div>
 
-    <ul class="skeleton-list">
-        {% for _ in skeleton_range %}
-        <li class="file-card skeleton">
-            <div class="skel-line w-60"></div>
-            <div class="skel-line w-40"></div>
-            <div class="skel-line w-30"></div>
-        </li>
-        {% endfor %}
-    </ul>
-
-    <div class="content">
-        <ul class="file-list">
-            {% if empty_section %}
-            <li class="file-card empty">No files yet. Upload to this section to see items here.</li>
-            {% endif %}
-            {% for item in page_entries %}
-            <li class="file-card card-hoverable">
-                <div class="file-card-main">
-                    <div class="file-name" title="{{ item.name }}">{{ loop.index + show_start_offset }}. {{ item.name }}</div>
-                    <div class="file-meta">
-                        <span>{{ item.size_text }}</span>
-                        <span>{{ item.mime }}</span>
-                        <span>👁 {{ item.views_total }}{% if item.views_unique %} · {{ item.views_unique }} unique{% endif %}</span>
-                        {% if item.is_trending %}
-                        <span class="badge badge-trending">🔥 Trending</span>
-                        {% endif %}
-                    </div>
-                </div>
-                <div class="file-actions">
-                    <a class="btn btn-secondary {{ '' if item.normal_link else 'btn-disabled' }}" href="{{ item.normal_link or '#' }}">Normal Open</a>
-                    <a class="btn btn-ghost {{ '' if item.premium_link else 'btn-disabled' }}" href="{{ item.premium_link or '#' }}">Premium Open</a>
-                </div>
+        <ul class="skeleton-list">
+            {% for _ in skeleton_range %}
+            <li class="skeleton">
+                <div class="skel-line w-60"></div>
+                <div class="skel-line w-40"></div>
+                <div class="skel-line w-30"></div>
             </li>
             {% endfor %}
         </ul>
-    </div>
 
-    <div class="pagination">
-        <a class="page-link {{ '' if prev_link else 'disabled' }}" href="{{ prev_link or '#' }}">← Prev</a>
-        <div class="chip">Showing {{ show_start }}-{{ show_end }} of {{ total_items }}</div>
-        <a class="page-link {{ '' if next_link else 'disabled' }}" href="{{ next_link or '#' }}">Next →</a>
-    </div>
+        <div class="content section-grid">
+            <ul class="file-list">
+                {% if empty_section %}
+                <li class="file-card empty">No files are indexed in this section yet.</li>
+                {% endif %}
+                {% for item in page_entries %}
+                <li class="file-card card-hoverable">
+                    <div class="file-card-main">
+                        <div class="file-name" title="{{ item.name }}">{{ loop.index + show_start_offset }}. {{ item.name }}</div>
+                        <div class="file-meta">
+                            <span>{{ item.size_text }}</span>
+                            <span>{{ item.mime }}</span>
+                            <span>{{ item.views_total }} views{% if item.views_unique %} · {{ item.views_unique }} unique{% endif %}</span>
+                            {% if item.is_trending %}
+                            <span class="badge badge-trending">Trending</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="file-actions">
+                        <a class="btn btn-secondary {{ '' if item.normal_link else 'btn-disabled' }}" href="{{ item.normal_link or '#' }}">Normal Open</a>
+                        <a class="btn btn-ghost {{ '' if item.premium_link else 'btn-disabled' }}" href="{{ item.premium_link or '#' }}">Premium Open</a>
+                    </div>
+                </li>
+                {% endfor %}
+            </ul>
 
-    <div class="section-hint">💡 Tip: If a file does not open, refresh once or try again later.</div>
+            <div class="pagination">
+                <a class="page-link {{ '' if prev_link else 'disabled' }}" href="{{ prev_link or '#' }}">Previous</a>
+                <div class="chip">Showing {{ show_start }}-{{ show_end }} of {{ total_items }}</div>
+                <a class="page-link {{ '' if next_link else 'disabled' }}" href="{{ next_link or '#' }}">Next</a>
+            </div>
+
+            <div class="section-hint">If a file does not open immediately, refresh once or retry after a few seconds.</div>
+        </div>
+    </section>
 </div>
 
 <script>

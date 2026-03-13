@@ -4,13 +4,20 @@
 
 {% block content %}
 <div class="picker-wrap">
-    <div class="card picker-card animate-in">
-        <h2>Section: {{ section_id }}</h2>
-        <p style="color: var(--muted); font-size: 14px; margin-top: 8px;">Select access type</p>
-        <div class="picker-actions">
-            <a class="btn btn-primary" href="/section/{{ section_id }}?access=normal">Normal</a>
-            <a class="btn btn-secondary" href="/section/{{ section_id }}/premium">Premium</a>
-        </div>
+    <div class="picker-shell">
+        <section class="card hero-panel picker-card animate-in">
+            <div class="eyebrow">Access selector</div>
+            <h1>{{ section_id }}</h1>
+            <p class="lede">Choose the access surface for this archive. Normal routes prioritize stream playback. Premium routes point to protected delivery.</p>
+        </section>
+
+        <section class="panel picker-card animate-in">
+            <div class="panel-title">Choose route</div>
+            <div class="picker-actions">
+                <a class="btn btn-secondary" href="/section/{{ section_id }}?access=normal">Normal Access</a>
+                <a class="btn btn-primary" href="/section/{{ section_id }}/premium">Premium Access</a>
+            </div>
+        </section>
     </div>
 </div>
 {% endblock %}
