@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="/static/styles.css" />
     {% block head %}{% endblock %}
 </head>
+
 <body{% block body_attrs %}{% endblock %}>
     <div class="container">
         <header class="site-header">
@@ -41,7 +42,6 @@
             container.style.left = x + 'px';
             container.style.top = y + 'px';
 
-            // Create powder clouds (blur elements)
             for (let i = 0; i < 5; i++) {
                 const cloud = document.createElement('div');
                 cloud.className = 'gulal-cloud';
@@ -53,7 +53,6 @@
                 container.appendChild(cloud);
             }
 
-            // Create particles (confetti dots)
             for (let i = 0; i < 15; i++) {
                 const p = document.createElement('div');
                 p.className = 'gulal-particle';
@@ -69,6 +68,6 @@
             setTimeout(() => container.remove(), 1000);
         });
     </script>
-    </body>
+</body>
 
 </html>

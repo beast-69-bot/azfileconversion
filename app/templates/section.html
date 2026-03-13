@@ -32,7 +32,6 @@
         </div>
     </div>
 
-    <!-- Skeleton loader -->
     <ul class="skeleton-list">
         {% for _ in skeleton_range %}
         <li class="file-card skeleton">
@@ -43,7 +42,6 @@
         {% endfor %}
     </ul>
 
-    <!-- Actual content -->
     <div class="content">
         <ul class="file-list">
             {% if empty_section %}
@@ -52,23 +50,19 @@
             {% for item in page_entries %}
             <li class="file-card card-hoverable">
                 <div class="file-card-main">
-                    <div class="file-name" title="{{ item.name }}">{{ loop.index + show_start_offset }}. {{ item.name }}
-                    </div>
+                    <div class="file-name" title="{{ item.name }}">{{ loop.index + show_start_offset }}. {{ item.name }}</div>
                     <div class="file-meta">
                         <span>{{ item.size_text }}</span>
                         <span>{{ item.mime }}</span>
-                        <span>👁 {{ item.views_total }}{% if item.views_unique %} · {{ item.views_unique }} unique{%
-                            endif %}</span>
+                        <span>👁 {{ item.views_total }}{% if item.views_unique %} · {{ item.views_unique }} unique{% endif %}</span>
                         {% if item.is_trending %}
                         <span class="badge badge-trending">🔥 Trending</span>
                         {% endif %}
                     </div>
                 </div>
                 <div class="file-actions">
-                    <a class="btn btn-secondary {{ '' if item.normal_link else 'btn-disabled' }}"
-                        href="{{ item.normal_link or '#' }}">Normal Open</a>
-                    <a class="btn btn-ghost {{ '' if item.premium_link else 'btn-disabled' }}"
-                        href="{{ item.premium_link or '#' }}">Premium Open</a>
+                    <a class="btn btn-secondary {{ '' if item.normal_link else 'btn-disabled' }}" href="{{ item.normal_link or '#' }}">Normal Open</a>
+                    <a class="btn btn-ghost {{ '' if item.premium_link else 'btn-disabled' }}" href="{{ item.premium_link or '#' }}">Premium Open</a>
                 </div>
             </li>
             {% endfor %}
@@ -77,7 +71,7 @@
 
     <div class="pagination">
         <a class="page-link {{ '' if prev_link else 'disabled' }}" href="{{ prev_link or '#' }}">← Prev</a>
-        <div class="chip">Showing {{ show_start }}–{{ show_end }} of {{ total_items }}</div>
+        <div class="chip">Showing {{ show_start }}-{{ show_end }} of {{ total_items }}</div>
         <a class="page-link {{ '' if next_link else 'disabled' }}" href="{{ next_link or '#' }}">Next →</a>
     </div>
 
