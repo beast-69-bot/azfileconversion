@@ -185,6 +185,35 @@ def is_admin(user_id: int | None) -> bool:
 def build_link(token: str) -> str:
     return f"{settings.base_url}/player/{token}"
 
+
+def _is_http_url(url: str) -> bool:
+    parsed = urllib.parse.urlparse(str(url or "").strip())
+    return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
+
+
+def _section_link_value(section_id: str) -> str:
+    section_url = f"{settings.base_url}/section/{section_id}"
+    if _is_http_url(section_url):
+        return link("Open Section", section_url)
+    return code(section_url or "BASE_URL not configured")
+
+
+def parse_send_all_payload(payload: str) -> tuple[str, str] | None:
+    raw = str(payload or "").strip()
+    if not raw.startswith("sa_"):
+        return None
+    rest = raw[3:]
+    section_id, sep, access = rest.rpartition("_")
+    if not sep:
+        return None
+    access = access.strip().lower()
+    if access not in {"normal", "premium"}:
+        return None
+    section_id = section_id.strip()
+    if not section_id:
+        return None
+    return section_id, access
+
 def parse_period(value: str) -> int | None:
     value = value.strip().lower()
     if value in {"life", "lifetime", "permanent", "perm"}:
@@ -617,15 +646,15 @@ async def _auto_delete_task(chat_id: int, message_id: int, delay: int, notice_ms
             pass
 
 
-async def _deliver_token(message: Message, token: str) -> None:
+async def _deliver_token(message: Message, token: str) -> bool:
     ref = await store.get(token, settings.token_ttl_seconds)
     if not ref:
         await message.reply(format_msg("❌ Not Found", sections=[("", "This link is invalid or has expired.")]), parse_mode="HTML")
-        return
+        return False
     user_id = message.from_user.id if message.from_user else 0
     if user_id <= 0:
         await message.reply(format_msg("❌ Error", sections=[("", "Could not identify your user account.")]), parse_mode="HTML")
-        return
+        return False
     premium = await db.is_premium(user_id)
     if ref.access == "premium" and not premium:
         ok, bal = await store.charge_credits(user_id, CREDIT_COST)
@@ -637,7 +666,7 @@ async def _deliver_token(message: Message, token: str) -> None:
                 ]),
                 parse_mode="HTML",
             )
-            return
+            return False
         await message.reply(format_msg("💳 Credit Used", sections=[("Deducted", "1 credit"), ("Remaining", code(bal))]), parse_mode="HTML")
     try:
         # Check if thumbnail should be used
@@ -673,7 +702,7 @@ async def _deliver_token(message: Message, token: str) -> None:
     except Exception as exc:
         logger.exception("copy_message failed: %s", exc)
         await message.reply(format_msg("❌ Delivery Failed", sections=[("", "Could not send the file. Please try again.")]), parse_mode="HTML")
-        return
+        return False
 
     # Auto-delete: read from store first, fallback to env
     delay = await store.get_auto_delete(default=settings.auto_delete_seconds)
@@ -691,6 +720,7 @@ async def _deliver_token(message: Message, token: str) -> None:
         asyncio.create_task(
             _auto_delete_task(message.chat.id, sent.message_id, delay, notice.message_id)
         )
+    return True
 
 
 
@@ -707,6 +737,65 @@ async def start_cmd(message: Message, state: FSMContext) -> None:
     if len(parts) > 1 and parts[1].startswith("dl_"):
         await _deliver_token(message, parts[1][3:])
         return
+    if len(parts) > 1:
+        send_all = parse_send_all_payload(parts[1])
+        if send_all:
+            section_id, access_filter = send_all
+            tokens = await store.list_section(section_id, settings.history_limit)
+            if not tokens:
+                await message.reply(format_msg("📭 No Files", sections=[("", "No files found in this section.")]), parse_mode="HTML")
+                return
+
+            selected_tokens: list[str] = []
+            for token in tokens:
+                ref = await store.get(token, settings.token_ttl_seconds)
+                if not ref:
+                    continue
+                if (ref.access or "normal").strip().lower() == access_filter:
+                    selected_tokens.append(token)
+
+            if not selected_tokens:
+                await message.reply(
+                    format_msg("📭 No Matching Files", sections=[("", f"No {access_filter} files found in this section.")]),
+                    parse_mode="HTML",
+                )
+                return
+
+            await message.reply(
+                format_msg(
+                    "📦 Sending Files",
+                    sections=[
+                        ("Section", code(section_id)),
+                        ("Access", esc(access_filter.title())),
+                        ("Count", code(len(selected_tokens))),
+                    ],
+                ),
+                parse_mode="HTML",
+            )
+
+            sent_count = 0
+            skipped_count = 0
+            for token in selected_tokens:
+                ok = await _deliver_token(message, token)
+                if ok:
+                    sent_count += 1
+                else:
+                    skipped_count += 1
+
+            tip = "Normal files are play-only." if access_filter == "normal" else "Premium files may deduct credits if needed."
+            await message.reply(
+                format_msg(
+                    "✅ Send All Complete",
+                    sections=[
+                        ("Section", code(section_id)),
+                        ("Sent", code(sent_count)),
+                        ("Skipped", code(skipped_count)),
+                    ],
+                    tip=tip,
+                ),
+                parse_mode="HTML",
+            )
+            return
     await message.reply(
         format_msg("👋 Welcome to FileLord", sections=[
             ("", "Use your website link to receive files directly in Telegram."),
@@ -1489,12 +1578,37 @@ async def addsection_cmd(message: Message) -> None:
         await message.reply(format_msg("?? Usage", sections=[("", code("/addsection <name>"))]), parse_mode="HTML")
         return
     section_name = parts[1].strip()
+    if not section_name:
+        await message.reply(format_msg("?? Usage", sections=[("", code("/addsection <name>"))]), parse_mode="HTML")
+        return
     sid = await store.set_section(section_name)
     if not sid:
         await message.reply(format_msg("?? Failed", sections=[("", "Section already exists or invalid name.")]), parse_mode="HTML")
         return
-    section_link = f"{settings.base_url}/section/{sid}"
-    await message.reply(format_msg("? Section Created", sections=[("Name", esc(section_name)), ("ID", code(sid)), ("Link", link("Open Section", section_link))], tip="Uploads will now be mapped to this section."), parse_mode="HTML")
+    section_msg = format_msg(
+        "? Section Created",
+        sections=[
+            ("Name", esc(section_name)),
+            ("ID", code(sid)),
+            ("Link", _section_link_value(sid)),
+        ],
+        tip="Uploads will now be mapped to this section.",
+    )
+    try:
+        await message.reply(section_msg, parse_mode="HTML")
+    except Exception as exc:
+        logger.warning("addsection reply failed for %s: %s", sid, exc)
+        await message.reply(
+            format_msg(
+                "? Section Created",
+                sections=[
+                    ("Name", esc(section_name)),
+                    ("ID", code(sid)),
+                ],
+                tip="Uploads will now be mapped to this section.",
+            ),
+            parse_mode="HTML",
+        )
 
 
 @dp.message(Command("endsection"))
@@ -1529,7 +1643,7 @@ async def showsections_cmd(message: Message) -> None:
         await message.reply(format_msg("?? Sections", sections=[("", "No sections yet. Use /addsection.")]), parse_mode="HTML")
         return
     rows.sort(key=lambda x: x[0].lower())
-    lines = [f"• {link(esc(name), f'{settings.base_url}/section/{sid}')}" for name, sid in rows]
+    lines = [f"• {link(name, f'{settings.base_url}/section/{sid}')}" if _is_http_url(f'{settings.base_url}/section/{sid}') else f"• {esc(name)} ({code(sid)})" for name, sid in rows]
     await message.reply(format_msg("?? Sections", sections=[("", "\n".join(lines))]), parse_mode="HTML")
 
 
