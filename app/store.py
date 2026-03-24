@@ -86,6 +86,13 @@ class TokenStore:
         self._pay_price: Optional[float] = None
         self._pay_text: Optional[str] = None
         self._upi_id: Optional[str] = None
+        self._payment_settings: dict[str, object] = {
+            "payment_gateway": "manual",
+            "xwallet_api_key": "",
+            "tutorial_chat_id": 0,
+            "tutorial_message_id": 0,
+            "total_earnings": 0.0,
+        }
         self._pay_pending_utr: dict[int, str] = {}
         self._pay_req_messages: dict[str, tuple[int, int]] = {}
         self._pay_req_message_set: dict[str, set[tuple[int, int]]] = {}
@@ -427,6 +434,67 @@ return {1, newval}
         self._pay_text = text
         return price, text
 
+    async def get_payment_settings(self) -> dict:
+        defaults = {
+            "payment_gateway": "manual",
+            "xwallet_api_key": "",
+            "tutorial_chat_id": 0,
+            "tutorial_message_id": 0,
+            "total_earnings": 0.0,
+        }
+        if self._redis is not None:
+            data = await self._redis.hgetall(self._pay_plan_key)
+            return {
+                "payment_gateway": str(data.get("payment_gateway", defaults["payment_gateway"]) or defaults["payment_gateway"]).strip().lower(),
+                "xwallet_api_key": str(data.get("xwallet_api_key", defaults["xwallet_api_key"]) or ""),
+                "tutorial_chat_id": int(data.get("tutorial_chat_id", "0") or 0),
+                "tutorial_message_id": int(data.get("tutorial_message_id", "0") or 0),
+                "total_earnings": float(data.get("total_earnings", "0") or 0.0),
+            }
+        settings = dict(defaults)
+        settings.update(self._payment_settings)
+        settings["payment_gateway"] = str(settings.get("payment_gateway", "manual") or "manual").strip().lower()
+        settings["xwallet_api_key"] = str(settings.get("xwallet_api_key", "") or "")
+        settings["tutorial_chat_id"] = int(settings.get("tutorial_chat_id", 0) or 0)
+        settings["tutorial_message_id"] = int(settings.get("tutorial_message_id", 0) or 0)
+        settings["total_earnings"] = float(settings.get("total_earnings", 0.0) or 0.0)
+        return settings
+
+    async def update_payment_settings(self, updates: dict) -> dict:
+        clean: dict[str, str] = {}
+        for key, value in (updates or {}).items():
+            if key == "payment_gateway":
+                clean[key] = str(value or "manual").strip().lower()
+            elif key in {"xwallet_api_key"}:
+                clean[key] = str(value or "").strip()
+            elif key in {"tutorial_chat_id", "tutorial_message_id"}:
+                clean[key] = str(int(value or 0))
+            elif key == "total_earnings":
+                clean[key] = f"{float(value or 0.0):.2f}"
+        if self._redis is not None:
+            if clean:
+                await self._redis.hset(self._pay_plan_key, mapping=clean)
+            return await self.get_payment_settings()
+        for key, value in clean.items():
+            if key in {"tutorial_chat_id", "tutorial_message_id"}:
+                self._payment_settings[key] = int(value or 0)
+            elif key == "total_earnings":
+                self._payment_settings[key] = float(value or 0.0)
+            else:
+                self._payment_settings[key] = value
+        return await self.get_payment_settings()
+
+    async def add_total_earnings(self, amount: float) -> float:
+        amount = float(amount or 0.0)
+        if self._redis is not None:
+            current = await self.get_payment_settings()
+            total = float(current.get("total_earnings", 0.0) or 0.0) + amount
+            await self._redis.hset(self._pay_plan_key, mapping={"total_earnings": f"{total:.2f}"})
+            return total
+        current = float(self._payment_settings.get("total_earnings", 0.0) or 0.0) + amount
+        self._payment_settings["total_earnings"] = current
+        return current
+
 
     async def get_upi_id(self) -> str:
         if self._redis is not None:
@@ -652,7 +720,23 @@ return {1, newval}
         self._pay_req_seq = 0
         return deleted
 
-    async def create_payment_request(self, request_id: str, user_id: int, amount_inr: float, credits: int, plan_type: str = "credits") -> dict:
+    async def create_payment_request(
+        self,
+        request_id: str,
+        user_id: int,
+        amount_inr: float,
+        credits: int,
+        plan_type: str = "credits",
+        *,
+        gateway: str = "manual",
+        expires_at: int = 0,
+        qr_code_id: str = "",
+        payment_link: str = "",
+        txn_id: str = "",
+        approved_by: str = "",
+        grant_type: str = "",
+        screenshot_file_id: str = "",
+    ) -> dict:
         now = int(time.time())
         item = {
             "id": str(request_id),
@@ -661,10 +745,18 @@ return {1, newval}
             "credits": int(credits),
             "plan_type": str(plan_type or "credits").strip().lower(),
             "status": "pending",
+            "gateway": str(gateway or "manual").strip().lower(),
             "created_at": now,
             "updated_at": now,
+            "expires_at": int(expires_at or 0),
             "note": "",
             "admin_id": 0,
+            "qr_code_id": str(qr_code_id or ""),
+            "payment_link": str(payment_link or ""),
+            "txn_id": str(txn_id or ""),
+            "approved_by": str(approved_by or ""),
+            "grant_type": str(grant_type or ""),
+            "screenshot_file_id": str(screenshot_file_id or ""),
         }
         if self._redis is not None:
             key = f"{self._pay_req_prefix}{request_id}"
@@ -677,10 +769,18 @@ return {1, newval}
                     "credits": str(item["credits"]),
                     "plan_type": item["plan_type"],
                     "status": item["status"],
+                    "gateway": item["gateway"],
                     "created_at": str(item["created_at"]),
                     "updated_at": str(item["updated_at"]),
+                    "expires_at": str(item["expires_at"]),
                     "note": item["note"],
                     "admin_id": str(item["admin_id"]),
+                    "qr_code_id": item["qr_code_id"],
+                    "payment_link": item["payment_link"],
+                    "txn_id": item["txn_id"],
+                    "approved_by": item["approved_by"],
+                    "grant_type": item["grant_type"],
+                    "screenshot_file_id": item["screenshot_file_id"],
                 },
             )
             await self._redis.zadd(self._pay_req_index, {item["id"]: float(item["created_at"])})
@@ -703,14 +803,61 @@ return {1, newval}
                 "credits": int(data.get("credits", "0") or 0),
                 "plan_type": data.get("plan_type", "credits"),
                 "status": data.get("status", "pending"),
+                "gateway": data.get("gateway", "manual"),
                 "created_at": int(data.get("created_at", "0") or 0),
                 "updated_at": int(data.get("updated_at", "0") or 0),
+                "expires_at": int(data.get("expires_at", "0") or 0),
                 "note": data.get("note", ""),
                 "admin_id": int(data.get("admin_id", "0") or 0),
+                "qr_code_id": data.get("qr_code_id", ""),
+                "payment_link": data.get("payment_link", ""),
+                "txn_id": data.get("txn_id", ""),
+                "approved_by": data.get("approved_by", ""),
+                "grant_type": data.get("grant_type", ""),
+                "screenshot_file_id": data.get("screenshot_file_id", ""),
             }
         req = self._pay_requests.get(request_id)
         if req is not None and "plan_type" not in req:
             req["plan_type"] = "credits"
+        if req is not None:
+            req.setdefault("gateway", "manual")
+            req.setdefault("expires_at", 0)
+            req.setdefault("qr_code_id", "")
+            req.setdefault("payment_link", "")
+            req.setdefault("txn_id", "")
+            req.setdefault("approved_by", "")
+            req.setdefault("grant_type", "")
+            req.setdefault("screenshot_file_id", "")
+        return req
+
+    async def update_payment_request(self, request_id: str, updates: dict) -> Optional[dict]:
+        req = await self.get_payment_request(request_id)
+        if not req:
+            return None
+        allowed = {
+            "status", "note", "admin_id", "updated_at", "gateway", "expires_at",
+            "qr_code_id", "payment_link", "txn_id", "approved_by", "grant_type",
+            "screenshot_file_id", "credits", "amount_inr", "plan_type",
+        }
+        clean: dict[str, str] = {}
+        for key, value in (updates or {}).items():
+            if key not in allowed:
+                continue
+            if key in {"admin_id", "credits", "updated_at", "expires_at"}:
+                req[key] = int(value or 0)
+                clean[key] = str(req[key])
+            elif key == "amount_inr":
+                req[key] = float(value or 0)
+                clean[key] = f"{req[key]:.2f}"
+            else:
+                req[key] = str(value or "").strip().lower() if key in {"status", "gateway", "plan_type"} else str(value or "")
+                clean[key] = str(req[key])
+        req["updated_at"] = int(time.time())
+        clean["updated_at"] = str(req["updated_at"])
+        if self._redis is not None:
+            await self._redis.hset(f"{self._pay_req_prefix}{req['id']}", mapping=clean)
+            return req
+        self._pay_requests[req["id"]] = req
         return req
 
     async def set_payment_request_status(
@@ -749,6 +896,7 @@ return {1, newval}
         to_status: str,
         note: str = "",
         admin_id: int = 0,
+        extra_updates: Optional[dict] = None,
     ) -> tuple[Optional[dict], bool]:
         req_id = str(request_id).strip()
         if not req_id:
@@ -781,10 +929,18 @@ return {1, newval}
                         "credits": int(data.get("credits", "0") or 0),
                         "plan_type": data.get("plan_type", "credits"),
                         "status": str(data.get("status", "pending") or "pending").strip().lower(),
+                        "gateway": data.get("gateway", "manual"),
                         "created_at": int(data.get("created_at", "0") or 0),
                         "updated_at": int(data.get("updated_at", "0") or 0),
+                        "expires_at": int(data.get("expires_at", "0") or 0),
                         "note": data.get("note", ""),
                         "admin_id": int(data.get("admin_id", "0") or 0),
+                        "qr_code_id": data.get("qr_code_id", ""),
+                        "payment_link": data.get("payment_link", ""),
+                        "txn_id": data.get("txn_id", ""),
+                        "approved_by": data.get("approved_by", ""),
+                        "grant_type": data.get("grant_type", ""),
+                        "screenshot_file_id": data.get("screenshot_file_id", ""),
                     }
                     if req["status"] not in allowed:
                         return req, False
@@ -793,17 +949,22 @@ return {1, newval}
                     req["note"] = new_note
                     req["admin_id"] = new_admin_id
                     req["updated_at"] = now
+                    mapping = {
+                        "status": req["status"],
+                        "note": req["note"],
+                        "admin_id": str(req["admin_id"]),
+                        "updated_at": str(req["updated_at"]),
+                    }
+                    for key, value in (extra_updates or {}).items():
+                        if key in {"expires_at"}:
+                            req[key] = int(value or 0)
+                            mapping[key] = str(req[key])
+                        elif key in {"qr_code_id", "payment_link", "txn_id", "approved_by", "grant_type", "screenshot_file_id", "gateway", "plan_type"}:
+                            req[key] = str(value or "")
+                            mapping[key] = str(req[key])
 
                     pipe.multi()
-                    await pipe.hset(
-                        key,
-                        mapping={
-                            "status": req["status"],
-                            "note": req["note"],
-                            "admin_id": str(req["admin_id"]),
-                            "updated_at": str(req["updated_at"]),
-                        },
-                    )
+                    await pipe.hset(key, mapping=mapping)
                     await pipe.execute()
                     return req, True
                 except WatchError:
@@ -827,6 +988,11 @@ return {1, newval}
         req["note"] = new_note
         req["admin_id"] = new_admin_id
         req["updated_at"] = now
+        for key, value in (extra_updates or {}).items():
+            if key == "expires_at":
+                req[key] = int(value or 0)
+            elif key in {"qr_code_id", "payment_link", "txn_id", "approved_by", "grant_type", "screenshot_file_id", "gateway", "plan_type"}:
+                req[key] = str(value or "")
         self._pay_requests[req["id"]] = req
         return req, True
 
@@ -920,6 +1086,39 @@ return {1, newval}
             if str(req.get("status", "")).strip().lower() in status_set:
                 return req
         return None
+
+    async def pending_xwallet_orders(self, limit: int = 1000) -> list[dict]:
+        limit = max(1, int(limit))
+        now = int(time.time())
+        items: list[dict] = []
+        if self._redis is not None:
+            request_ids = await self._redis.zrevrange(self._pay_req_index, 0, limit * 5)
+            for request_id in request_ids:
+                req = await self.get_payment_request(request_id)
+                if not req:
+                    continue
+                if str(req.get("gateway", "")).strip().lower() != "xwallet":
+                    continue
+                if str(req.get("status", "")).strip().lower() not in {"pending", "processing"}:
+                    continue
+                if int(req.get("expires_at", 0) or 0) <= now:
+                    continue
+                items.append(req)
+                if len(items) >= limit:
+                    break
+            return items
+
+        for req in sorted(self._pay_requests.values(), key=lambda x: x.get("created_at", 0), reverse=True):
+            if str(req.get("gateway", "")).strip().lower() != "xwallet":
+                continue
+            if str(req.get("status", "")).strip().lower() not in {"pending", "processing"}:
+                continue
+            if int(req.get("expires_at", 0) or 0) <= now:
+                continue
+            items.append(req)
+            if len(items) >= limit:
+                break
+        return items
 
     async def acquire_action_lock(self, key: str, ttl_seconds: int) -> bool:
         lock_key = str(key or "").strip()

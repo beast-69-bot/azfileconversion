@@ -49,6 +49,24 @@ class PremiumDB:
         )
         await self._conn.commit()
 
+    async def set_expiry(self, user_id: int, expires_at: Optional[int]) -> None:
+        await self._conn.execute(
+            "INSERT OR REPLACE INTO premium_users (user_id, expires_at) VALUES (?, ?)",
+            (int(user_id), None if expires_at is None else int(expires_at)),
+        )
+        await self._conn.commit()
+
+    async def get_expiry(self, user_id: int) -> Optional[int]:
+        cursor = await self._conn.execute(
+            "SELECT expires_at FROM premium_users WHERE user_id = ?",
+            (int(user_id),),
+        )
+        row = await cursor.fetchone()
+        if not row:
+            return None
+        value = row[0]
+        return None if value is None else int(value)
+
     async def is_premium(self, user_id: int) -> bool:
         cursor = await self._conn.execute(
             "SELECT expires_at FROM premium_users WHERE user_id = ?",

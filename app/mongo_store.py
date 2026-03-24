@@ -106,10 +106,18 @@ class MongoTokenStore(TokenStore):
             "credits": int(doc.get("credits", 0) or 0),
             "plan_type": str(doc.get("plan_type", "credits") or "credits"),
             "status": str(doc.get("status", "pending") or "pending"),
+            "gateway": str(doc.get("gateway", "manual") or "manual"),
             "created_at": int(doc.get("created_at", 0) or 0),
             "updated_at": int(doc.get("updated_at", 0) or 0),
+            "expires_at": int(doc.get("expires_at", 0) or 0),
             "note": str(doc.get("note", "") or ""),
             "admin_id": int(doc.get("admin_id", 0) or 0),
+            "qr_code_id": str(doc.get("qr_code_id", "") or ""),
+            "payment_link": str(doc.get("payment_link", "") or ""),
+            "txn_id": str(doc.get("txn_id", "") or ""),
+            "approved_by": str(doc.get("approved_by", "") or ""),
+            "grant_type": str(doc.get("grant_type", "") or ""),
+            "screenshot_file_id": str(doc.get("screenshot_file_id", "") or ""),
         }
 
     async def set(self, token: str, ref: FileRef, ttl_seconds: int) -> None:
@@ -268,6 +276,47 @@ class MongoTokenStore(TokenStore):
         )
         return price, text
 
+    async def get_payment_settings(self) -> dict:
+        defaults = {
+            "payment_gateway": "manual",
+            "xwallet_api_key": "",
+            "tutorial_chat_id": 0,
+            "tutorial_message_id": 0,
+            "total_earnings": 0.0,
+        }
+        doc = await self._config_col.find_one({"_id": "pay_plan"})
+        return {
+            "payment_gateway": str((doc or {}).get("payment_gateway", defaults["payment_gateway"]) or defaults["payment_gateway"]).strip().lower(),
+            "xwallet_api_key": str((doc or {}).get("xwallet_api_key", defaults["xwallet_api_key"]) or ""),
+            "tutorial_chat_id": int((doc or {}).get("tutorial_chat_id", defaults["tutorial_chat_id"]) or 0),
+            "tutorial_message_id": int((doc or {}).get("tutorial_message_id", defaults["tutorial_message_id"]) or 0),
+            "total_earnings": float((doc or {}).get("total_earnings", defaults["total_earnings"]) or 0.0),
+        }
+
+    async def update_payment_settings(self, updates: dict) -> dict:
+        clean: dict[str, object] = {}
+        for key, value in (updates or {}).items():
+            if key == "payment_gateway":
+                clean[key] = str(value or "manual").strip().lower()
+            elif key == "xwallet_api_key":
+                clean[key] = str(value or "").strip()
+            elif key in {"tutorial_chat_id", "tutorial_message_id"}:
+                clean[key] = int(value or 0)
+            elif key == "total_earnings":
+                clean[key] = float(value or 0.0)
+        if clean:
+            await self._config_col.update_one({"_id": "pay_plan"}, {"$set": clean}, upsert=True)
+        return await self.get_payment_settings()
+
+    async def add_total_earnings(self, amount: float) -> float:
+        doc = await self._config_col.find_one_and_update(
+            {"_id": "pay_plan"},
+            {"$inc": {"total_earnings": float(amount or 0.0)}},
+            upsert=True,
+            return_document=ReturnDocument.AFTER,
+        )
+        return float((doc or {}).get("total_earnings", 0.0) or 0.0)
+
     async def get_upi_id(self) -> str:
         doc = await self._config_col.find_one({"_id": "pay_plan"}, {"upi_id": 1})
         return str((doc or {}).get("upi_id", "") or "").strip()
@@ -424,7 +473,23 @@ class MongoTokenStore(TokenStore):
         await self._counters_col.update_one({"_id": "payment_request_seq"}, {"$set": {"value": 0}}, upsert=True)
         return deleted
 
-    async def create_payment_request(self, request_id: str, user_id: int, amount_inr: float, credits: int, plan_type: str = "credits") -> dict:
+    async def create_payment_request(
+        self,
+        request_id: str,
+        user_id: int,
+        amount_inr: float,
+        credits: int,
+        plan_type: str = "credits",
+        *,
+        gateway: str = "manual",
+        expires_at: int = 0,
+        qr_code_id: str = "",
+        payment_link: str = "",
+        txn_id: str = "",
+        approved_by: str = "",
+        grant_type: str = "",
+        screenshot_file_id: str = "",
+    ) -> dict:
         now = int(time.time())
         item = {
             "_id": str(request_id),
@@ -433,16 +498,44 @@ class MongoTokenStore(TokenStore):
             "credits": int(credits),
             "plan_type": str(plan_type or "credits").strip().lower(),
             "status": "pending",
+            "gateway": str(gateway or "manual").strip().lower(),
             "created_at": now,
             "updated_at": now,
+            "expires_at": int(expires_at or 0),
             "note": "",
             "admin_id": 0,
+            "qr_code_id": str(qr_code_id or ""),
+            "payment_link": str(payment_link or ""),
+            "txn_id": str(txn_id or ""),
+            "approved_by": str(approved_by or ""),
+            "grant_type": str(grant_type or ""),
+            "screenshot_file_id": str(screenshot_file_id or ""),
         }
         await self._payment_requests.replace_one({"_id": item["_id"]}, item, upsert=True)
         return self._payment_doc_to_dict(item)
 
     async def get_payment_request(self, request_id: str) -> Optional[dict]:
         return self._payment_doc_to_dict(await self._payment_requests.find_one({"_id": str(request_id).strip()}))
+
+    async def update_payment_request(self, request_id: str, updates: dict) -> Optional[dict]:
+        req_id = str(request_id).strip()
+        if not req_id:
+            return None
+        clean: dict[str, object] = {}
+        for key, value in (updates or {}).items():
+            if key in {"status", "note", "gateway", "plan_type", "qr_code_id", "payment_link", "txn_id", "approved_by", "grant_type", "screenshot_file_id"}:
+                clean[key] = str(value or "").strip().lower() if key in {"status", "gateway", "plan_type"} else str(value or "")
+            elif key in {"admin_id", "credits", "updated_at", "expires_at"}:
+                clean[key] = int(value or 0)
+            elif key == "amount_inr":
+                clean[key] = float(value or 0.0)
+        clean["updated_at"] = int(time.time())
+        doc = await self._payment_requests.find_one_and_update(
+            {"_id": req_id},
+            {"$set": clean},
+            return_document=ReturnDocument.AFTER,
+        )
+        return self._payment_doc_to_dict(doc)
 
     async def set_payment_request_status(
         self,
@@ -472,21 +565,26 @@ class MongoTokenStore(TokenStore):
         to_status: str,
         note: str = "",
         admin_id: int = 0,
+        extra_updates: Optional[dict] = None,
     ) -> tuple[Optional[dict], bool]:
         req_id = str(request_id).strip()
         allowed = [str(s).strip().lower() for s in (from_statuses or ()) if str(s).strip()]
         if not allowed:
             allowed = ["pending", "submitted"]
+        payload: dict[str, object] = {
+            "status": str(to_status or "").strip().lower(),
+            "note": str(note or "").strip(),
+            "admin_id": int(admin_id or 0),
+            "updated_at": int(time.time()),
+        }
+        for key, value in (extra_updates or {}).items():
+            if key in {"expires_at"}:
+                payload[key] = int(value or 0)
+            elif key in {"qr_code_id", "payment_link", "txn_id", "approved_by", "grant_type", "screenshot_file_id", "gateway", "plan_type"}:
+                payload[key] = str(value or "").strip().lower() if key in {"gateway", "plan_type"} else str(value or "")
         doc = await self._payment_requests.find_one_and_update(
             {"_id": req_id, "status": {"$in": allowed}},
-            {
-                "$set": {
-                    "status": str(to_status or "").strip().lower(),
-                    "note": str(note or "").strip(),
-                    "admin_id": int(admin_id or 0),
-                    "updated_at": int(time.time()),
-                }
-            },
+            {"$set": payload},
             return_document=ReturnDocument.AFTER,
         )
         if doc:
@@ -533,6 +631,26 @@ class MongoTokenStore(TokenStore):
             sort=[("created_at", DESCENDING)],
         )
         return self._payment_doc_to_dict(row)
+
+    async def pending_xwallet_orders(self, limit: int = 1000) -> list[dict]:
+        now = int(time.time())
+        rows: list[dict] = []
+        cursor = (
+            self._payment_requests.find(
+                {
+                    "gateway": "xwallet",
+                    "status": {"$in": ["pending", "processing"]},
+                    "expires_at": {"$gt": now},
+                }
+            )
+            .sort("created_at", DESCENDING)
+            .limit(max(1, int(limit)))
+        )
+        async for row in cursor:
+            item = self._payment_doc_to_dict(row)
+            if item:
+                rows.append(item)
+        return rows
 
     async def list_known_user_ids(self, limit: int = 50000) -> list[int]:
         limit = max(1, int(limit))

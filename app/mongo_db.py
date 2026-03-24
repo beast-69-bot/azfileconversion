@@ -45,6 +45,20 @@ class MongoPremiumDB(PremiumDB):
             upsert=True,
         )
 
+    async def set_expiry(self, user_id: int, expires_at: Optional[int]) -> None:
+        await self._premium.update_one(
+            {"_id": int(user_id)},
+            {"$set": {"expires_at": None if expires_at is None else int(expires_at)}},
+            upsert=True,
+        )
+
+    async def get_expiry(self, user_id: int) -> Optional[int]:
+        row = await self._premium.find_one({"_id": int(user_id)}, {"expires_at": 1})
+        if not row:
+            return None
+        value = row.get("expires_at")
+        return None if value is None else int(value)
+
     async def is_premium(self, user_id: int) -> bool:
         row = await self._premium.find_one({"_id": int(user_id)}, {"expires_at": 1})
         if not row:
