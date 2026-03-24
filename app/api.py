@@ -15,10 +15,15 @@ from pyrogram import Client
 from pyrogram.errors import FloodWait
 
 from app.config import get_settings
+from app.mongo_store import MongoTokenStore
 from app.store import FileRef, TokenStore
 
 settings = get_settings()
-store = TokenStore(settings.redis_url, history_limit=settings.history_limit)
+store = (
+    MongoTokenStore(settings.redis_url, settings.mongo_uri, settings.mongo_db_name, history_limit=settings.history_limit)
+    if settings.mongo_uri
+    else TokenStore(settings.redis_url, history_limit=settings.history_limit)
+)
 
 app = FastAPI()
 

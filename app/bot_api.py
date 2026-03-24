@@ -26,11 +26,21 @@ from openpyxl import Workbook
 
 from app.config import get_settings
 from app.db import PremiumDB
+from app.mongo_db import MongoPremiumDB
+from app.mongo_store import MongoTokenStore
 from app.store import FileRef, TokenStore
 
 settings = get_settings()
-store = TokenStore(settings.redis_url, history_limit=settings.history_limit)
-db = PremiumDB(settings.db_path)
+store = (
+    MongoTokenStore(settings.redis_url, settings.mongo_uri, settings.mongo_db_name, history_limit=settings.history_limit)
+    if settings.mongo_uri
+    else TokenStore(settings.redis_url, history_limit=settings.history_limit)
+)
+db = (
+    MongoPremiumDB(settings.db_path, settings.mongo_uri, settings.mongo_db_name)
+    if settings.mongo_uri
+    else PremiumDB(settings.db_path)
+)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("stream_bot_api")
