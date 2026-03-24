@@ -58,6 +58,8 @@ class TokenStore:
         self._sections: dict[str, list[str]] = {}
         self._section_registry: dict[str, str] = {}
         self._section_registry_id: dict[str, str] = {}
+        self._section_view_counts: dict[str, int] = {}
+        self._section_unique_viewers: dict[str, set[str]] = {}
         self._view_counts: dict[str, int] = {}
         self._unique_viewers: dict[str, set[str]] = {}
         self._like_counts: dict[str, int] = {}
@@ -197,6 +199,39 @@ class TokenStore:
 
         total = self._view_counts.get(token, 0)
         unique = len(self._unique_viewers.get(token, set()))
+        return total, unique
+
+    async def increment_section_view(self, section_id: str, viewer_id: Optional[str]) -> tuple[int, int]:
+        if self._redis is not None:
+            count_key = f"section:views:count:{section_id}"
+            unique_key = f"section:views:unique:{section_id}"
+            total = await self._redis.incr(count_key)
+            unique = 0
+            if viewer_id:
+                await self._redis.sadd(unique_key, viewer_id)
+                unique = await self._redis.scard(unique_key)
+            return int(total), int(unique)
+
+        total = self._section_view_counts.get(section_id, 0) + 1
+        self._section_view_counts[section_id] = total
+        unique = 0
+        if viewer_id:
+            viewers = self._section_unique_viewers.setdefault(section_id, set())
+            viewers.add(viewer_id)
+            unique = len(viewers)
+        return total, unique
+
+    async def get_section_views(self, section_id: str) -> tuple[int, int]:
+        if self._redis is not None:
+            count_key = f"section:views:count:{section_id}"
+            unique_key = f"section:views:unique:{section_id}"
+            total_raw = await self._redis.get(count_key)
+            total = int(total_raw or 0)
+            unique = await self._redis.scard(unique_key)
+            return total, int(unique)
+
+        total = self._section_view_counts.get(section_id, 0)
+        unique = len(self._section_unique_viewers.get(section_id, set()))
         return total, unique
 
     async def set_like(self, token: str, viewer_id: str, liked: bool) -> tuple[int, bool]:
@@ -1003,6 +1038,8 @@ return {1, newval}
             await self._redis.hdel(self._section_name_map, normalized)
             await self._redis.hdel(self._section_id_map, section_id)
             await self._redis.delete(f"section:{section_id}")
+            await self._redis.delete(f"section:views:count:{section_id}")
+            await self._redis.delete(f"section:views:unique:{section_id}")
             current = await self._redis.get(self._section_key)
             if current and current == section_id:
                 await self._redis.delete(self._section_key)
@@ -1015,6 +1052,8 @@ return {1, newval}
         self._section_registry.pop(normalized, None)
         self._section_registry_id.pop(section_id, None)
         self._sections.pop(section_id, None)
+        self._section_view_counts.pop(section_id, None)
+        self._section_unique_viewers.pop(section_id, None)
         if self._current_section == section_id:
             self._current_section = None
             self._current_section_name = None

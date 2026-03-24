@@ -1643,7 +1643,15 @@ async def showsections_cmd(message: Message) -> None:
         await message.reply(format_msg("📚 Sections", sections=[("", "No sections yet. Use /addsection.")]), parse_mode="HTML")
         return
     rows.sort(key=lambda x: x[0].lower())
-    lines = [f"• {link(name, f'{settings.base_url}/section/{sid}')}" if _is_http_url(f'{settings.base_url}/section/{sid}') else f"• {esc(name)} ({code(sid)})" for name, sid in rows]
+    lines = []
+    for name, sid in rows:
+        views_total, views_unique = await store.get_section_views(sid)
+        label = (
+            f"• {link(name, f'{settings.base_url}/section/{sid}')}"
+            if _is_http_url(f"{settings.base_url}/section/{sid}")
+            else f"• {esc(name)} ({code(sid)})"
+        )
+        lines.append(f"{label} — visits: {code(views_total)} | unique: {code(views_unique)}")
     await message.reply(format_msg("📚 Sections", sections=[("", "\n".join(lines))]), parse_mode="HTML")
 
 

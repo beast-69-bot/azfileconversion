@@ -321,15 +321,16 @@ async def download(token: str, request: Request, range: Optional[str] = Header(N
 
 def _render_password_template(request: Request, **ctx):
     """Render the shared password.html template."""
-    return templates.TemplateResponse("password.html", {"request": request, **ctx})
+    return templates.TemplateResponse(request=request, name="password.html", context={"request": request, **ctx})
 
 
 async def render_section(section_id: str, access_filter: str, request: Request) -> HTMLResponse:
     access_filter = (access_filter or "all").strip().lower()
     if password_enabled() and not is_authed(request):
         return templates.TemplateResponse(
-            "password.html",
-            {
+            request=request,
+            name="password.html",
+            context={
                 "request": request,
                 "page_title": "Protected Section",
                 "heading": "Section Locked",
@@ -367,6 +368,10 @@ async def render_section(section_id: str, access_filter: str, request: Request) 
         exists = await store.section_id_exists(section_id)
         if not exists:
             raise HTTPException(status_code=404, detail="Section not found")
+
+    viewer_cookie = request.cookies.get("stream_viewer_id")
+    viewer_id = viewer_cookie or secrets.token_hex(16)
+    section_views_total, section_views_unique = await store.increment_section_view(section_id, viewer_id)
 
     sort = (request.query_params.get("sort") or "newest").lower()
     try:
@@ -493,6 +498,8 @@ async def render_section(section_id: str, access_filter: str, request: Request) 
                 "access_filter": access_filter,
                 "entries_len": len(entries),
                 "page_entries_len": len(page_entries),
+                "section_views_total": section_views_total,
+                "section_views_unique": section_views_unique,
                 "items_len": len(items),
                 "items_sample": items[:2],
             }
@@ -521,13 +528,16 @@ async def render_section(section_id: str, access_filter: str, request: Request) 
 
     show_end = min(end, total_items)
 
-    return templates.TemplateResponse(
-        "section.html",
-        {
+    response = templates.TemplateResponse(
+        request=request,
+        name="section.html",
+        context={
             "request": request,
             "section_id": section_id,
             "base_url": settings.base_url,
             "total_items": total_items,
+            "section_views_total": section_views_total,
+            "section_views_unique": section_views_unique,
             "page": page,
             "page_count": page_count,
             "sort_options": sort_options,
@@ -546,6 +556,9 @@ async def render_section(section_id: str, access_filter: str, request: Request) 
             "show_end": show_end,
         },
     )
+    if not viewer_cookie:
+        response.set_cookie("stream_viewer_id", viewer_id, httponly=True, max_age=60 * 60 * 24 * 30, samesite="lax")
+    return response
 
 
 @app.get("/debug/section/{section_id}")
@@ -594,8 +607,9 @@ async def section_auth(section_id: str, request: Request, password: str = Form(.
         return RedirectResponse(url=f"/section/{section_id}" if access != "premium" else f"/section/{section_id}/premium", status_code=302)
     if not hmac.compare_digest(password, settings.stream_password):
         return templates.TemplateResponse(
-            "password.html",
-            {
+            request=request,
+            name="password.html",
+            context={
                 "request": request,
                 "page_title": "Protected Section",
                 "heading": "Section Locked",
@@ -617,12 +631,13 @@ async def player(token: str, request: Request):
     if not ref:
         raise HTTPException(status_code=404, detail="Invalid or expired token")
     if ref.access == "normal" and not settings.public_stream:
-        return templates.TemplateResponse("premium.html", {"request": request}, status_code=403)
+        return templates.TemplateResponse(request=request, name="premium.html", context={"request": request}, status_code=403)
 
     if password_enabled() and not is_authed(request):
         return templates.TemplateResponse(
-            "password.html",
-            {
+            request=request,
+            name="password.html",
+            context={
                 "request": request,
                 "page_title": "Protected Stream",
                 "heading": "Enter Password",
@@ -652,8 +667,9 @@ async def player(token: str, request: Request):
         download_button_url = f"https://t.me/{settings.bot_username}?start=dl_{token}"
 
     response = templates.TemplateResponse(
-        "player.html",
-        {
+        request=request,
+        name="player.html",
+        context={
             "request": request,
             "token": token,
             "file_name": file_name,
@@ -712,8 +728,9 @@ async def player_password(token: str, request: Request, password: str = Form(...
         return RedirectResponse(url=f"/player/{token}", status_code=302)
     if not hmac.compare_digest(password, settings.stream_password):
         return templates.TemplateResponse(
-            "password.html",
-            {
+            request=request,
+            name="password.html",
+            context={
                 "request": request,
                 "page_title": "Protected Stream",
                 "heading": "Enter Password",

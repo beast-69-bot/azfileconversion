@@ -26,6 +26,14 @@
                     <span class="meta-value">{{ total_items }}</span>
                 </div>
                 <div class="meta-box">
+                    <span class="meta-label">Visits</span>
+                    <span class="meta-value">{{ section_views_total }}</span>
+                </div>
+                <div class="meta-box">
+                    <span class="meta-label">Unique</span>
+                    <span class="meta-value">{{ section_views_unique }}</span>
+                </div>
+                <div class="meta-box">
                     <span class="meta-label">Page</span>
                     <span class="meta-value">{{ page }} / {{ page_count }}</span>
                 </div>
@@ -75,7 +83,7 @@
                         <div class="file-meta">
                             <span>{{ item.size_text }}</span>
                             <span>{{ item.mime }}</span>
-                            <span>{{ item.views_total }} views{% if item.views_unique %} · {{ item.views_unique }} unique{% endif %}</span>
+                            <span>{{ item.views_total }} views{% if item.views_unique %} - {{ item.views_unique }} unique{% endif %}</span>
                             {% if item.is_trending %}
                             <span class="badge badge-trending">Trending</span>
                             {% endif %}
@@ -113,3 +121,4 @@
     document.body.classList.remove('is-loading');
 </script>
 {% endblock %}
+
