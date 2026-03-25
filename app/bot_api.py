@@ -1133,7 +1133,7 @@ async def premium_cmd(message: Message) -> None:
             ("Price", f"INR {PREMIUM_MONTHLY_PRICE_INR:.0f}"),
             ("Duration", f"{PREMIUM_MONTHLY_DAYS} days"),
             ("Credits", "Unlimited"),
-            ("", f"Tap /buy to subscribe or contact {esc(ADMIN_CONTACT)}."),
+            ("", f"Tap /pay to subscribe or contact {esc(ADMIN_CONTACT)}."),
         ], tip="Premium users can download files without credit deductions."),
         parse_mode="HTML",
     )
@@ -1316,6 +1316,21 @@ async def buy_cancel_callback(callback: CallbackQuery, state: FSMContext) -> Non
 @dp.message(Command("pay"))
 async def pay_cmd(message: Message, state: FSMContext) -> None:
     await state.clear()
+    gateway = await _resolve_payment_gateway()
+    if gateway == "xwallet":
+        await message.reply(
+            format_msg(
+                "Buy Premium",
+                sections=[
+                    ("Gateway", esc(gateway.title())),
+                    ("Plans", "Choose a premium plan below:"),
+                ],
+                tip="Automatic confirmation is enabled through XWallet.",
+            ),
+            parse_mode="HTML",
+            reply_markup=_buy_plan_kb(),
+        )
+        return
     price, template = await store.get_pay_plan(DEFAULT_CREDIT_PRICE_INR, DEFAULT_PAY_TEXT)
     pay_info = template.replace("{price}", _format_money(price))
     await message.reply(
