@@ -2347,6 +2347,9 @@ async def delsection_cmd(message: Message) -> None:
 
 @dp.message(Command("showsections", "showsection", "sections"))
 async def showsections_cmd(message: Message) -> None:
+    if not is_admin(message.from_user.id if message.from_user else None):
+        await message.reply(format_msg("❌ Access Denied", sections=[("", "Admins only.")]), parse_mode="HTML")
+        return
     rows = await store.list_sections()
     if not rows:
         await message.reply(format_msg("📚 Sections", sections=[("", "No sections yet. Use /addsection.")]), parse_mode="HTML")
