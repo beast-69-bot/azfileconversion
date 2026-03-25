@@ -54,7 +54,7 @@ bot = Bot(token=settings.bot_token)
 dp = Dispatcher(storage=MemoryStorage())
 
 CREDIT_COST = 1
-DEFAULT_CREDIT_PRICE_INR = 0.35
+DEFAULT_CREDIT_PRICE_INR = 0.45
 DEFAULT_PAY_TEXT = "Price per credit: INR {price}\nTo add credits, contact admin."
 ADMIN_CONTACT = "@azmoviedeal"
 PREMIUM_MONTHLY_PRICE_INR = 499.0
@@ -456,7 +456,7 @@ async def _finalize_premium_request(req: dict, approver: str, *, txn_id: str = "
     if float(req.get("amount_inr", 0) or 0) > 0:
         await store.add_total_earnings(float(req.get("amount_inr", 0) or 0))
     user_text = format_msg(
-        "? Payment verified, premium activated",
+        "✅ Payment verified, premium activated",
         sections=[
             ("Plan", esc(plan.label)),
             ("Valid Till", esc(_format_expiry_ts(expires_at))),
@@ -469,6 +469,7 @@ async def _finalize_premium_request(req: dict, approver: str, *, txn_id: str = "
         pass
     if send_tutorial:
         await _send_tutorial_video(user_id)
+    await _clear_user_payment_prompt(request_id, user_id)
     return True, plan.label, expires_at
 
 
@@ -522,6 +523,7 @@ async def _finalize_credit_request(req: dict, approver: str, *, txn_id: str = ""
         )
     except Exception:
         pass
+    await _clear_user_payment_prompt(request_id, user_id)
     return True, credits, balance
 
 
@@ -540,7 +542,7 @@ async def _poll_xwallet_order(request_id: str) -> None:
                 user_id = int(req.get("user_id", 0) or 0)
                 if user_id > 0:
                     with contextlib.suppress(Exception):
-                        await bot.send_message(user_id, format_msg("? Payment Expired", sections=[("Request ID", code(request_id))], tip="Start /pay again if needed."), parse_mode="HTML")
+                        await bot.send_message(user_id, format_msg("⌛ Payment Expired", sections=[("Request ID", code(request_id))], tip="Start /pay again if needed."), parse_mode="HTML")
                 return
 
             status_str, txn_id = await _xwallet_check_payment(str(req.get("qr_code_id", "") or ""))
@@ -578,7 +580,7 @@ async def _poll_xwallet_order(request_id: str) -> None:
                 user_id = int(req.get("user_id", 0) or 0)
                 if user_id > 0:
                     with contextlib.suppress(Exception):
-                        await bot.send_message(user_id, format_msg("? Payment Failed", sections=[("Request ID", code(request_id)), ("Gateway", "XWallet"), ("Status", esc(status_str or "FAILED"))], tip="Use /pay to retry."), parse_mode="HTML")
+                        await bot.send_message(user_id, format_msg("❌ Payment Failed", sections=[("Request ID", code(request_id)), ("Gateway", "XWallet"), ("Status", esc(status_str or "FAILED"))], tip="Use /pay to retry."), parse_mode="HTML")
                 return
             await asyncio.sleep(5)
     except asyncio.CancelledError:
@@ -685,7 +687,7 @@ async def _send_payment_instructions(
 async def _notify_admin_payment(req_id: str, user_id: int, amount: float, credits: int, plan_type: str, proof: str) -> None:
     plan_label = _payment_plan_label(plan_type, credits)
     text = format_msg(
-        "New Payment - Action Required",
+        "🧾 New Payment - Action Required",
         sections=[
             ("Request ID", code(req_id)),
             ("User ID", code(user_id)),
@@ -715,7 +717,7 @@ async def _broadcast_payment_resolution(
 ) -> None:
     action_norm = str(action or "").strip().lower()
     status_title = "Approved" if action_norm == "approved" else "Rejected"
-    status_emoji = "?" if action_norm == "approved" else "?"
+    status_emoji = "✅" if action_norm == "approved" else "❌"
     plan_label = _payment_plan_label(plan_type, int(credits or 0))
     extra_note = str(note or "").strip()
 
@@ -754,7 +756,7 @@ async def _update_admin_payment_messages(
     if action_norm not in {"approved", "rejected"}:
         return
     status_title = "Approved" if action_norm == "approved" else "Rejected"
-    status_emoji = "?" if action_norm == "approved" else "?"
+    status_emoji = "✅" if action_norm == "approved" else "❌"
     req = await store.get_payment_request(req_id)
     user_id = int(req.get("user_id", 0) or 0) if req else 0
     amount = float(req.get("amount_inr", 0) or 0) if req else 0.0
@@ -819,7 +821,7 @@ def _active_payment_msg(req: dict) -> str:
     plan_type = str(req.get("plan_type", "credits")).strip().lower()
     plan_line = _payment_plan_label(plan_type, int(req.get("credits", 0) or 0))
     return format_msg(
-        "? Active Payment Request Found",
+        "⚠️ Active Payment Request Found",
         sections=[
             ("Request ID", code(req_id)),
             ("Status", esc(status.title())),
@@ -876,6 +878,12 @@ async def _delete_payment_messages_for_request(req_id: str, user_chat_id: int) -
         await store.clear_payment_messages(req_id)
     except Exception:
         pass
+
+
+async def _clear_user_payment_prompt(req_id: str, user_chat_id: int) -> None:
+    await _delete_payment_messages_for_request(req_id, user_chat_id)
+    with contextlib.suppress(Exception):
+        await store.clear_payment_prompt(req_id)
 
 
 async def _expire_pending_payment_requests_loop() -> None:
@@ -1252,7 +1260,7 @@ async def buy_plan_callback(callback: CallbackQuery, state: FSMContext) -> None:
     plan_code = callback.data.split(":", 1)[1].strip().lower()
     plan = PAYMENT_PLANS.get(plan_code)
     if plan is None:
-        await callback.message.reply(format_msg("? Invalid Plan", sections=[("Plan", code(plan_code or "-"))]), parse_mode="HTML")
+        await callback.message.reply(format_msg("⚠️ Invalid Plan", sections=[("Plan", code(plan_code or "-"))]), parse_mode="HTML")
         return
     if await _resolve_payment_gateway() == "xwallet":
         await callback.message.reply(
@@ -1270,7 +1278,7 @@ async def buy_plan_callback(callback: CallbackQuery, state: FSMContext) -> None:
     create_allowed = await store.acquire_action_lock(f"buy:create:{user_id}", PAY_REQUEST_COOLDOWN_SECONDS)
     if not create_allowed:
         await callback.message.reply(
-            format_msg("? Please Wait", sections=[("", f"You can create a new order after {PAY_REQUEST_COOLDOWN_SECONDS} seconds.")]),
+            format_msg("⏳ Please Wait", sections=[("", f"You can create a new order after {PAY_REQUEST_COOLDOWN_SECONDS} seconds.")]),
             parse_mode="HTML",
         )
         return
@@ -1303,7 +1311,7 @@ async def buy_plan_callback(callback: CallbackQuery, state: FSMContext) -> None:
         if not qr_code_id or not payment_link:
             await store.delete_payment_request(req_id)
             await callback.message.reply(
-                format_msg("? Payment Init Failed", sections=[("Gateway", "XWallet"), ("", "Could not create payment link right now.")]),
+                format_msg("❌ Payment Init Failed", sections=[("Gateway", "XWallet"), ("", "Could not create payment link right now.")]),
                 parse_mode="HTML",
             )
             return
@@ -1503,7 +1511,7 @@ async def pay_plan_callback(callback: CallbackQuery, state: FSMContext) -> None:
         if not qr_code_id or not payment_link:
             await store.delete_payment_request(req_id)
             await callback.message.reply(
-                format_msg("? Payment Init Failed", sections=[("Gateway", "XWallet"), ("", "Could not create payment link right now.")]),
+                format_msg("❌ Payment Init Failed", sections=[("Gateway", "XWallet"), ("", "Could not create payment link right now.")]),
                 parse_mode="HTML",
             )
             return
@@ -1636,7 +1644,7 @@ async def pay_custom_amount_handler(message: Message, state: FSMContext) -> None
         if not qr_code_id or not payment_link:
             await store.delete_payment_request(req_id)
             await message.reply(
-                format_msg("? Payment Init Failed", sections=[("Gateway", "XWallet"), ("", "Could not create payment link right now.")]),
+                format_msg("❌ Payment Init Failed", sections=[("Gateway", "XWallet"), ("", "Could not create payment link right now.")]),
                 parse_mode="HTML",
             )
             return
@@ -1927,6 +1935,7 @@ async def admin_approve_callback(callback: CallbackQuery) -> None:
             )
         except Exception:
             pass
+        await _clear_user_payment_prompt(req_id, user_id)
 
     # Edit admin message to show approved state
     try:
@@ -2142,6 +2151,7 @@ async def approve_cmd(message: Message) -> None:
             )
         except Exception:
             pass
+        await _clear_user_payment_prompt(req_id, user_id)
     await message.reply(format_msg("✅ Approved", sections=[("Request", code(req_id)), ("Result", esc(result))]), parse_mode="HTML")
     await _update_admin_payment_messages(
         req_id=req_id,
