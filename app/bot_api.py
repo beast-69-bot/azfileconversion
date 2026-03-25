@@ -472,6 +472,59 @@ async def _finalize_premium_request(req: dict, approver: str, *, txn_id: str = "
     return True, plan.label, expires_at
 
 
+async def _finalize_credit_request(req: dict, approver: str, *, txn_id: str = "", grant_type: str = "") -> tuple[bool, int, int]:
+    user_id = int(req.get("user_id", 0) or 0)
+    request_id = str(req.get("id", "")).strip()
+    credits = int(req.get("credits", 0) or 0)
+    if not request_id or user_id <= 0 or credits <= 0:
+        return False, 0, 0
+
+    admin_id = int(approver.split(":", 1)[1] or 0) if approver.startswith("admin:") else 0
+    req_after, changed = await store.transition_payment_request_status(
+        request_id,
+        ("pending", "processing", "awaiting_screenshot", "under_review", "submitted"),
+        "processed",
+        note=txn_id or "verified",
+        admin_id=admin_id,
+        extra_updates={
+            "txn_id": str(txn_id or ""),
+            "approved_by": approver,
+            "grant_type": grant_type or str(req.get("grant_type", "") or ""),
+        },
+    )
+    if not req_after or not changed:
+        return False, 0, 0
+
+    balance = await store.add_credits(user_id, credits)
+    note = f"{credits} credits added. New balance: {balance}"
+    await store.update_payment_request(
+        request_id,
+        {
+            "status": "processed",
+            "note": note,
+            "approved_by": approver,
+            "txn_id": str(txn_id or ""),
+            "grant_type": grant_type or str(req.get("grant_type", "") or ""),
+        },
+    )
+    amount = float(req.get("amount_inr", 0) or 0)
+    if amount > 0:
+        await store.add_total_earnings(amount)
+    try:
+        await bot.send_message(
+            user_id,
+            format_msg(
+                "✅ Payment verified",
+                sections=[("Credits Added", code(credits)), ("New Balance", code(balance))],
+                tip="Your credits are ready to use.",
+            ),
+            parse_mode="HTML",
+        )
+    except Exception:
+        pass
+    return True, credits, balance
+
+
 async def _poll_xwallet_order(request_id: str) -> None:
     try:
         while True:
@@ -487,22 +540,37 @@ async def _poll_xwallet_order(request_id: str) -> None:
                 user_id = int(req.get("user_id", 0) or 0)
                 if user_id > 0:
                     with contextlib.suppress(Exception):
-                        await bot.send_message(user_id, format_msg("? Payment Expired", sections=[("Request ID", code(request_id))], tip="Start /buy again if needed."), parse_mode="HTML")
+                        await bot.send_message(user_id, format_msg("? Payment Expired", sections=[("Request ID", code(request_id))], tip="Start /pay again if needed."), parse_mode="HTML")
                 return
 
             status_str, txn_id = await _xwallet_check_payment(str(req.get("qr_code_id", "") or ""))
             if status_str in XWALLET_SUCCESS_STATUSES:
-                ok, plan_label, expires_at = await _finalize_premium_request(req, "xwallet:auto", txn_id=txn_id, extend_existing=False, grant_type="xwallet", send_tutorial=True)
+                plan_type = str(req.get("plan_type", "credits") or "credits").strip().lower()
+                if _subscription_plan_from_type(plan_type) or plan_type == "premium_30d":
+                    ok, plan_label, expires_at = await _finalize_premium_request(req, "xwallet:auto", txn_id=txn_id, extend_existing=False, grant_type="xwallet", send_tutorial=True)
+                    if ok:
+                        await _broadcast_payment_resolution(
+                            req_id=request_id,
+                            user_id=int(req.get("user_id", 0) or 0),
+                            amount=float(req.get("amount_inr", 0) or 0),
+                            credits=int(req.get("credits", 0) or 0),
+                            plan_type=plan_type,
+                            action="approved",
+                            actor_admin_id=0,
+                            note=f"{plan_label} until {_format_expiry_ts(expires_at)}",
+                        )
+                    return
+                ok, credits_added, balance = await _finalize_credit_request(req, "xwallet:auto", txn_id=txn_id, grant_type="xwallet")
                 if ok:
                     await _broadcast_payment_resolution(
                         req_id=request_id,
                         user_id=int(req.get("user_id", 0) or 0),
                         amount=float(req.get("amount_inr", 0) or 0),
                         credits=int(req.get("credits", 0) or 0),
-                        plan_type=str(req.get("plan_type", "credits") or "credits"),
+                        plan_type=plan_type,
                         action="approved",
                         actor_admin_id=0,
-                        note=f"{plan_label} until {_format_expiry_ts(expires_at)}",
+                        note=f"{credits_added} credits added. New balance: {balance}",
                     )
                 return
             if status_str in XWALLET_FAILED_STATUSES:
@@ -510,7 +578,7 @@ async def _poll_xwallet_order(request_id: str) -> None:
                 user_id = int(req.get("user_id", 0) or 0)
                 if user_id > 0:
                     with contextlib.suppress(Exception):
-                        await bot.send_message(user_id, format_msg("? Payment Failed", sections=[("Request ID", code(request_id)), ("Gateway", "XWallet"), ("Status", esc(status_str or "FAILED"))], tip="Use /buy to retry."), parse_mode="HTML")
+                        await bot.send_message(user_id, format_msg("? Payment Failed", sections=[("Request ID", code(request_id)), ("Gateway", "XWallet"), ("Status", esc(status_str or "FAILED"))], tip="Use /pay to retry."), parse_mode="HTML")
                 return
             await asyncio.sleep(5)
     except asyncio.CancelledError:
@@ -531,19 +599,20 @@ def _spawn_xwallet_poll(request_id: str) -> None:
     _xwallet_poll_tasks[req_id] = asyncio.create_task(_poll_xwallet_order(req_id))
 
 
-def _plan_kb() -> InlineKeyboardMarkup:
+def _plan_kb(*, include_premium: bool = True) -> InlineKeyboardMarkup:
     """Quick plan selection keyboard."""
-    return InlineKeyboardMarkup(inline_keyboard=[
+    rows = [
         [
             InlineKeyboardButton(text="₹10 Credits", callback_data="pay:10"),
             InlineKeyboardButton(text="₹50 Credits", callback_data="pay:50"),
             InlineKeyboardButton(text="₹100 Credits", callback_data="pay:100"),
         ],
-        [
-            InlineKeyboardButton(text="✏️ Custom Amount", callback_data="pay:custom"),
-            InlineKeyboardButton(text=f"✨ Premium ₹{PREMIUM_MONTHLY_PRICE_INR:.0f}/30d", callback_data="pay:premium"),
-        ],
-    ])
+    ]
+    second_row = [InlineKeyboardButton(text="✏️ Custom Amount", callback_data="pay:custom")]
+    if include_premium:
+        second_row.append(InlineKeyboardButton(text=f"✨ Premium ₹{PREMIUM_MONTHLY_PRICE_INR:.0f}/30d", callback_data="pay:premium"))
+    rows.append(second_row)
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def _payment_action_kb(req_id: str) -> InlineKeyboardMarkup:
@@ -1147,6 +1216,20 @@ async def premium_cmd(message: Message) -> None:
 async def buy_cmd(message: Message, state: FSMContext) -> None:
     await state.clear()
     gateway = await _resolve_payment_gateway()
+    if gateway == "xwallet":
+        await message.reply(
+            format_msg(
+                "Buy Credits",
+                sections=[
+                    ("Gateway", esc(gateway.title())),
+                    ("Plans", "Choose a credit plan below:"),
+                ],
+                tip="Automatic confirmation is enabled through XWallet.",
+            ),
+            parse_mode="HTML",
+            reply_markup=_plan_kb(include_premium=False),
+        )
+        return
     await message.reply(
         format_msg(
             "Buy Premium",
@@ -1170,6 +1253,12 @@ async def buy_plan_callback(callback: CallbackQuery, state: FSMContext) -> None:
     plan = PAYMENT_PLANS.get(plan_code)
     if plan is None:
         await callback.message.reply(format_msg("? Invalid Plan", sections=[("Plan", code(plan_code or "-"))]), parse_mode="HTML")
+        return
+    if await _resolve_payment_gateway() == "xwallet":
+        await callback.message.reply(
+            format_msg("⚠️ Flow Changed", sections=[("", "XWallet now handles credit plans through /pay only.")]),
+            parse_mode="HTML",
+        )
         return
 
     user_id = callback.from_user.id if callback.from_user else 0
@@ -1320,15 +1409,15 @@ async def pay_cmd(message: Message, state: FSMContext) -> None:
     if gateway == "xwallet":
         await message.reply(
             format_msg(
-                "Buy Premium",
+                "Buy Credits",
                 sections=[
                     ("Gateway", esc(gateway.title())),
-                    ("Plans", "Choose a premium plan below:"),
+                    ("Plans", "Choose a credit plan below:"),
                 ],
                 tip="Automatic confirmation is enabled through XWallet.",
             ),
             parse_mode="HTML",
-            reply_markup=_buy_plan_kb(),
+            reply_markup=_plan_kb(include_premium=False),
         )
         return
     price, template = await store.get_pay_plan(DEFAULT_CREDIT_PRICE_INR, DEFAULT_PAY_TEXT)
@@ -1354,6 +1443,7 @@ async def pay_plan_callback(callback: CallbackQuery, state: FSMContext) -> None:
         return
     await callback.answer()
     plan = callback.data.split(":", 1)[1]
+    gateway = await _resolve_payment_gateway()
     price, _ = await store.get_pay_plan(DEFAULT_CREDIT_PRICE_INR, DEFAULT_PAY_TEXT)
     user_id = callback.from_user.id
 
@@ -1366,6 +1456,13 @@ async def pay_plan_callback(callback: CallbackQuery, state: FSMContext) -> None:
         await state.set_state(PayState.waiting_amount)
         await callback.message.reply(
             format_msg("✏️ Custom Amount", sections=[("", f"Enter your desired amount (minimum INR {MIN_CUSTOM_PAY_INR:.0f}):")]),
+            parse_mode="HTML",
+        )
+        return
+
+    if gateway == "xwallet" and plan == "premium":
+        await callback.message.reply(
+            format_msg("⚠️ Invalid Plan", sections=[("", "XWallet flow currently supports credit plans only. Please choose a credit amount.")]),
             parse_mode="HTML",
         )
         return
@@ -1391,6 +1488,46 @@ async def pay_plan_callback(callback: CallbackQuery, state: FSMContext) -> None:
         return
 
     req_id = await store.next_payment_request_id()
+    if gateway == "xwallet":
+        settings_doc = await _get_payment_settings()
+        api_key = str(settings_doc.get("xwallet_api_key", "") or "").strip()
+        if not api_key:
+            await callback.message.reply(
+                format_msg("Gateway Not Ready", sections=[("Gateway", "XWallet"), ("", "Admin must set /setxwalletkey first.")]),
+                parse_mode="HTML",
+            )
+            return
+        expires_at = int(time.time()) + ORDER_TIMEOUT_SEC
+        await store.create_payment_request(req_id, user_id, amount, credits, plan_type=plan_type, gateway="xwallet", expires_at=expires_at)
+        qr_code_id, payment_link = await _xwallet_create_payment(api_key, amount)
+        if not qr_code_id or not payment_link:
+            await store.delete_payment_request(req_id)
+            await callback.message.reply(
+                format_msg("? Payment Init Failed", sections=[("Gateway", "XWallet"), ("", "Could not create payment link right now.")]),
+                parse_mode="HTML",
+            )
+            return
+        await store.update_payment_request(req_id, {"status": "processing", "qr_code_id": qr_code_id, "payment_link": payment_link})
+        plan_label = _payment_plan_label(plan_type, credits)
+        sent = await callback.message.reply(
+            format_msg(
+                "Complete Payment",
+                sections=[
+                    ("Request ID", code(req_id)),
+                    ("Plan", esc(plan_label)),
+                    ("Amount", f"INR {amount:.2f}"),
+                    ("Status", "Processing via XWallet"),
+                    ("Expires", esc(_format_expiry_ts(expires_at))),
+                ],
+                tip="Tap Pay Now and wait for automatic credit confirmation.",
+            ),
+            parse_mode="HTML",
+            reply_markup=_xwallet_buy_action_kb(req_id, payment_link),
+        )
+        await store.set_payment_prompt(req_id, sent.chat.id, sent.message_id)
+        await _track_payment_message(req_id, sent)
+        _spawn_xwallet_poll(req_id)
+        return
     await store.create_payment_request(req_id, user_id, amount, credits, plan_type=plan_type)
     await _send_payment_instructions(callback.message.chat.id, req_id, amount, credits, plan_type)
 
@@ -1451,6 +1588,7 @@ async def pay_cancel_callback(callback: CallbackQuery, state: FSMContext) -> Non
 
 @dp.message(StateFilter(PayState.waiting_amount))
 async def pay_custom_amount_handler(message: Message, state: FSMContext) -> None:
+    gateway = await _resolve_payment_gateway()
     try:
         amount = float((message.text or "").strip())
     except Exception:
@@ -1482,8 +1620,47 @@ async def pay_custom_amount_handler(message: Message, state: FSMContext) -> None
         return
 
     req_id = await store.next_payment_request_id()
-    await store.create_payment_request(req_id, user_id, amount, credits, plan_type="credits")
     await state.clear()
+    if gateway == "xwallet":
+        settings_doc = await _get_payment_settings()
+        api_key = str(settings_doc.get("xwallet_api_key", "") or "").strip()
+        if not api_key:
+            await message.reply(
+                format_msg("Gateway Not Ready", sections=[("Gateway", "XWallet"), ("", "Admin must set /setxwalletkey first.")]),
+                parse_mode="HTML",
+            )
+            return
+        expires_at = int(time.time()) + ORDER_TIMEOUT_SEC
+        await store.create_payment_request(req_id, user_id, amount, credits, plan_type="credits", gateway="xwallet", expires_at=expires_at)
+        qr_code_id, payment_link = await _xwallet_create_payment(api_key, amount)
+        if not qr_code_id or not payment_link:
+            await store.delete_payment_request(req_id)
+            await message.reply(
+                format_msg("? Payment Init Failed", sections=[("Gateway", "XWallet"), ("", "Could not create payment link right now.")]),
+                parse_mode="HTML",
+            )
+            return
+        await store.update_payment_request(req_id, {"status": "processing", "qr_code_id": qr_code_id, "payment_link": payment_link})
+        sent = await message.reply(
+            format_msg(
+                "Complete Payment",
+                sections=[
+                    ("Request ID", code(req_id)),
+                    ("Plan", esc(_payment_plan_label("credits", credits))),
+                    ("Amount", f"INR {amount:.2f}"),
+                    ("Status", "Processing via XWallet"),
+                    ("Expires", esc(_format_expiry_ts(expires_at))),
+                ],
+                tip="Tap Pay Now and wait for automatic credit confirmation.",
+            ),
+            parse_mode="HTML",
+            reply_markup=_xwallet_buy_action_kb(req_id, payment_link),
+        )
+        await store.set_payment_prompt(req_id, sent.chat.id, sent.message_id)
+        await _track_payment_message(req_id, sent)
+        _spawn_xwallet_poll(req_id)
+        return
+    await store.create_payment_request(req_id, user_id, amount, credits, plan_type="credits")
     await _send_payment_instructions(message.chat.id, req_id, amount, credits, "credits")
 
 
