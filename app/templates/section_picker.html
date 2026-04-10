@@ -8,14 +8,24 @@
         <section class="card hero-panel picker-card animate-in">
             <div class="eyebrow">Access selector</div>
             <h1>{{ section_id }}</h1>
-            <p class="lede">Choose the access surface for this archive. Normal routes prioritize stream playback. Premium routes point to protected delivery.</p>
+            <p class="lede">Choose the route that matches how you want this archive delivered. Normal access prioritizes stream playback, while premium access points to protected handoff.</p>
         </section>
 
         <section class="panel picker-card animate-in">
             <div class="panel-title">Choose route</div>
-            <div class="picker-actions">
-                <a class="btn btn-secondary" href="/section/{{ section_id }}?access=normal">Normal Access</a>
-                <a class="btn btn-primary" href="/section/{{ section_id }}/premium">Premium Access</a>
+            <div class="route-grid">
+                <a class="route-card route-card-normal" href="/section/{{ section_id }}?access=normal">
+                    <span class="route-kicker">Normal access</span>
+                    <strong>Open stream-ready links</strong>
+                    <p>Best for quick browsing and direct playback from the archive index.</p>
+                    <span class="route-link">Continue to section</span>
+                </a>
+                <a class="route-card route-card-premium" href="/section/{{ section_id }}/premium">
+                    <span class="route-kicker">Premium access</span>
+                    <strong>Use protected delivery</strong>
+                    <p>Best for Telegram-first handoff, restricted files, and download-oriented access.</p>
+                    <span class="route-link">Open premium route</span>
+                </a>
             </div>
         </section>
     </div>

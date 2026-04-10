@@ -9,18 +9,47 @@
 {% block content %}
 <div class="page-frame">
   <section class="card hero-panel animate-in">
-    <div class="eyebrow">Player</div>
-    <h1>{{ file_name }}</h1>
-    <p class="lede">Direct playback panel for archive delivery. Use the stream route for immediate viewing or hand off the premium route for Telegram delivery.</p>
+    <div class="hero-grid">
+      <div class="hero-copy">
+        <div class="eyebrow">Player</div>
+        <h1>{{ file_name }}</h1>
+        <p class="lede">Direct playback panel for archive delivery. Use the stream route for immediate viewing or hand off the premium route for Telegram delivery.</p>
+        <div class="chip-row">
+          <div class="chip chip-accent">Stream ready</div>
+          <div class="chip">Token {{ token[:12] }}...</div>
+        </div>
+      </div>
+      <div class="hero-stats">
+        <div class="meta-box">
+          <span class="meta-label">Views</span>
+          <span class="meta-value">{{ views_total }}</span>
+        </div>
+        <div class="meta-box">
+          <span class="meta-label">Likes</span>
+          <span class="meta-value">{{ likes_total }}</span>
+        </div>
+        <div class="meta-box">
+          <span class="meta-label">Size</span>
+          <span class="meta-value">{{ size_text }}</span>
+        </div>
+        <div class="meta-box">
+          <span class="meta-label">Format</span>
+          <span class="meta-value">{{ mime_type }}</span>
+        </div>
+      </div>
+    </div>
   </section>
 
   <section class="card content-panel animate-in">
     <div class="player-layout">
       <section class="media-card">
-        <div>
-          <div class="file-kicker">Current asset</div>
-          <div class="file-title">{{ file_name }}</div>
-          <div class="file-sub">{{ size_text }} · {{ mime_type }}</div>
+        <div class="media-header">
+          <div>
+            <div class="file-kicker">Current asset</div>
+            <div class="file-title">{{ file_name }}</div>
+            <div class="file-sub">{{ size_text }} &middot; {{ mime_type }}</div>
+          </div>
+          <span class="badge badge-live">Direct playback</span>
         </div>
         <div class="player-wrap">
           {% if media_tag == "audio" %}
@@ -38,13 +67,16 @@
         <div class="chip-row">
           <div class="chip">{{ views_total }} total views</div>
           <div class="chip">{{ likes_total }} likes</div>
-          <div class="chip">Token {{ token[:12] }}...</div>
+          {% if download_button_url %}
+          <div class="chip chip-accent">Telegram handoff available</div>
+          {% endif %}
         </div>
       </section>
 
       <aside class="side-panel">
         <div class="panel">
           <div class="panel-title">Dispatch</div>
+          <p class="panel-copy">Open the direct stream instantly or hand off the premium route to Telegram for download-friendly delivery.</p>
           <div class="actions-row">
             <a class="btn btn-secondary" href="/stream/{{ token }}">Direct Stream</a>
             {% if download_button_url %}
@@ -77,7 +109,7 @@
 
         <div class="panel">
           <div class="panel-title">Notes</div>
-          <p>If playback stalls, refresh once. Premium Telegram delivery remains the fallback path for downloadable access.</p>
+          <p class="panel-copy">If playback stalls, refresh once. Premium Telegram delivery remains the fallback path for downloadable access.</p>
         </div>
       </aside>
     </div>
