@@ -208,6 +208,7 @@ BOT_COMMANDS = [
     BotCommand(command="payments", description="List payments (admin)"),
     BotCommand(command="approve", description="Approve payment (admin)"),
     BotCommand(command="reject", description="Reject payment (admin)"),
+    BotCommand(command="broadcast", description="Broadcast message (admin)"),
     BotCommand(command="paydb", description="Export payments sheet (admin)"),
     BotCommand(command="paysettings", description="Show payment settings (admin)"),
     BotCommand(command="setgateway", description="Set payment gateway (admin)"),
@@ -2751,20 +2752,36 @@ async def broadcast_cmd(message: Message) -> None:
         await message.reply(format_msg("❌ Access Denied", sections=[("", "Admins only.")]), parse_mode="HTML")
         return
     parts = (message.text or "").split(maxsplit=1)
-    if len(parts) < 2:
+    if len(parts) < 2 or not parts[1].strip():
         await message.reply(format_msg("⚠️ Usage", sections=[("", code("/broadcast <text>"))]), parse_mode="HTML")
         return
     txt = parts[1].strip()
-    users = await store.list_known_user_ids(limit=50000)
-    if not users:
+    targets = set(await store.list_known_user_ids(limit=100000))
+    for row in await db.list_premium_users():
+        targets.add(int(row.user_id))
+
+    sender_id = message.from_user.id if message.from_user else 0
+    if sender_id in targets:
+        targets.remove(sender_id)
+
+    if not targets:
         await message.reply(format_msg("📣 Broadcast", sections=[("", "No users yet.")]), parse_mode="HTML")
         return
     sent = failed = 0
-    for uid in users:
+    for uid in sorted(targets):
         try:
             await bot.send_message(uid, txt)
             sent += 1
-        except Exception:
+        except Exception as exc:
+            retry_after = getattr(exc, "retry_after", None)
+            if isinstance(retry_after, (int, float)) and retry_after > 0:
+                await asyncio.sleep(float(retry_after))
+                try:
+                    await bot.send_message(uid, txt)
+                    sent += 1
+                    continue
+                except Exception:
+                    pass
             failed += 1
     await message.reply(format_msg("✅ Broadcast Complete", sections=[("Sent", code(sent)), ("Failed", code(failed))]), parse_mode="HTML")
 
