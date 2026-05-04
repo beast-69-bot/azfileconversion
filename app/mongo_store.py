@@ -136,6 +136,29 @@ class MongoTokenStore(TokenStore):
             return None
         return self._token_doc_to_ref(doc)
 
+    async def get_many(self, tokens: list[str], ttl_seconds: int) -> dict[str, FileRef]:
+        ordered = [str(token) for token in tokens if token]
+        if not ordered:
+            return {}
+        now = time.time()
+        results: dict[str, FileRef] = {}
+        expired: list[str] = []
+        cursor = self._tokens.find({"_id": {"$in": ordered}})
+        async for doc in cursor:
+            token = str(doc.get("_id", "") or "")
+            if not token:
+                continue
+            expires_at = doc.get("expires_at")
+            if expires_at is not None and float(expires_at) <= now:
+                expired.append(token)
+                continue
+            ref = self._token_doc_to_ref(doc)
+            if ref is not None:
+                results[token] = ref
+        if expired:
+            await self._tokens.delete_many({"_id": {"$in": expired}})
+        return results
+
     async def list_recent(self, limit: int) -> list[str]:
         limit = max(int(limit), 1)
         cursor = self._tokens.find(self._live_filter(), {"_id": 1}).sort("created_at", DESCENDING).limit(limit)
@@ -162,6 +185,27 @@ class MongoTokenStore(TokenStore):
         total = int((doc or {}).get("views_total", 0) or 0)
         unique = await self._token_viewers.count_documents({"token": token})
         return total, int(unique)
+
+    async def get_views_many(self, tokens: list[str]) -> dict[str, tuple[int, int]]:
+        ordered = [str(token) for token in tokens if token]
+        if not ordered:
+            return {}
+        token_set = list(dict.fromkeys(ordered))
+
+        totals: dict[str, int] = {}
+        cursor = self._token_metrics.find({"_id": {"$in": token_set}}, {"views_total": 1})
+        async for doc in cursor:
+            totals[str(doc["_id"])] = int(doc.get("views_total", 0) or 0)
+
+        uniques: dict[str, int] = {}
+        pipeline = [
+            {"$match": {"token": {"$in": token_set}}},
+            {"$group": {"_id": "$token", "count": {"$sum": 1}}},
+        ]
+        async for row in self._token_viewers.aggregate(pipeline):
+            uniques[str(row["_id"])] = int(row.get("count", 0) or 0)
+
+        return {token: (totals.get(token, 0), uniques.get(token, 0)) for token in ordered}
 
     async def increment_section_view(self, section_id: str, viewer_id: Optional[str]) -> tuple[int, int]:
         doc = await self._section_metrics.find_one_and_update(

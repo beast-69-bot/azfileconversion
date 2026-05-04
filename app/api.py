@@ -390,16 +390,19 @@ async def render_section(section_id: str, access_filter: str, request: Request) 
     page = max(page, 1)
     per_page = max(6, min(per_page, 60))
 
+    refs_by_token = await store.get_many(tokens, settings.token_ttl_seconds)
+    views_by_token = await store.get_views_many(list(refs_by_token))
+
     grouped: dict[str, dict] = {}
     for token in tokens:
-        ref = await store.get(token, settings.token_ttl_seconds)
+        ref = refs_by_token.get(token)
         if ref is None:
             continue
         ref_access = (ref.access or "normal").strip().lower()
         group_key = f"{ref.chat_id}:{ref.message_id}"
         name = ref.file_name or ref.file_unique_id or "file"
         size_text = human_size(ref.file_size)
-        views_total, views_unique = await store.get_views(token)
+        views_total, views_unique = views_by_token.get(token, (0, 0))
         entry = grouped.setdefault(
             group_key,
             {

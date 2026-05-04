@@ -163,6 +163,38 @@ class TokenStore:
             return None
         return ref
 
+    async def get_many(self, tokens: list[str], ttl_seconds: int) -> dict[str, FileRef]:
+        ordered = [str(token) for token in tokens if token]
+        if not ordered:
+            return {}
+        if self._redis is not None:
+            pipe = self._redis.pipeline()
+            for token in ordered:
+                pipe.get(token)
+            raw_values = await pipe.execute()
+            results: dict[str, FileRef] = {}
+            for token, raw in zip(ordered, raw_values):
+                if not raw:
+                    continue
+                data = json.loads(raw)
+                if "file_id" not in data:
+                    data["file_id"] = ""
+                if "access" not in data:
+                    data["access"] = "normal"
+                if "section_id" not in data:
+                    data["section_id"] = None
+                if "section_name" not in data:
+                    data["section_name"] = None
+                results[token] = FileRef(**data)
+            return results
+
+        results: dict[str, FileRef] = {}
+        for token in ordered:
+            ref = await self.get(token, ttl_seconds)
+            if ref is not None:
+                results[token] = ref
+        return results
+
 
     async def list_recent(self, limit: int) -> list[str]:
         limit = max(int(limit), 1)
@@ -207,6 +239,31 @@ class TokenStore:
         total = self._view_counts.get(token, 0)
         unique = len(self._unique_viewers.get(token, set()))
         return total, unique
+
+    async def get_views_many(self, tokens: list[str]) -> dict[str, tuple[int, int]]:
+        ordered = [str(token) for token in tokens if token]
+        if not ordered:
+            return {}
+        if self._redis is not None:
+            pipe = self._redis.pipeline()
+            for token in ordered:
+                pipe.get(f"views:count:{token}")
+                pipe.scard(f"views:unique:{token}")
+            values = await pipe.execute()
+            results: dict[str, tuple[int, int]] = {}
+            for index, token in enumerate(ordered):
+                total_raw = values[index * 2]
+                unique_raw = values[index * 2 + 1]
+                results[token] = (int(total_raw or 0), int(unique_raw or 0))
+            return results
+
+        return {
+            token: (
+                self._view_counts.get(token, 0),
+                len(self._unique_viewers.get(token, set())),
+            )
+            for token in ordered
+        }
 
     async def increment_section_view(self, section_id: str, viewer_id: Optional[str]) -> tuple[int, int]:
         if self._redis is not None:
