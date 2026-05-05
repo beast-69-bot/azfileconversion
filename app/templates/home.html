@@ -31,7 +31,7 @@
                 <span></span>
             </div>
             <div class="preview-player">
-                <div class="preview-play">Play</div>
+                <div class="preview-play" aria-hidden="true">&#9654;</div>
                 <div class="preview-wave">
                     <span></span><span></span><span></span><span></span><span></span>
                 </div>
@@ -47,7 +47,7 @@
     </section>
 
     <section class="home-grid">
-        <div class="panel home-panel">
+        <div class="panel home-panel reveal">
             <div class="panel-title">How access works</div>
             <div class="step-list">
                 <div class="step-card"><span>1</span><strong>Open website link</strong><p>Use the active route selected by the admin.</p></div>
@@ -56,7 +56,7 @@
             </div>
         </div>
 
-        <div id="premium" class="panel home-panel premium-panel">
+        <div id="premium" class="panel home-panel premium-panel reveal">
             <div class="panel-title">Normal vs Premium</div>
             <div class="access-compare">
                 <div>
@@ -74,7 +74,7 @@
     </section>
 
     {% if home_section %}
-    <section class="card content-panel home-section-panel animate-in">
+    <section class="card content-panel home-section-panel animate-in reveal">
         <div class="section-toolbar">
             <div class="toolbar-head">
                 <div class="panel-title">Current website access</div>
@@ -113,13 +113,37 @@
             <a class="btn btn-primary" href="https://t.me/Az_Hawas_Adda">Regards: @Az_Hawas_Adda</a>
         </div>
         <div class="channel-grid">
-            <a class="channel-card" href="https://t.me/+Z_KkSZ37BudmNGFl"><span>AZ INFO HUB</span><strong>Join channel</strong></a>
-            <a class="channel-card" href="https://t.me/+vYqCFxATSzg5ZDI1"><span>D@4K Channel</span><strong>Join channel</strong></a>
-            <a class="channel-card" href="https://t.me/+a6uTomNoNhhiMzE1"><span>All MEGA LINKS</span><strong>Join channel</strong></a>
-            <a class="channel-card is-restricted" href="https://t.me/+JZFnp_q9vPM4OTE1"><span>AZ ADULT ADDA</span><strong>18+ channel</strong></a>
-            <a class="channel-card is-restricted" href="https://t.me/+dQWXQBPPh9BiMzll"><span>AZ THRILLER VAULT</span><strong>Join channel</strong></a>
+            <a class="channel-card reveal" href="https://t.me/+Z_KkSZ37BudmNGFl"><span>AZ INFO HUB</span><strong>Join channel</strong></a>
+            <a class="channel-card reveal" href="https://t.me/+vYqCFxATSzg5ZDI1"><span>D@4K Channel</span><strong>Join channel</strong></a>
+            <a class="channel-card reveal" href="https://t.me/+a6uTomNoNhhiMzE1"><span>All MEGA LINKS</span><strong>Join channel</strong></a>
+            <a class="channel-card is-restricted reveal" href="https://t.me/+JZFnp_q9vPM4OTE1"><span>AZ ADULT ADDA</span><strong>18+ channel</strong></a>
+            <a class="channel-card is-restricted reveal" href="https://t.me/+dQWXQBPPh9BiMzll"><span>AZ THRILLER VAULT</span><strong>Join channel</strong></a>
         </div>
         <div class="section-hint">Auto request join is enabled on supported Telegram channels.</div>
     </section>
 </div>
+
+<script>
+    (function () {
+        const revealTargets = document.querySelectorAll(".reveal, .step-card");
+        if (!revealTargets.length || !("IntersectionObserver" in window)) {
+            revealTargets.forEach((el) => el.classList.add("visible"));
+            return;
+        }
+
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach((entry) => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add("visible");
+                    observer.unobserve(entry.target);
+                }
+            });
+        }, { threshold: 0.12, rootMargin: "0px 0px -40px 0px" });
+
+        revealTargets.forEach((el, index) => {
+            el.style.transitionDelay = `${Math.min(index * 0.04, 0.28)}s`;
+            observer.observe(el);
+        });
+    })();
+</script>
 {% endblock %}
