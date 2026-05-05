@@ -47,9 +47,28 @@ _client_lock = asyncio.Lock()
 _warm_lock = asyncio.Lock()
 
 
-@app.get("/")
-async def root():
-    return {"ok": True, "service": "azfileconversion", "docs": "/docs"}
+@app.get("/", response_class=HTMLResponse)
+async def root(request: Request):
+    try:
+        sections = await store.list_sections()
+    except Exception:
+        sections = []
+
+    section_cards = [
+        {"name": name, "id": section_id, "href": f"/section/{section_id}"}
+        for name, section_id in sections[:8]
+    ]
+    bot_link = f"https://t.me/{settings.bot_username}" if settings.bot_username else "#"
+    return templates.TemplateResponse(
+        request=request,
+        name="home.html",
+        context={
+            "request": request,
+            "section_cards": section_cards,
+            "bot_link": bot_link,
+            "bot_ready": bool(settings.bot_username),
+        },
+    )
 
 
 @app.get("/health")

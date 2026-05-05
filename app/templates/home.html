@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+
+{% block title %}AzhawaSadda - Private Stream Archive{% endblock %}
+
+{% block header_extra %}
+<a class="header-action" href="#channels">Support channels</a>
+{% endblock %}
+
+{% block content %}
+<div class="home-frame">
+    <section class="home-hero card animate-in">
+        <div class="home-hero-copy">
+            <div class="eyebrow">AzhawaSadda private archive</div>
+            <h1>Stream files online. Receive premium files in Telegram.</h1>
+            <p class="lede">Open protected media links, browse archive sections, and use Telegram-first delivery for premium downloads and credit-based access.</p>
+            <div class="actions-row">
+                <a class="btn btn-primary" href="#sections">Explore sections</a>
+                <a class="btn btn-secondary {{ '' if bot_ready else 'btn-disabled' }}" href="{{ bot_link }}">Open Telegram bot</a>
+                <a class="btn btn-ghost" href="#premium">Premium access</a>
+            </div>
+            <div class="chip-row">
+                <span class="chip chip-accent">Play-only normal access</span>
+                <span class="chip">Premium Telegram delivery</span>
+                <span class="chip">Secure token streaming</span>
+            </div>
+        </div>
+        <div class="home-preview" aria-label="Archive preview">
+            <div class="preview-topbar">
+                <span></span>
+                <span></span>
+                <span></span>
+            </div>
+            <div class="preview-player">
+                <div class="preview-play">Play</div>
+                <div class="preview-wave">
+                    <span></span><span></span><span></span><span></span><span></span>
+                </div>
+            </div>
+            <div class="preview-file">
+                <div>
+                    <strong>Protected media file</strong>
+                    <p>Normal users can stream. Premium users can receive downloadable files.</p>
+                </div>
+                <span class="badge badge-trending">Premium</span>
+            </div>
+        </div>
+    </section>
+
+    <section class="home-grid">
+        <div class="panel home-panel">
+            <div class="panel-title">How access works</div>
+            <div class="step-list">
+                <div class="step-card"><span>1</span><strong>Open website link</strong><p>Choose a section or file from the archive page.</p></div>
+                <div class="step-card"><span>2</span><strong>Stream normal files</strong><p>Normal route keeps files protected and play-only.</p></div>
+                <div class="step-card"><span>3</span><strong>Use premium delivery</strong><p>Premium or credits route sends files through Telegram.</p></div>
+            </div>
+        </div>
+
+        <div id="premium" class="panel home-panel premium-panel">
+            <div class="panel-title">Normal vs Premium</div>
+            <div class="access-compare">
+                <div>
+                    <span class="route-kicker">Normal</span>
+                    <strong>Stream and preview</strong>
+                    <p>Best for quick viewing with protected playback.</p>
+                </div>
+                <div>
+                    <span class="route-kicker">Premium</span>
+                    <strong>Telegram handoff</strong>
+                    <p>Best for downloadable delivery, credits, and priority access.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="sections" class="card content-panel home-section-panel animate-in">
+        <div class="section-toolbar">
+            <div class="toolbar-head">
+                <div class="panel-title">Archive sections</div>
+                <p class="toolbar-copy">Open any live section and choose normal or premium route.</p>
+            </div>
+            <div class="section-meta">
+                <div class="chip">{{ section_cards|length }} visible sections</div>
+                <div class="chip">Telegram route ready</div>
+            </div>
+        </div>
+
+        {% if section_cards %}
+        <div class="home-section-grid">
+            {% for section in section_cards %}
+            <a class="route-card" href="{{ section.href }}">
+                <span class="route-kicker">Section</span>
+                <strong>{{ section.name }}</strong>
+                <p>Open stream links and premium delivery options.</p>
+                <span class="route-link">Open section</span>
+            </a>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <div class="panel-title">No public sections yet</div>
+            <p>Sections will appear here after admin uploads are mapped with the bot.</p>
+        </div>
+        {% endif %}
+    </section>
+
+    <section id="channels" class="card support-panel animate-in">
+        <div class="support-head">
+            <div>
+                <div class="eyebrow">Support all channels</div>
+                <h2>Join the AZ network</h2>
+                <p>Follow the connected Telegram channels for updates, drops, mega links, and request access.</p>
+            </div>
+            <a class="btn btn-primary" href="https://t.me/Az_Hawas_Adda">Regards: @Az_Hawas_Adda</a>
+        </div>
+        <div class="channel-grid">
+            <a class="channel-card" href="https://t.me/+Z_KkSZ37BudmNGFl"><span>AZ INFO HUB</span><strong>Join channel</strong></a>
+            <a class="channel-card" href="https://t.me/+vYqCFxATSzg5ZDI1"><span>D@4K Channel</span><strong>Join channel</strong></a>
+            <a class="channel-card" href="https://t.me/+a6uTomNoNhhiMzE1"><span>All MEGA LINKS</span><strong>Join channel</strong></a>
+            <a class="channel-card is-restricted" href="https://t.me/+JZFnp_q9vPM4OTE1"><span>AZ ADULT ADDA</span><strong>18+ channel</strong></a>
+            <a class="channel-card is-restricted" href="https://t.me/+dQWXQBPPh9BiMzll"><span>AZ THRILLER VAULT</span><strong>Join channel</strong></a>
+        </div>
+        <div class="section-hint">Auto request join is enabled on supported Telegram channels.</div>
+    </section>
+</div>
+{% endblock %}
