@@ -71,6 +71,8 @@ class TokenStore:
         self._history_key = "history:tokens"
         self._section_key = "section:current"
         self._section_name_key = "section:current:name"
+        self._home_section_key = "section:home"
+        self._home_section_name_key = "section:home:name"
         self._section_name_map = "section:registry:name"
         self._section_id_map = "section:registry:id"
         self._pay_plan_key = "plan:pay"
@@ -83,6 +85,8 @@ class TokenStore:
         self._action_lock_prefix = "act:lock:"
         self._current_section: Optional[str] = None
         self._current_section_name: Optional[str] = None
+        self._home_section: Optional[str] = None
+        self._home_section_name: Optional[str] = None
         self._pay_price: Optional[float] = None
         self._pay_text: Optional[str] = None
         self._upi_id: Optional[str] = None
@@ -1266,6 +1270,30 @@ return {1, newval}
             return (section_id or None, section_name or None)
         return (self._current_section, self._current_section_name)
 
+    async def set_home_section(self, section_id: Optional[str], section_name: Optional[str] = None) -> None:
+        if not section_id:
+            if self._redis is not None:
+                await self._redis.delete(self._home_section_key)
+                await self._redis.delete(self._home_section_name_key)
+            self._home_section = None
+            self._home_section_name = None
+            return
+
+        if self._redis is not None:
+            await self._redis.set(self._home_section_key, section_id)
+            await self._redis.set(self._home_section_name_key, section_name or section_id)
+            return
+
+        self._home_section = section_id
+        self._home_section_name = section_name or section_id
+
+    async def get_home_section(self) -> tuple[Optional[str], Optional[str]]:
+        if self._redis is not None:
+            section_id = await self._redis.get(self._home_section_key)
+            section_name = await self._redis.get(self._home_section_name_key)
+            return (section_id or None, section_name or None)
+        return (self._home_section, self._home_section_name)
+
     async def section_exists(self, section_name: str) -> bool:
         normalized = _normalize_section(section_name)
         if self._redis is not None:
@@ -1300,6 +1328,10 @@ return {1, newval}
             if current and current == section_id:
                 await self._redis.delete(self._section_key)
                 await self._redis.delete(self._section_name_key)
+            home = await self._redis.get(self._home_section_key)
+            if home and home == section_id:
+                await self._redis.delete(self._home_section_key)
+                await self._redis.delete(self._home_section_name_key)
             return True
 
         section_id = self._section_registry.get(normalized)
@@ -1313,6 +1345,9 @@ return {1, newval}
         if self._current_section == section_id:
             self._current_section = None
             self._current_section_name = None
+        if self._home_section == section_id:
+            self._home_section = None
+            self._home_section_name = None
         return True
 
 

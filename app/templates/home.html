@@ -12,9 +12,9 @@
         <div class="home-hero-copy">
             <div class="eyebrow">AzhawaSadda private archive</div>
             <h1>Stream files online. Receive premium files in Telegram.</h1>
-            <p class="lede">Open protected media links, browse archive sections, and use Telegram-first delivery for premium downloads and credit-based access.</p>
+            <p class="lede">Open protected media links through the selected access route, and use Telegram-first delivery for premium downloads and credit-based access.</p>
             <div class="actions-row">
-                <a class="btn btn-primary" href="#sections">Explore sections</a>
+                <a class="btn btn-primary {{ '' if home_section else 'btn-disabled' }}" href="{{ home_section.href if home_section else '#' }}">Open current access</a>
                 <a class="btn btn-secondary {{ '' if bot_ready else 'btn-disabled' }}" href="{{ bot_link }}">Open Telegram bot</a>
                 <a class="btn btn-ghost" href="#premium">Premium access</a>
             </div>
@@ -50,7 +50,7 @@
         <div class="panel home-panel">
             <div class="panel-title">How access works</div>
             <div class="step-list">
-                <div class="step-card"><span>1</span><strong>Open website link</strong><p>Choose a section or file from the archive page.</p></div>
+                <div class="step-card"><span>1</span><strong>Open website link</strong><p>Use the active route selected by the admin.</p></div>
                 <div class="step-card"><span>2</span><strong>Stream normal files</strong><p>Normal route keeps files protected and play-only.</p></div>
                 <div class="step-card"><span>3</span><strong>Use premium delivery</strong><p>Premium or credits route sends files through Telegram.</p></div>
             </div>
@@ -73,36 +73,35 @@
         </div>
     </section>
 
-    <section id="sections" class="card content-panel home-section-panel animate-in">
+    {% if home_section %}
+    <section class="card content-panel home-section-panel animate-in">
         <div class="section-toolbar">
             <div class="toolbar-head">
-                <div class="panel-title">Archive sections</div>
-                <p class="toolbar-copy">Open any live section and choose normal or premium route.</p>
+                <div class="panel-title">Current website access</div>
+                <p class="toolbar-copy">Only the admin-selected archive route is shown on the homepage.</p>
             </div>
             <div class="section-meta">
-                <div class="chip">{{ section_cards|length }} visible sections</div>
+                <div class="chip">Single route mode</div>
                 <div class="chip">Telegram route ready</div>
             </div>
         </div>
 
-        {% if section_cards %}
-        <div class="home-section-grid">
-            {% for section in section_cards %}
-            <a class="route-card" href="{{ section.href }}">
-                <span class="route-kicker">Section</span>
-                <strong>{{ section.name }}</strong>
-                <p>Open stream links and premium delivery options.</p>
+        <div class="home-section-grid home-section-grid-single">
+            <a class="route-card" href="{{ home_section.href }}">
+                <span class="route-kicker">Normal route</span>
+                <strong>{{ home_section.name }}</strong>
+                <p>Open protected stream links for the selected archive.</p>
                 <span class="route-link">Open section</span>
             </a>
-            {% endfor %}
+            <a class="route-card route-card-premium" href="{{ home_section.premium_href }}">
+                <span class="route-kicker">Premium route</span>
+                <strong>{{ home_section.name }}</strong>
+                <p>Use Telegram-first handoff for premium delivery.</p>
+                <span class="route-link">Open premium</span>
+            </a>
         </div>
-        {% else %}
-        <div class="empty-state">
-            <div class="panel-title">No public sections yet</div>
-            <p>Sections will appear here after admin uploads are mapped with the bot.</p>
-        </div>
-        {% endif %}
     </section>
+    {% endif %}
 
     <section id="channels" class="card support-panel animate-in">
         <div class="support-head">

@@ -201,6 +201,7 @@ BOT_COMMANDS = [
     BotCommand(command="health", description="Health check"),
     BotCommand(command="showsections", description="Show sections (admin)"),
     BotCommand(command="addsection", description="Set upload section (admin)"),
+    BotCommand(command="sethomesection", description="Set website home section (admin)"),
     BotCommand(command="credit_add", description="Add credits (admin)"),
     BotCommand(command="credit_remove", description="Remove credits (admin)"),
     BotCommand(command="add", description="Add premium user (admin)"),
@@ -239,6 +240,22 @@ def _section_link_value(section_id: str) -> str:
     if _is_http_url(section_url):
         return link("Open Section", section_url)
     return code(section_url or "BASE_URL not configured")
+
+
+def _norm_lookup(value: str) -> str:
+    return " ".join(str(value or "").strip().lower().split())
+
+
+async def _resolve_section(query: str) -> tuple[str, str] | None:
+    raw = str(query or "").strip()
+    if not raw:
+        return None
+    raw_norm = _norm_lookup(raw)
+    rows = await store.list_sections()
+    for name, section_id in rows:
+        if raw == section_id or raw_norm == _norm_lookup(section_id) or raw_norm == _norm_lookup(name):
+            return section_id, name
+    return None
 
 
 def parse_send_all_payload(payload: str) -> tuple[str, str] | None:
@@ -2376,6 +2393,67 @@ async def showsections_cmd(message: Message) -> None:
         )
         lines.append(f"{label} — visits: {code(views_total)} | unique: {code(views_unique)}")
     await message.reply(format_msg("📚 Sections", sections=[("", "\n".join(lines))]), parse_mode="HTML")
+
+
+@dp.message(Command("sethomesection", "home_section", "sethome"))
+async def sethomesection_cmd(message: Message) -> None:
+    if not is_admin(message.from_user.id if message.from_user else None):
+        await message.reply(format_msg("❌ Access Denied", sections=[("", "Admins only.")]), parse_mode="HTML")
+        return
+    parts = (message.text or "").split(maxsplit=1)
+    if len(parts) < 2:
+        await message.reply(format_msg("⚠️ Usage", sections=[("", code("/sethomesection <section name or id>"))]), parse_mode="HTML")
+        return
+    resolved = await _resolve_section(parts[1])
+    if not resolved:
+        await message.reply(format_msg("❌ Not Found", sections=[("", "No section matched that name or ID. Use /showsections.")]), parse_mode="HTML")
+        return
+    section_id, section_name = resolved
+    await store.set_home_section(section_id, section_name)
+    await message.reply(
+        format_msg(
+            "✅ Homepage Section Set",
+            sections=[
+                ("Name", esc(section_name)),
+                ("ID", code(section_id)),
+                ("Website", link("Open Homepage", settings.base_url) if _is_http_url(settings.base_url) else code(settings.base_url)),
+                ("Section", _section_link_value(section_id)),
+            ],
+            tip="Homepage will show only this selected route.",
+        ),
+        parse_mode="HTML",
+    )
+
+
+@dp.message(Command("home", "homesection"))
+async def homesection_cmd(message: Message) -> None:
+    if not is_admin(message.from_user.id if message.from_user else None):
+        await message.reply(format_msg("❌ Access Denied", sections=[("", "Admins only.")]), parse_mode="HTML")
+        return
+    section_id, section_name = await store.get_home_section()
+    if not section_id:
+        await message.reply(format_msg("🏠 Homepage Section", sections=[("", "No homepage section selected."), ("Usage", code("/sethomesection <section name or id>"))]), parse_mode="HTML")
+        return
+    await message.reply(
+        format_msg(
+            "🏠 Homepage Section",
+            sections=[
+                ("Name", esc(section_name or section_id)),
+                ("ID", code(section_id)),
+                ("Link", _section_link_value(section_id)),
+            ],
+        ),
+        parse_mode="HTML",
+    )
+
+
+@dp.message(Command("clearhomesection", "unsethome"))
+async def clearhomesection_cmd(message: Message) -> None:
+    if not is_admin(message.from_user.id if message.from_user else None):
+        await message.reply(format_msg("❌ Access Denied", sections=[("", "Admins only.")]), parse_mode="HTML")
+        return
+    await store.set_home_section(None)
+    await message.reply(format_msg("🧹 Homepage Section Cleared", sections=[("", "Homepage route card is now hidden.")]), parse_mode="HTML")
 
 
 @dp.message(Command("add"))

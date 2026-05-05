@@ -744,6 +744,22 @@ class MongoTokenStore(TokenStore):
             return None, None
         return (doc.get("section_id") or None, doc.get("section_name") or None)
 
+    async def set_home_section(self, section_id: Optional[str], section_name: Optional[str] = None) -> None:
+        if not section_id:
+            await self._config_col.delete_one({"_id": "home_section"})
+            return
+        await self._config_col.update_one(
+            {"_id": "home_section"},
+            {"$set": {"section_id": section_id, "section_name": section_name or section_id}},
+            upsert=True,
+        )
+
+    async def get_home_section(self) -> tuple[Optional[str], Optional[str]]:
+        doc = await self._config_col.find_one({"_id": "home_section"})
+        if not doc:
+            return None, None
+        return (doc.get("section_id") or None, doc.get("section_name") or None)
+
     async def section_exists(self, section_name: str) -> bool:
         normalized = _normalize_section(section_name)
         return await self._sections_col.count_documents({"normalized": normalized}, limit=1) > 0
@@ -770,6 +786,9 @@ class MongoTokenStore(TokenStore):
         current = await self.get_section()
         if current and current[0] == section_id:
             await self._config_col.delete_one({"_id": "current_section"})
+        home = await self.get_home_section()
+        if home and home[0] == section_id:
+            await self._config_col.delete_one({"_id": "home_section"})
         return True
 
     async def list_section(self, section_id: str, limit: int) -> list[str]:

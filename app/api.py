@@ -50,21 +50,25 @@ _warm_lock = asyncio.Lock()
 @app.get("/", response_class=HTMLResponse)
 async def root(request: Request):
     try:
-        sections = await store.list_sections()
+        home_section_id, home_section_name = await store.get_home_section()
     except Exception:
-        sections = []
+        home_section_id, home_section_name = None, None
 
-    section_cards = [
-        {"name": name, "id": section_id, "href": f"/section/{section_id}"}
-        for name, section_id in sections[:8]
-    ]
+    home_section = None
+    if home_section_id:
+        home_section = {
+            "name": home_section_name or home_section_id,
+            "id": home_section_id,
+            "href": f"/section/{home_section_id}",
+            "premium_href": f"/section/{home_section_id}/premium",
+        }
     bot_link = f"https://t.me/{settings.bot_username}" if settings.bot_username else "#"
     return templates.TemplateResponse(
         request=request,
         name="home.html",
         context={
             "request": request,
-            "section_cards": section_cards,
+            "home_section": home_section,
             "bot_link": bot_link,
             "bot_ready": bool(settings.bot_username),
         },
