@@ -50,6 +50,10 @@ _warm_lock = asyncio.Lock()
 @app.get("/", response_class=HTMLResponse)
 async def root(request: Request):
     bot_link = f"https://t.me/{settings.bot_username}" if settings.bot_username else "#"
+    try:
+        site_visits_total = await store.increment_site_visit()
+    except Exception:
+        site_visits_total = 0
     return templates.TemplateResponse(
         request=request,
         name="home.html",
@@ -57,6 +61,8 @@ async def root(request: Request):
             "request": request,
             "bot_link": bot_link,
             "bot_ready": bool(settings.bot_username),
+            "site_visits_total": site_visits_total,
+            "site_visits_text": f"{site_visits_total:,}",
         },
     )
 

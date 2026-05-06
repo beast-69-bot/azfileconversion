@@ -212,6 +212,19 @@ class MongoTokenStore(TokenStore):
 
         return {token: (totals.get(token, 0), uniques.get(token, 0)) for token in ordered}
 
+    async def increment_site_visit(self) -> int:
+        doc = await self._counters_col.find_one_and_update(
+            {"_id": "site_visits_total"},
+            {"$inc": {"value": 1}},
+            upsert=True,
+            return_document=ReturnDocument.AFTER,
+        )
+        return int((doc or {}).get("value", 0) or 0)
+
+    async def get_site_visits(self) -> int:
+        doc = await self._counters_col.find_one({"_id": "site_visits_total"}, {"value": 1})
+        return int((doc or {}).get("value", 0) or 0)
+
     async def increment_section_view(self, section_id: str, viewer_id: Optional[str]) -> tuple[int, int]:
         doc = await self._section_metrics.find_one_and_update(
             {"_id": section_id},

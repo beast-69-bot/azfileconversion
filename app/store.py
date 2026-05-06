@@ -62,6 +62,7 @@ class TokenStore:
         self._public_sections: dict[str, str] = {}
         self._trending_items: dict[str, dict] = {}
         self._trending_index: list[str] = []
+        self._site_visit_count: int = 0
         self._section_view_counts: dict[str, int] = {}
         self._section_unique_viewers: dict[str, set[str]] = {}
         self._view_counts: dict[str, int] = {}
@@ -80,6 +81,7 @@ class TokenStore:
         self._section_name_map = "section:registry:name"
         self._section_id_map = "section:registry:id"
         self._public_section_map = "section:public"
+        self._site_visit_key = "site:visits:total"
         self._trending_index_key = "trending:index"
         self._trending_item_prefix = "trending:item:"
         self._pay_plan_key = "plan:pay"
@@ -275,6 +277,20 @@ class TokenStore:
             )
             for token in ordered
         }
+
+    async def increment_site_visit(self) -> int:
+        if self._redis is not None:
+            return int(await self._redis.incr(self._site_visit_key))
+
+        self._site_visit_count += 1
+        return self._site_visit_count
+
+    async def get_site_visits(self) -> int:
+        if self._redis is not None:
+            raw = await self._redis.get(self._site_visit_key)
+            return int(raw or 0)
+
+        return int(self._site_visit_count)
 
     async def increment_section_view(self, section_id: str, viewer_id: Optional[str]) -> tuple[int, int]:
         if self._redis is not None:
