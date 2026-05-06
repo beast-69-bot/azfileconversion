@@ -1192,29 +1192,82 @@ body.is-loading .content {
 
 .home-hero {
   display: grid;
-  grid-template-columns: minmax(0, 1.1fr) minmax(360px, 0.9fr);
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 0.88fr);
   gap: 28px;
   align-items: stretch;
-  padding: 34px;
+  min-height: 620px;
+  padding: 42px;
   background:
-    linear-gradient(135deg, rgba(255, 116, 70, 0.13), rgba(121, 200, 197, 0.06) 48%, rgba(240, 204, 114, 0.08)),
+    linear-gradient(145deg, rgba(255, 116, 70, 0.18), rgba(121, 200, 197, 0.07) 46%, rgba(240, 204, 114, 0.09)),
     rgba(12, 16, 22, 0.88);
 }
 
 .home-hero-copy {
   display: grid;
   align-content: center;
-  gap: 18px;
+  gap: 22px;
+  min-width: 0;
+}
+
+.home-hero-copy h1 {
+  max-width: 13ch;
+}
+
+.home-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 6px;
+}
+
+.home-metrics > div {
+  display: grid;
+  gap: 8px;
+  min-height: 146px;
+  padding: 16px;
+  align-content: space-between;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(7, 11, 16, 0.58);
+}
+
+.home-metrics span {
+  color: var(--accent-cool);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.home-metrics strong {
+  color: var(--ink);
+  line-height: 1.2;
+}
+
+.home-metrics p {
+  color: var(--muted);
+  font-size: 0.9rem;
 }
 
 .home-preview {
   display: grid;
-  gap: 16px;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 14px;
   min-height: 420px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.preview-shell {
+  display: grid;
+  gap: 16px;
   padding: 18px;
   border: 1px solid var(--line);
   border-radius: 26px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.01)), #090d13;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.015)), #090d13;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 22px 60px rgba(0, 0, 0, 0.26);
 }
 
@@ -1233,10 +1286,11 @@ body.is-loading .content {
 .preview-player {
   display: grid;
   place-items: center;
-  min-height: 260px;
+  min-height: 330px;
   border: 1px solid rgba(121, 200, 197, 0.18);
   border-radius: 22px;
   background:
+    radial-gradient(circle at 20% 20%, rgba(240, 204, 114, 0.12), transparent 28%),
     linear-gradient(135deg, rgba(121, 200, 197, 0.18), transparent 48%),
     linear-gradient(180deg, rgba(255, 116, 70, 0.12), transparent),
     #101720;
@@ -1296,6 +1350,44 @@ body.is-loading .content {
 .preview-file p {
   margin: 4px 0 0;
   color: var(--muted);
+}
+
+.preview-stack {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.preview-stack a {
+  display: grid;
+  gap: 5px;
+  min-height: 86px;
+  padding: 14px;
+  align-content: center;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(8, 12, 17, 0.68);
+  transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
+}
+
+.preview-stack a:hover {
+  transform: translateY(-2px);
+  border-color: rgba(121, 200, 197, 0.36);
+  background: rgba(121, 200, 197, 0.08);
+}
+
+.preview-stack span {
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+
+.preview-stack strong {
+  color: var(--ink);
+  font-size: 0.88rem;
+  line-height: 1.25;
 }
 
 .home-grid {
@@ -1404,7 +1496,20 @@ body.is-loading .content {
   min-height: 130px;
   padding: 18px;
   align-content: space-between;
+  position: relative;
+  overflow: hidden;
   transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
+}
+
+.channel-card::after {
+  content: "";
+  position: absolute;
+  inset: auto 14px 14px auto;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, rgba(255, 116, 70, 0.34), rgba(121, 200, 197, 0.18));
+  opacity: 0.72;
 }
 
 .channel-card span {
@@ -1767,6 +1872,10 @@ body.is-loading .content {
     grid-template-columns: 1fr;
   }
 
+  .home-hero {
+    min-height: auto;
+  }
+
   .home-section-grid,
   .channel-grid,
   .public-section-grid {
@@ -1785,6 +1894,15 @@ body.is-loading .content {
   .public-sections-panel,
   .trending-row {
     padding: 20px;
+  }
+
+  .home-metrics,
+  .preview-stack {
+    grid-template-columns: 1fr;
+  }
+
+  .home-metrics > div {
+    min-height: 118px;
   }
 
   .home-preview {

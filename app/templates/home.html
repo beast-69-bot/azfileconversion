@@ -3,45 +3,64 @@
 {% block title %}AzhawaSadda - Private Stream Archive{% endblock %}
 
 {% block header_extra %}
-<a class="header-action" href="#channels">Support channels</a>
+<a class="header-action" href="#channels">Join channels</a>
 {% endblock %}
 
 {% block content %}
 <div class="home-frame">
-    <section class="home-hero card animate-in">
+    <section class="home-hero card animate-in" aria-labelledby="home-title">
         <div class="home-hero-copy">
             <div class="eyebrow">AzhawaSadda private archive</div>
-            <h1>Stream files online. Receive premium files in Telegram.</h1>
-            <p class="lede">Open protected media links through the selected access route, and use Telegram-first delivery for premium downloads and credit-based access.</p>
+            <h1 id="home-title">Private streams, drops, and premium delivery.</h1>
+            <p class="lede">Browse public sections, catch trending drops, and open protected media through Telegram-first access routes.</p>
             <div class="actions-row">
-                <a class="btn btn-primary" href="/sections">Open public sections</a>
+                <a class="btn btn-primary" href="/trending">Open trending</a>
+                <a class="btn btn-secondary" href="/sections">Public sections</a>
                 <a class="btn btn-secondary {{ '' if bot_ready else 'btn-disabled' }}" href="{{ bot_link }}">Open Telegram bot</a>
-                <a class="btn btn-ghost" href="#premium">Premium access</a>
             </div>
-            <div class="chip-row">
-                <span class="chip chip-accent">Play-only normal access</span>
-                <span class="chip">Premium Telegram delivery</span>
-                <span class="chip">Secure token streaming</span>
+            <div class="home-metrics" aria-label="Access highlights">
+                <div>
+                    <span>01</span>
+                    <strong>Trending bars</strong>
+                    <p>Fresh admin-picked cards.</p>
+                </div>
+                <div>
+                    <span>02</span>
+                    <strong>Public sections</strong>
+                    <p>Open only what is published.</p>
+                </div>
+                <div>
+                    <span>03</span>
+                    <strong>Premium route</strong>
+                    <p>Telegram handoff for access.</p>
+                </div>
             </div>
         </div>
-        <div class="home-preview" aria-label="Archive preview">
-            <div class="preview-topbar">
-                <span></span>
-                <span></span>
-                <span></span>
-            </div>
-            <div class="preview-player">
-                <div class="preview-play" aria-hidden="true">&#9654;</div>
-                <div class="preview-wave">
-                    <span></span><span></span><span></span><span></span><span></span>
+        <div class="home-preview" aria-label="Access dashboard preview">
+            <div class="preview-shell">
+                <div class="preview-topbar">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </div>
+                <div class="preview-player">
+                    <div class="preview-play" aria-hidden="true">&#9654;</div>
+                    <div class="preview-wave">
+                        <span></span><span></span><span></span><span></span><span></span>
+                    </div>
+                </div>
+                <div class="preview-file">
+                    <div>
+                        <strong>Protected media file</strong>
+                        <p>Normal stream, premium Telegram access.</p>
+                    </div>
+                    <span class="badge badge-trending">Live</span>
                 </div>
             </div>
-            <div class="preview-file">
-                <div>
-                    <strong>Protected media file</strong>
-                    <p>Normal users can stream. Premium users can receive downloadable files.</p>
-                </div>
-                <span class="badge badge-trending">Premium</span>
+            <div class="preview-stack">
+                <a href="/trending"><span>Trending</span><strong>Open latest cards</strong></a>
+                <a href="/sections"><span>Sections</span><strong>Browse public rows</strong></a>
+                <a class="{{ '' if bot_ready else 'btn-disabled' }}" href="{{ bot_link }}"><span>Bot</span><strong>Telegram access</strong></a>
             </div>
         </div>
     </section>
@@ -50,24 +69,24 @@
         <div class="panel home-panel reveal">
             <div class="panel-title">How access works</div>
             <div class="step-list">
-                <div class="step-card"><span>1</span><strong>Open website link</strong><p>Use the active route selected by the admin.</p></div>
-                <div class="step-card"><span>2</span><strong>Stream normal files</strong><p>Normal route keeps files protected and play-only.</p></div>
-                <div class="step-card"><span>3</span><strong>Use premium delivery</strong><p>Premium or credits route sends files through Telegram.</p></div>
+                <div class="step-card"><span>1</span><strong>Choose a page</strong><p>Open Trending or a published section.</p></div>
+                <div class="step-card"><span>2</span><strong>Preview media</strong><p>Cards show thumbnail or preview video.</p></div>
+                <div class="step-card"><span>3</span><strong>Open route</strong><p>Use normal or premium link access.</p></div>
             </div>
         </div>
 
         <div id="premium" class="panel home-panel premium-panel reveal">
-            <div class="panel-title">Normal vs Premium</div>
+            <div class="panel-title">Access routes</div>
             <div class="access-compare">
                 <div>
                     <span class="route-kicker">Normal</span>
-                    <strong>Stream and preview</strong>
-                    <p>Best for quick viewing with protected playback.</p>
+                    <strong>Quick open</strong>
+                    <p>Use the public route when available.</p>
                 </div>
                 <div>
                     <span class="route-kicker">Premium</span>
-                    <strong>Telegram handoff</strong>
-                    <p>Best for downloadable delivery, credits, and priority access.</p>
+                    <strong>Priority access</strong>
+                    <p>Use Telegram for premium links and delivery.</p>
                 </div>
             </div>
         </div>
@@ -78,7 +97,7 @@
             <div>
                 <div class="eyebrow">Support all channels</div>
                 <h2>Join the AZ network</h2>
-                <p>Follow the connected Telegram channels for updates, drops, mega links, and request access.</p>
+                <p>Follow connected Telegram channels for updates, drops, mega links, and request access.</p>
             </div>
             <a class="btn btn-primary" href="https://t.me/Az_Hawas_Adda">Regards: @Az_Hawas_Adda</a>
         </div>
