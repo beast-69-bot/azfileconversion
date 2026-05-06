@@ -1473,6 +1473,13 @@ body.is-loading .content {
   margin-bottom: 20px;
 }
 
+.support-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
 .support-head h2 {
   margin: 4px 0 8px;
   font-family: 'Archivo Expanded', sans-serif;
@@ -1923,6 +1930,14 @@ body.is-loading .content {
   .support-head,
   .preview-file {
     display: grid;
+  }
+
+  .support-actions {
+    justify-content: stretch;
+  }
+
+  .support-actions .btn {
+    width: 100%;
   }
 
   .trending-card-row {
