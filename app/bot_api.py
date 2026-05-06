@@ -201,7 +201,8 @@ BOT_COMMANDS = [
     BotCommand(command="health", description="Health check"),
     BotCommand(command="showsections", description="Show sections (admin)"),
     BotCommand(command="addsection", description="Set upload section (admin)"),
-    BotCommand(command="sethomesection", description="Set website home section (admin)"),
+    BotCommand(command="publishsection", description="Show section on website (admin)"),
+    BotCommand(command="unpublishsection", description="Hide section from website (admin)"),
     BotCommand(command="credit_add", description="Add credits (admin)"),
     BotCommand(command="credit_remove", description="Remove credits (admin)"),
     BotCommand(command="add", description="Add premium user (admin)"),
@@ -2393,6 +2394,90 @@ async def showsections_cmd(message: Message) -> None:
         )
         lines.append(f"{label} — visits: {code(views_total)} | unique: {code(views_unique)}")
     await message.reply(format_msg("📚 Sections", sections=[("", "\n".join(lines))]), parse_mode="HTML")
+
+
+@dp.message(Command("publishsection", "publicsection", "makepublic"))
+async def publishsection_cmd(message: Message) -> None:
+    if not is_admin(message.from_user.id if message.from_user else None):
+        await message.reply(format_msg("❌ Access Denied", sections=[("", "Admins only.")]), parse_mode="HTML")
+        return
+    parts = (message.text or "").split(maxsplit=1)
+    if len(parts) < 2:
+        await message.reply(format_msg("⚠️ Usage", sections=[("", code("/publishsection <section name or id>"))]), parse_mode="HTML")
+        return
+    resolved = await _resolve_section(parts[1])
+    if not resolved:
+        await message.reply(format_msg("❌ Not Found", sections=[("", "No section matched that name or ID. Use /showsections.")]), parse_mode="HTML")
+        return
+    section_id, section_name = resolved
+    await store.set_public_section(section_id, section_name, True)
+    public_url = f"{settings.base_url}/sections"
+    await message.reply(
+        format_msg(
+            "✅ Section Published",
+            sections=[
+                ("Name", esc(section_name)),
+                ("ID", code(section_id)),
+                ("Public Page", link("Open Public Sections", public_url) if _is_http_url(public_url) else code(public_url)),
+                ("Section", _section_link_value(section_id)),
+            ],
+            tip="This section is now visible on the website public sections page.",
+        ),
+        parse_mode="HTML",
+    )
+
+
+@dp.message(Command("unpublishsection", "privatesection", "hidepublic"))
+async def unpublishsection_cmd(message: Message) -> None:
+    if not is_admin(message.from_user.id if message.from_user else None):
+        await message.reply(format_msg("❌ Access Denied", sections=[("", "Admins only.")]), parse_mode="HTML")
+        return
+    parts = (message.text or "").split(maxsplit=1)
+    if len(parts) < 2:
+        await message.reply(format_msg("⚠️ Usage", sections=[("", code("/unpublishsection <section name or id>"))]), parse_mode="HTML")
+        return
+    resolved = await _resolve_section(parts[1])
+    if not resolved:
+        await message.reply(format_msg("❌ Not Found", sections=[("", "No section matched that name or ID. Use /showsections.")]), parse_mode="HTML")
+        return
+    section_id, section_name = resolved
+    await store.set_public_section(section_id, section_name, False)
+    await message.reply(
+        format_msg(
+            "🙈 Section Hidden",
+            sections=[("Name", esc(section_name)), ("ID", code(section_id))],
+            tip="This section is no longer visible on the website public sections page.",
+        ),
+        parse_mode="HTML",
+    )
+
+
+@dp.message(Command("publicsections", "showpublic"))
+async def publicsections_cmd(message: Message) -> None:
+    if not is_admin(message.from_user.id if message.from_user else None):
+        await message.reply(format_msg("❌ Access Denied", sections=[("", "Admins only.")]), parse_mode="HTML")
+        return
+    rows = await store.list_public_sections()
+    if not rows:
+        await message.reply(format_msg("🌐 Public Sections", sections=[("", "No public sections yet. Use /publishsection.")]), parse_mode="HTML")
+        return
+    rows.sort(key=lambda x: x[0].lower())
+    lines = []
+    for name, sid in rows:
+        section_url = f"{settings.base_url}/section/{sid}"
+        label = link(name, section_url) if _is_http_url(section_url) else f"{esc(name)} ({code(sid)})"
+        lines.append(f"• {label}")
+    public_url = f"{settings.base_url}/sections"
+    await message.reply(
+        format_msg(
+            "🌐 Public Sections",
+            sections=[
+                ("Website", link("Open Public Page", public_url) if _is_http_url(public_url) else code(public_url)),
+                ("", "\n".join(lines)),
+            ],
+        ),
+        parse_mode="HTML",
+    )
 
 
 @dp.message(Command("sethomesection", "home_section", "sethome"))

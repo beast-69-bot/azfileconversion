@@ -58,6 +58,7 @@ class TokenStore:
         self._sections: dict[str, list[str]] = {}
         self._section_registry: dict[str, str] = {}
         self._section_registry_id: dict[str, str] = {}
+        self._public_sections: dict[str, str] = {}
         self._section_view_counts: dict[str, int] = {}
         self._section_unique_viewers: dict[str, set[str]] = {}
         self._view_counts: dict[str, int] = {}
@@ -75,6 +76,7 @@ class TokenStore:
         self._home_section_name_key = "section:home:name"
         self._section_name_map = "section:registry:name"
         self._section_id_map = "section:registry:id"
+        self._public_section_map = "section:public"
         self._pay_plan_key = "plan:pay"
         self._pay_req_prefix = "pay:req:"
         self._pay_req_index = "pay:req:index"
@@ -1313,6 +1315,28 @@ return {1, newval}
             return [(name, section_id) for section_id, name in data.items()]
         return [(name, section_id) for section_id, name in self._section_registry_id.items()]
 
+    async def set_public_section(self, section_id: str, section_name: str, is_public: bool = True) -> None:
+        sid = str(section_id or "").strip()
+        if not sid:
+            return
+        if self._redis is not None:
+            if is_public:
+                await self._redis.hset(self._public_section_map, sid, section_name or sid)
+            else:
+                await self._redis.hdel(self._public_section_map, sid)
+            return
+
+        if is_public:
+            self._public_sections[sid] = section_name or sid
+        else:
+            self._public_sections.pop(sid, None)
+
+    async def list_public_sections(self) -> list[tuple[str, str]]:
+        if self._redis is not None:
+            data = await self._redis.hgetall(self._public_section_map)
+            return [(name, section_id) for section_id, name in data.items()]
+        return [(name, section_id) for section_id, name in self._public_sections.items()]
+
     async def delete_section(self, section_name: str) -> bool:
         normalized = _normalize_section(section_name)
         if self._redis is not None:
@@ -1321,6 +1345,7 @@ return {1, newval}
                 return False
             await self._redis.hdel(self._section_name_map, normalized)
             await self._redis.hdel(self._section_id_map, section_id)
+            await self._redis.hdel(self._public_section_map, section_id)
             await self._redis.delete(f"section:{section_id}")
             await self._redis.delete(f"section:views:count:{section_id}")
             await self._redis.delete(f"section:views:unique:{section_id}")
@@ -1339,6 +1364,7 @@ return {1, newval}
             return False
         self._section_registry.pop(normalized, None)
         self._section_registry_id.pop(section_id, None)
+        self._public_sections.pop(section_id, None)
         self._sections.pop(section_id, None)
         self._section_view_counts.pop(section_id, None)
         self._section_unique_viewers.pop(section_id, None)

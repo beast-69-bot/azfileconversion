@@ -774,6 +774,22 @@ class MongoTokenStore(TokenStore):
             rows.append((str(row.get("name", "") or ""), str(row.get("_id", "") or "")))
         return rows
 
+    async def set_public_section(self, section_id: str, section_name: str, is_public: bool = True) -> None:
+        sid = str(section_id or "").strip()
+        if not sid:
+            return
+        await self._sections_col.update_one(
+            {"_id": sid},
+            {"$set": {"is_public": bool(is_public), "name": section_name or sid}},
+        )
+
+    async def list_public_sections(self) -> list[tuple[str, str]]:
+        rows: list[tuple[str, str]] = []
+        cursor = self._sections_col.find({"is_public": True}, {"name": 1}).sort("name", ASCENDING)
+        async for row in cursor:
+            rows.append((str(row.get("name", "") or ""), str(row.get("_id", "") or "")))
+        return rows
+
     async def delete_section(self, section_name: str) -> bool:
         normalized = _normalize_section(section_name)
         row = await self._sections_col.find_one({"normalized": normalized}, {"_id": 1})

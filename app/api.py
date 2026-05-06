@@ -49,29 +49,38 @@ _warm_lock = asyncio.Lock()
 
 @app.get("/", response_class=HTMLResponse)
 async def root(request: Request):
-    try:
-        home_section_id, home_section_name = await store.get_home_section()
-    except Exception:
-        home_section_id, home_section_name = None, None
-
-    home_section = None
-    if home_section_id:
-        home_section = {
-            "name": home_section_name or home_section_id,
-            "id": home_section_id,
-            "href": f"/section/{home_section_id}",
-            "premium_href": f"/section/{home_section_id}/premium",
-        }
     bot_link = f"https://t.me/{settings.bot_username}" if settings.bot_username else "#"
     return templates.TemplateResponse(
         request=request,
         name="home.html",
         context={
             "request": request,
-            "home_section": home_section,
             "bot_link": bot_link,
             "bot_ready": bool(settings.bot_username),
         },
+    )
+
+
+@app.get("/sections", response_class=HTMLResponse)
+async def public_sections(request: Request):
+    try:
+        rows = await store.list_public_sections()
+    except Exception:
+        rows = []
+    section_cards = [
+        {
+            "name": name or section_id,
+            "id": section_id,
+            "href": f"/section/{section_id}",
+            "premium_href": f"/section/{section_id}/premium",
+        }
+        for name, section_id in rows
+        if section_id
+    ]
+    return templates.TemplateResponse(
+        request=request,
+        name="public_sections.html",
+        context={"request": request, "section_cards": section_cards},
     )
 
 
