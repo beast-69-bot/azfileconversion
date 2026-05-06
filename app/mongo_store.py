@@ -38,6 +38,7 @@ class MongoTokenStore(TokenStore):
         self._pending_utrs = None
         self._sections_col = None
         self._counters_col = None
+        self._site_visitors = None
         self._trending_items = None
 
     async def connect(self) -> None:
@@ -63,6 +64,7 @@ class MongoTokenStore(TokenStore):
         self._pending_utrs = self._mongo["pending_utrs"]
         self._sections_col = self._mongo["sections"]
         self._counters_col = self._mongo["counters"]
+        self._site_visitors = self._mongo["site_visitors"]
         self._trending_items = self._mongo["trending_items"]
 
         await self._tokens.create_index([("created_at", DESCENDING)])
@@ -224,6 +226,16 @@ class MongoTokenStore(TokenStore):
     async def get_site_visits(self) -> int:
         doc = await self._counters_col.find_one({"_id": "site_visits_total"}, {"value": 1})
         return int((doc or {}).get("value", 0) or 0)
+
+    async def register_site_visit(self, visitor_id: str) -> int:
+        visitor_id = str(visitor_id or "").strip()
+        if not visitor_id:
+            return await self.get_site_visits()
+        try:
+            await self._site_visitors.insert_one({"_id": visitor_id, "created_at": time.time()})
+        except DuplicateKeyError:
+            pass
+        return int(await self._site_visitors.count_documents({}))
 
     async def increment_section_view(self, section_id: str, viewer_id: Optional[str]) -> tuple[int, int]:
         doc = await self._section_metrics.find_one_and_update(

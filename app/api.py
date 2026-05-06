@@ -50,11 +50,13 @@ _warm_lock = asyncio.Lock()
 @app.get("/", response_class=HTMLResponse)
 async def root(request: Request):
     bot_link = f"https://t.me/{settings.bot_username}" if settings.bot_username else "#"
+    visitor_cookie = request.cookies.get("site_visitor_id")
+    visitor_id = visitor_cookie or secrets.token_hex(16)
     try:
-        site_visits_total = await store.increment_site_visit()
+        site_visits_total = await store.register_site_visit(visitor_id)
     except Exception:
         site_visits_total = 0
-    return templates.TemplateResponse(
+    response = templates.TemplateResponse(
         request=request,
         name="home.html",
         context={
@@ -65,6 +67,9 @@ async def root(request: Request):
             "site_visits_text": f"{site_visits_total:,}",
         },
     )
+    if not visitor_cookie:
+        response.set_cookie("site_visitor_id", visitor_id, httponly=True, max_age=60 * 60 * 24 * 365, samesite="lax")
+    return response
 
 
 @app.get("/sections", response_class=HTMLResponse)
