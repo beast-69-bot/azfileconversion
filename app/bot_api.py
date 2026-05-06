@@ -90,6 +90,15 @@ class ThumbState(StatesGroup):
     waiting_photo = State()        # waiting for admin to send thumbnail photo
 
 
+class TrendState(StatesGroup):
+    waiting_bar = State()
+    waiting_title = State()
+    waiting_media = State()
+    waiting_description = State()
+    waiting_normal_link = State()
+    waiting_premium_link = State()
+
+
 @dataclass(frozen=True)
 class PaymentPlan:
     code: str
@@ -203,6 +212,9 @@ BOT_COMMANDS = [
     BotCommand(command="addsection", description="Set upload section (admin)"),
     BotCommand(command="publishsection", description="Show section on website (admin)"),
     BotCommand(command="unpublishsection", description="Hide section from website (admin)"),
+    BotCommand(command="addtrending", description="Add trending content (admin)"),
+    BotCommand(command="trendinglist", description="List trending content (admin)"),
+    BotCommand(command="deltrending", description="Delete trending content (admin)"),
     BotCommand(command="credit_add", description="Add credits (admin)"),
     BotCommand(command="credit_remove", description="Remove credits (admin)"),
     BotCommand(command="add", description="Add premium user (admin)"),
@@ -257,6 +269,29 @@ async def _resolve_section(query: str) -> tuple[str, str] | None:
         if raw == section_id or raw_norm == _norm_lookup(section_id) or raw_norm == _norm_lookup(name):
             return section_id, name
     return None
+
+
+def _trending_page_url() -> str:
+    return f"{settings.base_url}/trending"
+
+
+async def _send_trending_prompt(message: Message, state: FSMContext, title: str, body: str) -> None:
+    sent = await message.reply(format_msg(title, sections=[("", body)]), parse_mode="HTML")
+    data = await state.get_data()
+    prompt_ids = list(data.get("prompt_ids") or [])
+    prompt_ids.append(sent.message_id)
+    await state.update_data(prompt_ids=prompt_ids, prompt_chat_id=sent.chat.id)
+
+
+async def _delete_trending_prompts(state: FSMContext) -> None:
+    data = await state.get_data()
+    chat_id = int(data.get("prompt_chat_id") or 0)
+    prompt_ids = list(data.get("prompt_ids") or [])
+    if not chat_id:
+        return
+    for message_id in prompt_ids:
+        with contextlib.suppress(Exception):
+            await bot.delete_message(chat_id=chat_id, message_id=int(message_id))
 
 
 def parse_send_all_payload(payload: str) -> tuple[str, str] | None:
@@ -2478,6 +2513,151 @@ async def publicsections_cmd(message: Message) -> None:
         ),
         parse_mode="HTML",
     )
+
+
+@dp.message(Command("addtrending"))
+async def addtrending_cmd(message: Message, state: FSMContext) -> None:
+    if not is_admin(message.from_user.id if message.from_user else None):
+        await message.reply(format_msg("❌ Access Denied", sections=[("", "Admins only.")]), parse_mode="HTML")
+        return
+    await state.clear()
+    await state.set_state(TrendState.waiting_bar)
+    await state.update_data(prompt_ids=[])
+    await _send_trending_prompt(message, state, "🔥 Add Trending", "Step 1/6: Send the bar/category name, e.g. Latest, Top, VIP.")
+
+
+@dp.message(StateFilter(TrendState.waiting_bar), F.text)
+async def trending_bar_handler(message: Message, state: FSMContext) -> None:
+    bar = (message.text or "").strip()
+    if not bar or bar.startswith("/"):
+        await _send_trending_prompt(message, state, "⚠️ Invalid", "Send a bar/category name, not a command.")
+        return
+    await state.update_data(bar=bar)
+    await state.set_state(TrendState.waiting_title)
+    await _send_trending_prompt(message, state, "🔥 Add Trending", "Step 2/6: Send the card title.")
+
+
+@dp.message(StateFilter(TrendState.waiting_title), F.text)
+async def trending_title_handler(message: Message, state: FSMContext) -> None:
+    title = (message.text or "").strip()
+    if not title or title.startswith("/"):
+        await _send_trending_prompt(message, state, "⚠️ Invalid", "Send a title, not a command.")
+        return
+    await state.update_data(title=title)
+    await state.set_state(TrendState.waiting_media)
+    await _send_trending_prompt(message, state, "🔥 Add Trending", "Step 3/6: Send a thumbnail photo or preview video.")
+
+
+@dp.message(StateFilter(TrendState.waiting_media), F.photo | F.video)
+async def trending_media_handler(message: Message, state: FSMContext) -> None:
+    if message.photo:
+        media_file_id = message.photo[-1].file_id
+        media_type = "photo"
+    elif message.video:
+        media_file_id = message.video.file_id
+        media_type = "video"
+    else:
+        await _send_trending_prompt(message, state, "⚠️ Invalid", "Send a photo or video preview.")
+        return
+    await state.update_data(media_file_id=media_file_id, media_type=media_type)
+    await state.set_state(TrendState.waiting_description)
+    await _send_trending_prompt(message, state, "🔥 Add Trending", "Step 4/6: Send the description.")
+
+
+@dp.message(StateFilter(TrendState.waiting_media))
+async def trending_media_wrong_handler(message: Message, state: FSMContext) -> None:
+    await _send_trending_prompt(message, state, "⚠️ Invalid", "Send a thumbnail photo or preview video.")
+
+
+@dp.message(StateFilter(TrendState.waiting_description), F.text)
+async def trending_description_handler(message: Message, state: FSMContext) -> None:
+    description = (message.text or "").strip()
+    if not description or description.startswith("/"):
+        await _send_trending_prompt(message, state, "⚠️ Invalid", "Send a description, not a command.")
+        return
+    await state.update_data(description=description)
+    await state.set_state(TrendState.waiting_normal_link)
+    await _send_trending_prompt(message, state, "🔥 Add Trending", "Step 5/6: Send the normal link.")
+
+
+@dp.message(StateFilter(TrendState.waiting_normal_link), F.text)
+async def trending_normal_link_handler(message: Message, state: FSMContext) -> None:
+    normal_link = (message.text or "").strip()
+    if not _is_http_url(normal_link):
+        await _send_trending_prompt(message, state, "⚠️ Invalid Link", "Send a valid normal link starting with http:// or https://.")
+        return
+    await state.update_data(normal_link=normal_link)
+    await state.set_state(TrendState.waiting_premium_link)
+    await _send_trending_prompt(message, state, "🔥 Add Trending", "Step 6/6: Send the premium link.")
+
+
+@dp.message(StateFilter(TrendState.waiting_premium_link), F.text)
+async def trending_premium_link_handler(message: Message, state: FSMContext) -> None:
+    premium_link = (message.text or "").strip()
+    if not _is_http_url(premium_link):
+        await _send_trending_prompt(message, state, "⚠️ Invalid Link", "Send a valid premium link starting with http:// or https://.")
+        return
+    data = await state.get_data()
+    item = await store.add_trending_item({
+        "bar": data.get("bar", ""),
+        "title": data.get("title", ""),
+        "description": data.get("description", ""),
+        "media_file_id": data.get("media_file_id", ""),
+        "media_type": data.get("media_type", ""),
+        "normal_link": data.get("normal_link", ""),
+        "premium_link": premium_link,
+        "created_by": message.from_user.id if message.from_user else 0,
+    })
+    await _delete_trending_prompts(state)
+    await state.clear()
+
+    trending_url = _trending_page_url()
+    reply_markup = None
+    if _is_http_url(trending_url):
+        reply_markup = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="Open Trending", url=trending_url)]
+        ])
+    await message.reply(
+        format_msg(
+            "✅ Content Added",
+            sections=[("ID", code(item.get("id", ""))), ("Bar", esc(item.get("bar", ""))), ("Title", esc(item.get("title", "")))],
+            tip="Trending card is now live on the website.",
+        ),
+        parse_mode="HTML",
+        reply_markup=reply_markup,
+    )
+
+
+@dp.message(Command("trendinglist", "showtrending"))
+async def trendinglist_cmd(message: Message) -> None:
+    if not is_admin(message.from_user.id if message.from_user else None):
+        await message.reply(format_msg("❌ Access Denied", sections=[("", "Admins only.")]), parse_mode="HTML")
+        return
+    items = await store.list_trending_items(30)
+    if not items:
+        await message.reply(format_msg("🔥 Trending", sections=[("", "No trending items yet. Use /addtrending.")]), parse_mode="HTML")
+        return
+    lines = []
+    for item in items:
+        lines.append(f"• {code(item.get('id', ''))} | {esc(item.get('bar', 'Trending'))} | {esc(item.get('title', '-'))}")
+    await message.reply(format_msg("🔥 Trending Items", sections=[("", "\n".join(lines))]), parse_mode="HTML")
+
+
+@dp.message(Command("deltrending"))
+async def deltrending_cmd(message: Message) -> None:
+    if not is_admin(message.from_user.id if message.from_user else None):
+        await message.reply(format_msg("❌ Access Denied", sections=[("", "Admins only.")]), parse_mode="HTML")
+        return
+    parts = (message.text or "").split(maxsplit=1)
+    if len(parts) < 2:
+        await message.reply(format_msg("⚠️ Usage", sections=[("", code("/deltrending <id>"))]), parse_mode="HTML")
+        return
+    item_id = parts[1].strip()
+    ok = await store.delete_trending_item(item_id)
+    if ok:
+        await message.reply(format_msg("🗑️ Trending Deleted", sections=[("ID", code(item_id))]), parse_mode="HTML")
+    else:
+        await message.reply(format_msg("❌ Not Found", sections=[("", "No trending item found with that ID.")]), parse_mode="HTML")
 
 
 @dp.message(Command("sethomesection", "home_section", "sethome"))

@@ -1,4 +1,5 @@
 ﻿import json
+import secrets
 import time
 from dataclasses import asdict, dataclass
 from typing import Optional
@@ -59,6 +60,8 @@ class TokenStore:
         self._section_registry: dict[str, str] = {}
         self._section_registry_id: dict[str, str] = {}
         self._public_sections: dict[str, str] = {}
+        self._trending_items: dict[str, dict] = {}
+        self._trending_index: list[str] = []
         self._section_view_counts: dict[str, int] = {}
         self._section_unique_viewers: dict[str, set[str]] = {}
         self._view_counts: dict[str, int] = {}
@@ -77,6 +80,8 @@ class TokenStore:
         self._section_name_map = "section:registry:name"
         self._section_id_map = "section:registry:id"
         self._public_section_map = "section:public"
+        self._trending_index_key = "trending:index"
+        self._trending_item_prefix = "trending:item:"
         self._pay_plan_key = "plan:pay"
         self._pay_req_prefix = "pay:req:"
         self._pay_req_index = "pay:req:index"
@@ -1336,6 +1341,81 @@ return {1, newval}
             data = await self._redis.hgetall(self._public_section_map)
             return [(name, section_id) for section_id, name in data.items()]
         return [(name, section_id) for section_id, name in self._public_sections.items()]
+
+    async def add_trending_item(self, item: dict) -> dict:
+        item_id = str(item.get("id") or secrets.token_urlsafe(8)).strip()
+        now = float(item.get("created_at") or time.time())
+        payload = {
+            "id": item_id,
+            "bar": str(item.get("bar", "") or "").strip(),
+            "title": str(item.get("title", "") or "").strip(),
+            "description": str(item.get("description", "") or "").strip(),
+            "media_file_id": str(item.get("media_file_id", "") or "").strip(),
+            "media_type": str(item.get("media_type", "") or "").strip().lower(),
+            "normal_link": str(item.get("normal_link", "") or "").strip(),
+            "premium_link": str(item.get("premium_link", "") or "").strip(),
+            "created_at": now,
+            "created_by": int(item.get("created_by", 0) or 0),
+        }
+        if self._redis is not None:
+            key = f"{self._trending_item_prefix}{item_id}"
+            await self._redis.set(key, json.dumps(payload))
+            await self._redis.lrem(self._trending_index_key, 0, item_id)
+            await self._redis.lpush(self._trending_index_key, item_id)
+            return payload
+
+        self._trending_items[item_id] = payload
+        if item_id in self._trending_index:
+            self._trending_index.remove(item_id)
+        self._trending_index.insert(0, item_id)
+        return payload
+
+    async def get_trending_item(self, item_id: str) -> Optional[dict]:
+        item_id = str(item_id or "").strip()
+        if not item_id:
+            return None
+        if self._redis is not None:
+            raw = await self._redis.get(f"{self._trending_item_prefix}{item_id}")
+            if not raw:
+                return None
+            try:
+                return json.loads(raw)
+            except Exception:
+                return None
+        return self._trending_items.get(item_id)
+
+    async def list_trending_items(self, limit: int = 100) -> list[dict]:
+        limit = max(int(limit), 1)
+        if self._redis is not None:
+            ids = await self._redis.lrange(self._trending_index_key, 0, limit - 1)
+            items: list[dict] = []
+            for item_id in ids:
+                item = await self.get_trending_item(item_id)
+                if item:
+                    items.append(item)
+            return items
+
+        items = []
+        for item_id in self._trending_index[:limit]:
+            item = self._trending_items.get(item_id)
+            if item:
+                items.append(item)
+        return items
+
+    async def delete_trending_item(self, item_id: str) -> bool:
+        item_id = str(item_id or "").strip()
+        if not item_id:
+            return False
+        if self._redis is not None:
+            existed = await self._redis.delete(f"{self._trending_item_prefix}{item_id}")
+            await self._redis.lrem(self._trending_index_key, 0, item_id)
+            return bool(existed)
+
+        existed = item_id in self._trending_items
+        self._trending_items.pop(item_id, None)
+        if item_id in self._trending_index:
+            self._trending_index.remove(item_id)
+        return existed
 
     async def delete_section(self, section_name: str) -> bool:
         normalized = _normalize_section(section_name)

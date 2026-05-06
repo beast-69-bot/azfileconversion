@@ -84,6 +84,61 @@ async def public_sections(request: Request):
     )
 
 
+@app.get("/trending", response_class=HTMLResponse)
+async def trending_page(request: Request):
+    try:
+        items = await store.list_trending_items(settings.history_limit)
+    except Exception:
+        items = []
+
+    grouped: dict[str, list[dict]] = {}
+    for item in items:
+        bar = str(item.get("bar") or "Trending").strip() or "Trending"
+        grouped.setdefault(bar, []).append(
+            {
+                "id": item.get("id", ""),
+                "bar": bar,
+                "title": item.get("title", ""),
+                "description": item.get("description", ""),
+                "media_type": item.get("media_type", ""),
+                "media_url": f"/trending/media/{item.get('id', '')}",
+                "normal_link": item.get("normal_link", "#"),
+                "premium_link": item.get("premium_link", "#"),
+            }
+        )
+
+    rows = [{"bar": bar, "items": row_items} for bar, row_items in grouped.items()]
+    return templates.TemplateResponse(
+        request=request,
+        name="trending.html",
+        context={"request": request, "trending_rows": rows, "total_items": len(items)},
+    )
+
+
+@app.get("/trending/media/{item_id}")
+async def trending_media(item_id: str, range: Optional[str] = Header(default=None)):
+    item = await store.get_trending_item(item_id)
+    if not item or not item.get("media_file_id"):
+        raise HTTPException(status_code=404, detail="Trending media not found")
+
+    await ensure_client_started()
+    media_type = str(item.get("media_type") or "").lower()
+    content_type = "video/mp4" if media_type == "video" else "image/jpeg"
+    headers = {
+        "Accept-Ranges": "bytes",
+        "Cache-Control": "public, max-age=300",
+        "Content-Type": content_type,
+    }
+    start, end = 0, None
+    status_code = 200
+    return StreamingResponse(
+        telegram_stream(item["media_file_id"], start, end),
+        status_code=status_code,
+        headers=headers,
+        media_type=content_type,
+    )
+
+
 @app.get("/health")
 async def health():
     return {"status": "healthy"}

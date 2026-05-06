@@ -1,3 +1,4 @@
+import secrets
 import time
 from dataclasses import asdict
 from typing import Optional
@@ -37,6 +38,7 @@ class MongoTokenStore(TokenStore):
         self._pending_utrs = None
         self._sections_col = None
         self._counters_col = None
+        self._trending_items = None
 
     async def connect(self) -> None:
         await super().connect()
@@ -61,6 +63,7 @@ class MongoTokenStore(TokenStore):
         self._pending_utrs = self._mongo["pending_utrs"]
         self._sections_col = self._mongo["sections"]
         self._counters_col = self._mongo["counters"]
+        self._trending_items = self._mongo["trending_items"]
 
         await self._tokens.create_index([("created_at", DESCENDING)])
         await self._tokens.create_index([("section_id", ASCENDING), ("created_at", DESCENDING)])
@@ -75,6 +78,8 @@ class MongoTokenStore(TokenStore):
         await self._payment_messages.create_index([("request_id", ASCENDING), ("chat_id", ASCENDING), ("message_id", ASCENDING)], unique=True)
         await self._pending_utrs.create_index([("expires_at", ASCENDING)])
         await self._credits_col.create_index([("balance", DESCENDING)])
+        await self._trending_items.create_index([("created_at", DESCENDING)])
+        await self._trending_items.create_index([("bar", ASCENDING), ("created_at", DESCENDING)])
 
     async def close(self) -> None:
         if self._mongo_client is not None:
@@ -789,6 +794,46 @@ class MongoTokenStore(TokenStore):
         async for row in cursor:
             rows.append((str(row.get("name", "") or ""), str(row.get("_id", "") or "")))
         return rows
+
+    async def add_trending_item(self, item: dict) -> dict:
+        item_id = str(item.get("id") or secrets.token_urlsafe(8)).strip()
+        payload = {
+            "_id": item_id,
+            "bar": str(item.get("bar", "") or "").strip(),
+            "title": str(item.get("title", "") or "").strip(),
+            "description": str(item.get("description", "") or "").strip(),
+            "media_file_id": str(item.get("media_file_id", "") or "").strip(),
+            "media_type": str(item.get("media_type", "") or "").strip().lower(),
+            "normal_link": str(item.get("normal_link", "") or "").strip(),
+            "premium_link": str(item.get("premium_link", "") or "").strip(),
+            "created_at": float(item.get("created_at") or time.time()),
+            "created_by": int(item.get("created_by", 0) or 0),
+        }
+        await self._trending_items.replace_one({"_id": item_id}, payload, upsert=True)
+        return {"id": item_id, **{k: v for k, v in payload.items() if k != "_id"}}
+
+    async def get_trending_item(self, item_id: str) -> Optional[dict]:
+        item_id = str(item_id or "").strip()
+        if not item_id:
+            return None
+        doc = await self._trending_items.find_one({"_id": item_id})
+        if not doc:
+            return None
+        return {"id": str(doc.get("_id", "")), **{k: v for k, v in doc.items() if k != "_id"}}
+
+    async def list_trending_items(self, limit: int = 100) -> list[dict]:
+        rows: list[dict] = []
+        cursor = self._trending_items.find({}).sort("created_at", DESCENDING).limit(max(int(limit), 1))
+        async for doc in cursor:
+            rows.append({"id": str(doc.get("_id", "")), **{k: v for k, v in doc.items() if k != "_id"}})
+        return rows
+
+    async def delete_trending_item(self, item_id: str) -> bool:
+        item_id = str(item_id or "").strip()
+        if not item_id:
+            return False
+        result = await self._trending_items.delete_one({"_id": item_id})
+        return bool(result.deleted_count)
 
     async def delete_section(self, section_name: str) -> bool:
         normalized = _normalize_section(section_name)
