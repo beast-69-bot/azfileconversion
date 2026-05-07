@@ -40,6 +40,8 @@ class MongoTokenStore(TokenStore):
         self._counters_col = None
         self._site_visitors = None
         self._trending_items = None
+        self._captcha_users = None
+        self._captcha_sessions = None
 
     async def connect(self) -> None:
         await super().connect()
@@ -66,6 +68,8 @@ class MongoTokenStore(TokenStore):
         self._counters_col = self._mongo["counters"]
         self._site_visitors = self._mongo["site_visitors"]
         self._trending_items = self._mongo["trending_items"]
+        self._captcha_users = self._mongo["captcha_users"]
+        self._captcha_sessions = self._mongo["captcha_sessions"]
 
         await self._tokens.create_index([("created_at", DESCENDING)])
         await self._tokens.create_index([("section_id", ASCENDING), ("created_at", DESCENDING)])
@@ -82,6 +86,10 @@ class MongoTokenStore(TokenStore):
         await self._credits_col.create_index([("balance", DESCENDING)])
         await self._trending_items.create_index([("created_at", DESCENDING)])
         await self._trending_items.create_index([("bar", ASCENDING), ("created_at", DESCENDING)])
+        await self._captcha_users.create_index([("verified_until", ASCENDING)])
+        await self._captcha_users.create_index([("banned_until", ASCENDING)])
+        await self._captcha_sessions.create_index([("user_id", ASCENDING), ("status", ASCENDING), ("created_at", DESCENDING)])
+        await self._captcha_sessions.create_index([("expires_at", ASCENDING)])
 
     async def close(self) -> None:
         if self._mongo_client is not None:
@@ -333,6 +341,116 @@ class MongoTokenStore(TokenStore):
         async for row in cursor:
             rows.append((int(row["_id"]), int(row.get("balance", 0) or 0)))
         return rows
+
+    async def is_captcha_verified(self, user_id: int) -> bool:
+        return await self._captcha_users.count_documents(
+            {"_id": int(user_id or 0), "verified_until": {"$gt": int(time.time())}},
+            limit=1,
+        ) > 0
+
+    async def get_captcha_ban_until(self, user_id: int) -> int:
+        uid = int(user_id or 0)
+        now = int(time.time())
+        doc = await self._captcha_users.find_one({"_id": uid}, {"banned_until": 1})
+        banned_until = int((doc or {}).get("banned_until", 0) or 0)
+        if banned_until and banned_until <= now:
+            await self._captcha_users.update_one(
+                {"_id": uid},
+                {"$set": {"banned_until": 0, "failed_attempts": 0, "updated_at": now}},
+                upsert=True,
+            )
+            return 0
+        return banned_until
+
+    async def mark_captcha_verified(self, user_id: int, ttl_seconds: int) -> int:
+        uid = int(user_id or 0)
+        now = int(time.time())
+        verified_until = now + max(1, int(ttl_seconds or 0))
+        await self._captcha_users.update_one(
+            {"_id": uid},
+            {
+                "$set": {
+                    "verified_until": verified_until,
+                    "failed_attempts": 0,
+                    "banned_until": 0,
+                    "updated_at": now,
+                },
+                "$inc": {"total_verifications": 1},
+            },
+            upsert=True,
+        )
+        return verified_until
+
+    async def increment_captcha_failures(self, user_id: int) -> int:
+        doc = await self._captcha_users.find_one_and_update(
+            {"_id": int(user_id or 0)},
+            {"$inc": {"failed_attempts": 1}, "$set": {"updated_at": int(time.time())}},
+            upsert=True,
+            return_document=ReturnDocument.AFTER,
+        )
+        return int((doc or {}).get("failed_attempts", 0) or 0)
+
+    async def ban_captcha_user(self, user_id: int, ttl_seconds: int) -> int:
+        banned_until = int(time.time()) + max(1, int(ttl_seconds or 0))
+        await self._captcha_users.update_one(
+            {"_id": int(user_id or 0)},
+            {"$set": {"banned_until": banned_until, "failed_attempts": 0, "updated_at": int(time.time())}},
+            upsert=True,
+        )
+        return banned_until
+
+    async def create_captcha_session(
+        self,
+        captcha_id: str,
+        user_id: int,
+        options: list[str],
+        correct_index: int,
+        pending_request: dict,
+        ttl_seconds: int,
+    ) -> dict:
+        uid = int(user_id or 0)
+        cid = str(captcha_id or "").strip()
+        now = int(time.time())
+        await self._captcha_sessions.update_many(
+            {"user_id": uid, "status": "pending"},
+            {"$set": {"status": "cancelled", "updated_at": now}},
+        )
+        doc = {
+            "_id": cid,
+            "captcha_id": cid,
+            "user_id": uid,
+            "options": [str(x) for x in options],
+            "correct_index": int(correct_index),
+            "pending_request": dict(pending_request or {}),
+            "status": "pending",
+            "created_at": now,
+            "updated_at": now,
+            "expires_at": now + max(1, int(ttl_seconds or 0)),
+        }
+        await self._captcha_sessions.replace_one({"_id": cid}, doc, upsert=True)
+        return {k: v for k, v in doc.items() if k != "_id"}
+
+    async def get_captcha_session(self, captcha_id: str) -> Optional[dict]:
+        cid = str(captcha_id or "").strip()
+        if not cid:
+            return None
+        doc = await self._captcha_sessions.find_one({"_id": cid})
+        if not doc:
+            return None
+        payload = {k: v for k, v in doc.items() if k != "_id"}
+        if int(payload.get("expires_at", 0) or 0) <= int(time.time()):
+            payload["status"] = "expired"
+        return payload
+
+    async def set_captcha_status(self, captcha_id: str, status: str) -> None:
+        cid = str(captcha_id or "").strip()
+        clean = str(status or "").strip().lower()
+        if not cid or not clean:
+            return
+        await self._captcha_sessions.update_one(
+            {"_id": cid},
+            {"$set": {"status": clean, "updated_at": int(time.time())}},
+        )
 
     async def get_pay_plan(self, default_price: float, default_text: str) -> tuple[float, str]:
         doc = await self._config_col.find_one({"_id": "pay_plan"})

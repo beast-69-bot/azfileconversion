@@ -4,6 +4,7 @@ import io
 import json
 import logging
 import os
+import random
 import secrets
 import time
 import urllib.parse
@@ -71,6 +72,14 @@ XWALLET_PAY_URL = "https://xwalletbot.shop/wallet/getway/pay.php"
 XWALLET_CHECK_URL = "https://xwalletbot.shop/wallet/getway/check.php"
 XWALLET_SUCCESS_STATUSES = {"TXN_SUCCESS", "SUCCESS", "PAID", "COMPLETED"}
 XWALLET_FAILED_STATUSES = {"FAILED", "TXN_FAILED", "EXPIRED", "CANCELLED"}
+CAPTCHA_SESSION_SECONDS = 3 * 60 * 60
+CAPTCHA_TTL_SECONDS = 5 * 60
+CAPTCHA_MAX_ATTEMPTS = 5
+CAPTCHA_BAN_SECONDS = 10 * 60
+CAPTCHA_EMOJIS = [
+    "🍎", "🚗", "🐟", "⭐", "🌟", "🔥", "💎", "🎯", "🍕", "🎮",
+    "🏀", "🎸", "🌈", "🍔", "⚡", "🎭", "🌺", "🎨", "🏆", "🎪",
+]
 
 _payment_expiry_task: asyncio.Task | None = None
 _xwallet_poll_tasks: dict[str, asyncio.Task] = {}
@@ -788,9 +797,7 @@ async def _broadcast_payment_resolution(
         ],
     )
 
-    targets = set(settings.admin_ids)
-    if user_id > 0:
-        targets.add(int(user_id))
+    targets = _admin_targets()
     for target_id in targets:
         try:
             await bot.send_message(int(target_id), text, parse_mode="HTML")
@@ -1074,12 +1081,100 @@ async def _auto_delete_task(chat_id: int, message_id: int, delay: int, notice_ms
             pass
 
 
-async def _deliver_token(message: Message, token: str) -> bool:
+def _captcha_time_text(ts: int) -> str:
+    return time.strftime("%H:%M UTC", time.gmtime(int(ts or 0)))
+
+
+def _generate_captcha_payload() -> tuple[list[str], int]:
+    correct = random.choice(CAPTCHA_EMOJIS)
+    wrong_pool = [emoji for emoji in CAPTCHA_EMOJIS if emoji != correct]
+    options = random.sample(wrong_pool, 3) + [correct]
+    random.shuffle(options)
+    return options, options.index(correct)
+
+
+def _captcha_keyboard(captcha_id: str, options: list[str]) -> InlineKeyboardMarkup:
+    rows = []
+    for index, emoji in enumerate(options):
+        rows.append([InlineKeyboardButton(text=emoji, callback_data=f"cap:{captcha_id}:{index}")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+async def _send_captcha_challenge(
+    message: Message,
+    pending_request: dict,
+    *,
+    edit_message: Message | None = None,
+    attempts: int = 0,
+) -> None:
+    user_id = int(pending_request.get("user_id", 0) or 0)
+    options, correct_index = _generate_captcha_payload()
+    captcha_id = secrets.token_urlsafe(6)
+    doc = await store.create_captcha_session(
+        captcha_id,
+        user_id,
+        options,
+        correct_index,
+        pending_request,
+        CAPTCHA_TTL_SECONDS,
+    )
+    correct_emoji = doc["options"][doc["correct_index"]]
+    attempt_line = f"\nWrong attempts: {attempts}/{CAPTCHA_MAX_ATTEMPTS}" if attempts else ""
+    text = format_msg(
+        "🤖 Verification Required",
+        sections=[
+            ("", f"Select this emoji: <b>{esc(correct_emoji)}</b>"),
+            ("", f"Captcha expires in 5 minutes.{esc(attempt_line)}"),
+        ],
+        tip="After verification, access stays active for 3 hours.",
+    )
+    keyboard = _captcha_keyboard(captcha_id, doc["options"])
+    if edit_message is not None:
+        await edit_message.edit_text(text, parse_mode="HTML", reply_markup=keyboard)
+        return
+    await message.reply(text, parse_mode="HTML", reply_markup=keyboard)
+
+
+async def _require_captcha_or_continue(message: Message, pending_request: dict) -> bool:
+    user_id = message.from_user.id if message.from_user else 0
+    if user_id <= 0:
+        await message.reply(format_msg("❌ Error", sections=[("", "Could not identify your user account.")]), parse_mode="HTML")
+        return False
+    pending_request["user_id"] = user_id
+    pending_request["chat_id"] = message.chat.id
+    banned_until = await store.get_captcha_ban_until(user_id)
+    if banned_until > int(time.time()):
+        await message.reply(
+            format_msg(
+                "⛔ Temporarily Blocked",
+                sections=[("", f"Too many wrong captcha attempts. Try again after {esc(_captcha_time_text(banned_until))}.")],
+            ),
+            parse_mode="HTML",
+        )
+        return False
+    if await store.is_captcha_verified(user_id):
+        return True
+    await _send_captcha_challenge(message, pending_request)
+    return False
+
+
+async def _resume_captcha_request(message: Message, pending_request: dict, user_id: int) -> None:
+    kind = str(pending_request.get("kind", "")).strip().lower()
+    if kind == "token":
+        await _deliver_token(message, str(pending_request.get("token", "")), user_id_override=user_id)
+        return
+    if kind == "send_all":
+        section_id = str(pending_request.get("section_id", "") or "")
+        access_filter = str(pending_request.get("access", "") or "normal")
+        await _send_section_tokens(message, section_id, access_filter, user_id_override=user_id)
+
+
+async def _deliver_token(message: Message, token: str, *, user_id_override: int | None = None) -> bool:
     ref = await store.get(token, settings.token_ttl_seconds)
     if not ref:
         await message.reply(format_msg("❌ Not Found", sections=[("", "This link is invalid or has expired.")]), parse_mode="HTML")
         return False
-    user_id = message.from_user.id if message.from_user else 0
+    user_id = int(user_id_override or (message.from_user.id if message.from_user else 0))
     if user_id <= 0:
         await message.reply(format_msg("❌ Error", sections=[("", "Could not identify your user account.")]), parse_mode="HTML")
         return False
@@ -1151,6 +1246,141 @@ async def _deliver_token(message: Message, token: str) -> bool:
     return True
 
 
+async def _send_section_tokens(
+    message: Message,
+    section_id: str,
+    access_filter: str,
+    *,
+    user_id_override: int | None = None,
+) -> None:
+    tokens = await store.list_section(section_id, settings.history_limit)
+    if not tokens:
+        await message.reply(format_msg("📭 No Files", sections=[("", "No files found in this section.")]), parse_mode="HTML")
+        return
+
+    selected_tokens: list[str] = []
+    for token in tokens:
+        ref = await store.get(token, settings.token_ttl_seconds)
+        if not ref:
+            continue
+        if (ref.access or "normal").strip().lower() == access_filter:
+            selected_tokens.append(token)
+
+    if not selected_tokens:
+        await message.reply(
+            format_msg("📭 No Matching Files", sections=[("", f"No {access_filter} files found in this section.")]),
+            parse_mode="HTML",
+        )
+        return
+
+    await message.reply(
+        format_msg(
+            "📦 Sending Files",
+            sections=[
+                ("Section", code(section_id)),
+                ("Access", esc(access_filter.title())),
+                ("Count", code(len(selected_tokens))),
+            ],
+        ),
+        parse_mode="HTML",
+    )
+
+    sent_count = 0
+    skipped_count = 0
+    for token in selected_tokens:
+        ok = await _deliver_token(message, token, user_id_override=user_id_override)
+        if ok:
+            sent_count += 1
+        else:
+            skipped_count += 1
+
+    tip = "Normal files are play-only." if access_filter == "normal" else "Premium files may deduct credits if needed."
+    await message.reply(
+        format_msg(
+            "✅ Send All Complete",
+            sections=[
+                ("Section", code(section_id)),
+                ("Sent", code(sent_count)),
+                ("Skipped", code(skipped_count)),
+            ],
+            tip=tip,
+        ),
+        parse_mode="HTML",
+    )
+
+
+@dp.callback_query(F.data.startswith("cap:"))
+async def captcha_callback(callback: CallbackQuery) -> None:
+    await callback.answer()
+    user_id = callback.from_user.id if callback.from_user else 0
+    parts = str(callback.data or "").split(":")
+    if len(parts) != 3 or user_id <= 0:
+        await callback.answer("Invalid captcha.", show_alert=True)
+        return
+    _, captcha_id, selected_raw = parts
+    try:
+        selected_index = int(selected_raw)
+    except Exception:
+        await callback.answer("Invalid captcha.", show_alert=True)
+        return
+
+    session = await store.get_captcha_session(captcha_id)
+    if not session:
+        await callback.answer("Captcha expired. Request the file again.", show_alert=True)
+        return
+    if int(session.get("user_id", 0) or 0) != int(user_id):
+        await callback.answer("This captcha is not for your account.", show_alert=True)
+        return
+    status = str(session.get("status", "") or "").lower()
+    if status == "expired":
+        await store.set_captcha_status(captcha_id, "expired")
+        await callback.message.edit_text(
+            format_msg("⏱️ Captcha Expired", sections=[("", "Please request the file again.")]),
+            parse_mode="HTML",
+        )
+        return
+    if status != "pending":
+        await callback.answer("This captcha is no longer active.", show_alert=True)
+        return
+
+    if selected_index == int(session.get("correct_index", -1)):
+        await store.set_captcha_status(captcha_id, "solved")
+        verified_until = await store.mark_captcha_verified(user_id, CAPTCHA_SESSION_SECONDS)
+        await callback.message.edit_text(
+            format_msg(
+                "✅ Verified Successfully",
+                sections=[("", "Sending your file now."), ("Valid Until", esc(_captcha_time_text(verified_until)))],
+            ),
+            parse_mode="HTML",
+            reply_markup=None,
+        )
+        await _resume_captcha_request(callback.message, dict(session.get("pending_request") or {}), user_id)
+        return
+
+    await store.set_captcha_status(captcha_id, "failed")
+    attempts = await store.increment_captcha_failures(user_id)
+    if attempts >= CAPTCHA_MAX_ATTEMPTS:
+        banned_until = await store.ban_captcha_user(user_id, CAPTCHA_BAN_SECONDS)
+        await callback.message.edit_text(
+            format_msg(
+                "⛔ Too Many Wrong Attempts",
+                sections=[("", f"Try again after {esc(_captcha_time_text(banned_until))}.")],
+            ),
+            parse_mode="HTML",
+            reply_markup=None,
+        )
+        return
+
+    pending_request = dict(session.get("pending_request") or {})
+    pending_request["user_id"] = user_id
+    await _send_captcha_challenge(
+        callback.message,
+        pending_request,
+        edit_message=callback.message,
+        attempts=attempts,
+    )
+
+
 
 
 # ---------------------------------------------------------------------------
@@ -1163,66 +1393,19 @@ async def start_cmd(message: Message, state: FSMContext) -> None:
     text = message.text or ""
     parts = text.split(maxsplit=1)
     if len(parts) > 1 and parts[1].startswith("dl_"):
-        await _deliver_token(message, parts[1][3:])
+        token = parts[1][3:]
+        if await _require_captcha_or_continue(message, {"kind": "token", "token": token}):
+            await _deliver_token(message, token)
         return
     if len(parts) > 1:
         send_all = parse_send_all_payload(parts[1])
         if send_all:
             section_id, access_filter = send_all
-            tokens = await store.list_section(section_id, settings.history_limit)
-            if not tokens:
-                await message.reply(format_msg("📭 No Files", sections=[("", "No files found in this section.")]), parse_mode="HTML")
-                return
-
-            selected_tokens: list[str] = []
-            for token in tokens:
-                ref = await store.get(token, settings.token_ttl_seconds)
-                if not ref:
-                    continue
-                if (ref.access or "normal").strip().lower() == access_filter:
-                    selected_tokens.append(token)
-
-            if not selected_tokens:
-                await message.reply(
-                    format_msg("📭 No Matching Files", sections=[("", f"No {access_filter} files found in this section.")]),
-                    parse_mode="HTML",
-                )
-                return
-
-            await message.reply(
-                format_msg(
-                    "📦 Sending Files",
-                    sections=[
-                        ("Section", code(section_id)),
-                        ("Access", esc(access_filter.title())),
-                        ("Count", code(len(selected_tokens))),
-                    ],
-                ),
-                parse_mode="HTML",
-            )
-
-            sent_count = 0
-            skipped_count = 0
-            for token in selected_tokens:
-                ok = await _deliver_token(message, token)
-                if ok:
-                    sent_count += 1
-                else:
-                    skipped_count += 1
-
-            tip = "Normal files are play-only." if access_filter == "normal" else "Premium files may deduct credits if needed."
-            await message.reply(
-                format_msg(
-                    "✅ Send All Complete",
-                    sections=[
-                        ("Section", code(section_id)),
-                        ("Sent", code(sent_count)),
-                        ("Skipped", code(skipped_count)),
-                    ],
-                    tip=tip,
-                ),
-                parse_mode="HTML",
-            )
+            if await _require_captcha_or_continue(
+                message,
+                {"kind": "send_all", "section_id": section_id, "access": access_filter},
+            ):
+                await _send_section_tokens(message, section_id, access_filter)
             return
     await message.reply(
         format_msg("👋 Welcome to FileLord", sections=[

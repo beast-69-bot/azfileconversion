@@ -114,6 +114,12 @@ class TokenStore:
         self._pay_req_seq: int = 0
         self._pay_requests: dict[str, dict] = {}
         self._action_locks: dict[str, float] = {}
+        self._captcha_users: dict[int, dict] = {}
+        self._captcha_sessions: dict[str, dict] = {}
+        self._captcha_user_pending: dict[int, str] = {}
+        self._captcha_user_prefix = "captcha:user:"
+        self._captcha_session_prefix = "captcha:session:"
+        self._captcha_pending_prefix = "captcha:pending:"
 
     async def connect(self) -> None:
         if self._redis_url and redis is not None:
@@ -1238,6 +1244,179 @@ return {1, newval}
         if len(self._action_locks) > 5000:
             self._action_locks = {k: v for k, v in self._action_locks.items() if v > now}
         return True
+
+    async def is_captcha_verified(self, user_id: int) -> bool:
+        uid = int(user_id or 0)
+        now = int(time.time())
+        if uid <= 0:
+            return False
+        if self._redis is not None:
+            raw = await self._redis.hget(f"{self._captcha_user_prefix}{uid}", "verified_until")
+            return int(raw or 0) > now
+        return int(self._captcha_users.get(uid, {}).get("verified_until", 0) or 0) > now
+
+    async def get_captcha_ban_until(self, user_id: int) -> int:
+        uid = int(user_id or 0)
+        now = int(time.time())
+        if uid <= 0:
+            return 0
+        if self._redis is not None:
+            key = f"{self._captcha_user_prefix}{uid}"
+            raw = await self._redis.hget(key, "banned_until")
+            banned_until = int(raw or 0)
+            if banned_until and banned_until <= now:
+                await self._redis.hset(key, mapping={"banned_until": "0", "failed_attempts": "0"})
+                return 0
+            return banned_until
+        doc = self._captcha_users.setdefault(uid, {})
+        banned_until = int(doc.get("banned_until", 0) or 0)
+        if banned_until and banned_until <= now:
+            doc["banned_until"] = 0
+            doc["failed_attempts"] = 0
+            return 0
+        return banned_until
+
+    async def mark_captcha_verified(self, user_id: int, ttl_seconds: int) -> int:
+        uid = int(user_id or 0)
+        now = int(time.time())
+        verified_until = now + max(1, int(ttl_seconds or 0))
+        if uid <= 0:
+            return 0
+        if self._redis is not None:
+            key = f"{self._captcha_user_prefix}{uid}"
+            await self._redis.hincrby(key, "total_verifications", 1)
+            await self._redis.hset(
+                key,
+                mapping={
+                    "verified_until": str(verified_until),
+                    "failed_attempts": "0",
+                    "banned_until": "0",
+                    "updated_at": str(now),
+                },
+            )
+            return verified_until
+        doc = self._captcha_users.setdefault(uid, {})
+        doc["verified_until"] = verified_until
+        doc["failed_attempts"] = 0
+        doc["banned_until"] = 0
+        doc["updated_at"] = now
+        doc["total_verifications"] = int(doc.get("total_verifications", 0) or 0) + 1
+        return verified_until
+
+    async def increment_captcha_failures(self, user_id: int) -> int:
+        uid = int(user_id or 0)
+        if uid <= 0:
+            return 0
+        if self._redis is not None:
+            return int(await self._redis.hincrby(f"{self._captcha_user_prefix}{uid}", "failed_attempts", 1))
+        doc = self._captcha_users.setdefault(uid, {})
+        doc["failed_attempts"] = int(doc.get("failed_attempts", 0) or 0) + 1
+        return int(doc["failed_attempts"])
+
+    async def ban_captcha_user(self, user_id: int, ttl_seconds: int) -> int:
+        uid = int(user_id or 0)
+        banned_until = int(time.time()) + max(1, int(ttl_seconds or 0))
+        if uid <= 0:
+            return 0
+        if self._redis is not None:
+            await self._redis.hset(
+                f"{self._captcha_user_prefix}{uid}",
+                mapping={"banned_until": str(banned_until), "failed_attempts": "0", "updated_at": str(int(time.time()))},
+            )
+            return banned_until
+        doc = self._captcha_users.setdefault(uid, {})
+        doc["banned_until"] = banned_until
+        doc["failed_attempts"] = 0
+        doc["updated_at"] = int(time.time())
+        return banned_until
+
+    async def create_captcha_session(
+        self,
+        captcha_id: str,
+        user_id: int,
+        options: list[str],
+        correct_index: int,
+        pending_request: dict,
+        ttl_seconds: int,
+    ) -> dict:
+        uid = int(user_id or 0)
+        cid = str(captcha_id or "").strip()
+        now = int(time.time())
+        expires_at = now + max(1, int(ttl_seconds or 0))
+        doc = {
+            "captcha_id": cid,
+            "user_id": uid,
+            "options": [str(x) for x in options],
+            "correct_index": int(correct_index),
+            "pending_request": dict(pending_request or {}),
+            "status": "pending",
+            "created_at": now,
+            "expires_at": expires_at,
+        }
+        if self._redis is not None:
+            old_id = await self._redis.get(f"{self._captcha_pending_prefix}{uid}")
+            if old_id:
+                old_raw = await self._redis.get(f"{self._captcha_session_prefix}{old_id}")
+                if old_raw:
+                    try:
+                        old_doc = json.loads(old_raw)
+                        old_doc["status"] = "cancelled"
+                        await self._redis.set(f"{self._captcha_session_prefix}{old_id}", json.dumps(old_doc), ex=ttl_seconds)
+                    except Exception:
+                        pass
+            await self._redis.set(f"{self._captcha_session_prefix}{cid}", json.dumps(doc), ex=ttl_seconds)
+            await self._redis.set(f"{self._captcha_pending_prefix}{uid}", cid, ex=ttl_seconds)
+            return doc
+        old_id = self._captcha_user_pending.get(uid)
+        if old_id and old_id in self._captcha_sessions:
+            self._captcha_sessions[old_id]["status"] = "cancelled"
+        self._captcha_sessions[cid] = doc
+        self._captcha_user_pending[uid] = cid
+        return doc
+
+    async def get_captcha_session(self, captcha_id: str) -> Optional[dict]:
+        cid = str(captcha_id or "").strip()
+        if not cid:
+            return None
+        now = int(time.time())
+        if self._redis is not None:
+            raw = await self._redis.get(f"{self._captcha_session_prefix}{cid}")
+            if not raw:
+                return None
+            try:
+                doc = json.loads(raw)
+            except Exception:
+                return None
+            if int(doc.get("expires_at", 0) or 0) <= now:
+                doc["status"] = "expired"
+            return doc
+        doc = self._captcha_sessions.get(cid)
+        if not doc:
+            return None
+        if int(doc.get("expires_at", 0) or 0) <= now:
+            doc["status"] = "expired"
+        return dict(doc)
+
+    async def set_captcha_status(self, captcha_id: str, status: str) -> None:
+        cid = str(captcha_id or "").strip()
+        clean = str(status or "").strip().lower()
+        if not cid or not clean:
+            return
+        if self._redis is not None:
+            key = f"{self._captcha_session_prefix}{cid}"
+            raw = await self._redis.get(key)
+            if not raw:
+                return
+            try:
+                doc = json.loads(raw)
+            except Exception:
+                return
+            doc["status"] = clean
+            ttl = max(1, int(doc.get("expires_at", int(time.time()) + 60) or 0) - int(time.time()))
+            await self._redis.set(key, json.dumps(doc), ex=ttl)
+            return
+        if cid in self._captcha_sessions:
+            self._captcha_sessions[cid]["status"] = clean
 
 
     async def list_known_user_ids(self, limit: int = 50000) -> list[int]:
