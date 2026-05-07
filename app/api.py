@@ -192,6 +192,11 @@ async def health():
     return {"status": "healthy"}
 
 
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    return RedirectResponse(url="/static/favicon.svg", status_code=307)
+
+
 async def warm_client() -> None:
     async with _warm_lock:
         if _client_started:
