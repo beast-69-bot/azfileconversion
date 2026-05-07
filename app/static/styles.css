@@ -1190,6 +1190,52 @@ body.is-loading .content {
   gap: 24px;
 }
 
+.age-gate[hidden] {
+  display: none;
+}
+
+.age-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(3, 5, 8, 0.78);
+  backdrop-filter: blur(18px);
+}
+
+.age-gate-card {
+  display: grid;
+  gap: 16px;
+  width: min(520px, 100%);
+  padding: 28px;
+  border: 1px solid rgba(255, 116, 70, 0.34);
+  border-radius: var(--radius-lg);
+  background:
+    linear-gradient(145deg, rgba(255, 116, 70, 0.13), rgba(121, 200, 197, 0.06)),
+    rgba(12, 16, 22, 0.98);
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.58);
+}
+
+.age-gate-card h2 {
+  font-size: clamp(1.6rem, 5vw, 2.8rem);
+}
+
+.age-gate-card p {
+  color: var(--ink-soft);
+}
+
+.age-gate-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+body.age-gate-open {
+  overflow: hidden;
+}
+
 .home-hero {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(360px, 0.88fr);
@@ -1906,6 +1952,14 @@ body.is-loading .content {
   .home-metrics,
   .preview-stack {
     grid-template-columns: 1fr;
+  }
+
+  .age-gate-card {
+    padding: 22px;
+  }
+
+  .age-gate-actions .btn {
+    width: 100%;
   }
 
   .home-metrics > div {

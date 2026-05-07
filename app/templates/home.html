@@ -8,6 +8,18 @@
 
 {% block content %}
 <div class="home-frame">
+    <div class="age-gate" id="ageGate" role="dialog" aria-modal="true" aria-labelledby="ageGateTitle" hidden>
+        <div class="age-gate-card">
+            <div class="eyebrow">18+ terms</div>
+            <h2 id="ageGateTitle">Adults only</h2>
+            <p>This website is intended only for users who are 18 years or older. By continuing, you confirm that you are 18+ and agree to access the site responsibly.</p>
+            <div class="age-gate-actions">
+                <button class="btn btn-primary" type="button" id="ageGateAccept">I am 18+</button>
+                <a class="btn btn-secondary" href="https://www.google.com/">Leave</a>
+            </div>
+        </div>
+    </div>
+
     <section class="home-hero card animate-in" aria-labelledby="home-title">
         <div class="home-hero-copy">
             <div class="eyebrow">AzhawaSadda private archive</div>
@@ -121,6 +133,37 @@
 </div>
 
 <script>
+    (function () {
+        const key = "az_age_terms_accepted";
+        const gate = document.getElementById("ageGate");
+        const accept = document.getElementById("ageGateAccept");
+        if (!gate || !accept) {
+            return;
+        }
+
+        try {
+            if (window.localStorage.getItem(key) === "1") {
+                return;
+            }
+        } catch (error) {
+            // localStorage can be blocked; show the gate for this session.
+        }
+
+        gate.hidden = false;
+        document.body.classList.add("age-gate-open");
+        accept.focus({ preventScroll: true });
+
+        accept.addEventListener("click", function () {
+            try {
+                window.localStorage.setItem(key, "1");
+            } catch (error) {
+                document.cookie = "az_age_terms_accepted=1; max-age=31536000; path=/; SameSite=Lax";
+            }
+            gate.hidden = true;
+            document.body.classList.remove("age-gate-open");
+        });
+    })();
+
     (function () {
         const revealTargets = document.querySelectorAll(".reveal, .step-card");
         if (!revealTargets.length || !("IntersectionObserver" in window)) {
