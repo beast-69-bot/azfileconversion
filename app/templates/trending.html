@@ -51,15 +51,19 @@
                 <div class="trending-card-row">
                     {% for item in row["items"] %}
                     <article class="trending-card">
-                        <div class="trending-media">
-                            {% if item.media_type == "video" %}
-                            <video src="{{ item.media_url }}" muted playsinline controls preload="metadata"></video>
-                            {% else %}
-                            <img src="{{ item.media_url }}" alt="{{ item.title }}" loading="lazy" />
-                            {% endif %}
+                        <div class="trending-gallery" aria-label="{{ item.title }} previews">
+                            {% for media in item.media_items %}
+                            <div class="trending-media">
+                                {% if media.type == "video" %}
+                                <video src="{{ media.url }}" muted playsinline controls preload="metadata"></video>
+                                {% else %}
+                                <img src="{{ media.url }}" alt="{{ item.title }} preview {{ loop.index }}" loading="lazy" />
+                                {% endif %}
+                            </div>
+                            {% endfor %}
                         </div>
                         <div class="trending-body">
-                            <span class="route-kicker">{{ row.bar }}</span>
+                            <span class="route-kicker">{{ row.bar }} · {{ item.media_count }} preview{% if item.media_count != 1 %}s{% endif %}</span>
                             <strong>{{ item.title }}</strong>
                             <p>{{ item.description }}</p>
                         </div>

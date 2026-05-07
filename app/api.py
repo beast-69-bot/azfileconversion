@@ -105,14 +105,17 @@ async def trending_page(request: Request):
     grouped: dict[str, list[dict]] = {}
     for item in items:
         bar = str(item.get("bar") or "Trending").strip() or "Trending"
+        media_items = _trending_media_items(item)
         grouped.setdefault(bar, []).append(
             {
                 "id": item.get("id", ""),
                 "bar": bar,
                 "title": item.get("title", ""),
                 "description": item.get("description", ""),
-                "media_type": item.get("media_type", ""),
-                "media_url": f"/trending/media/{item.get('id', '')}",
+                "media_type": media_items[0]["type"] if media_items else "",
+                "media_url": media_items[0]["url"] if media_items else "",
+                "media_items": media_items,
+                "media_count": len(media_items),
                 "normal_link": item.get("normal_link", "#"),
                 "premium_link": item.get("premium_link", "#"),
             }
@@ -126,14 +129,48 @@ async def trending_page(request: Request):
     )
 
 
+def _trending_media_items(item: dict) -> list[dict]:
+    item_id = str(item.get("id", "") or "").strip()
+    media_items: list[dict] = []
+    for index, media in enumerate(item.get("media", []) or []):
+        file_id = str((media or {}).get("file_id", "") or "").strip()
+        media_type = str((media or {}).get("type", "") or "").strip().lower()
+        if item_id and file_id and media_type in {"photo", "video"}:
+            media_items.append({
+                "index": index,
+                "type": media_type,
+                "url": f"/trending/media/{item_id}/{index}",
+            })
+    if not media_items:
+        file_id = str(item.get("media_file_id", "") or "").strip()
+        media_type = str(item.get("media_type", "") or "").strip().lower()
+        if item_id and file_id and media_type in {"photo", "video"}:
+            media_items.append({"index": 0, "type": media_type, "url": f"/trending/media/{item_id}/0"})
+    return media_items
+
+
 @app.get("/trending/media/{item_id}")
-async def trending_media(item_id: str, range: Optional[str] = Header(default=None)):
+async def trending_media_legacy(item_id: str, range: Optional[str] = Header(default=None)):
+    return await trending_media(item_id, 0, range)
+
+
+@app.get("/trending/media/{item_id}/{media_index}")
+async def trending_media(item_id: str, media_index: int, range: Optional[str] = Header(default=None)):
     item = await store.get_trending_item(item_id)
-    if not item or not item.get("media_file_id"):
+    media_items = []
+    if item:
+        media_items = [
+            media for media in (item.get("media", []) or [])
+            if str((media or {}).get("file_id", "") or "").strip()
+        ]
+        if not media_items and item.get("media_file_id"):
+            media_items = [{"file_id": item.get("media_file_id", ""), "type": item.get("media_type", "")}]
+    if not item or media_index < 0 or media_index >= len(media_items):
         raise HTTPException(status_code=404, detail="Trending media not found")
 
     await ensure_client_started()
-    media_type = str(item.get("media_type") or "").lower()
+    selected = media_items[media_index]
+    media_type = str(selected.get("type") or "").lower()
     content_type = "video/mp4" if media_type == "video" else "image/jpeg"
     headers = {
         "Accept-Ranges": "bytes",
@@ -143,7 +180,7 @@ async def trending_media(item_id: str, range: Optional[str] = Header(default=Non
     start, end = 0, None
     status_code = 200
     return StreamingResponse(
-        telegram_stream(item["media_file_id"], start, end),
+        telegram_stream(selected["file_id"], start, end),
         status_code=status_code,
         headers=headers,
         media_type=content_type,

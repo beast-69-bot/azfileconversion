@@ -822,13 +822,25 @@ class MongoTokenStore(TokenStore):
 
     async def add_trending_item(self, item: dict) -> dict:
         item_id = str(item.get("id") or secrets.token_urlsafe(8)).strip()
+        media_items: list[dict] = []
+        for media in item.get("media", []) or []:
+            file_id = str((media or {}).get("file_id", "") or "").strip()
+            media_type = str((media or {}).get("type", "") or "").strip().lower()
+            if file_id and media_type in {"photo", "video"}:
+                media_items.append({"file_id": file_id, "type": media_type})
+        legacy_file_id = str(item.get("media_file_id", "") or "").strip()
+        legacy_media_type = str(item.get("media_type", "") or "").strip().lower()
+        if not media_items and legacy_file_id and legacy_media_type in {"photo", "video"}:
+            media_items.append({"file_id": legacy_file_id, "type": legacy_media_type})
+        first_media = media_items[0] if media_items else {"file_id": "", "type": ""}
         payload = {
             "_id": item_id,
             "bar": str(item.get("bar", "") or "").strip(),
             "title": str(item.get("title", "") or "").strip(),
             "description": str(item.get("description", "") or "").strip(),
-            "media_file_id": str(item.get("media_file_id", "") or "").strip(),
-            "media_type": str(item.get("media_type", "") or "").strip().lower(),
+            "media": media_items,
+            "media_file_id": first_media["file_id"],
+            "media_type": first_media["type"],
             "normal_link": str(item.get("normal_link", "") or "").strip(),
             "premium_link": str(item.get("premium_link", "") or "").strip(),
             "created_at": float(item.get("created_at") or time.time()),

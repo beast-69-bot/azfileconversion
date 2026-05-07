@@ -1673,10 +1673,20 @@ body.age-gate-open {
   background: rgba(255, 255, 255, 0.055);
 }
 
+.trending-gallery {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 100%;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  background: #070b10;
+  border-bottom: 1px solid var(--line);
+}
+
 .trending-media {
   aspect-ratio: 16 / 10;
   background: #070b10;
-  border-bottom: 1px solid var(--line);
+  scroll-snap-align: start;
 }
 
 .trending-media img,

@@ -2543,9 +2543,9 @@ async def trending_title_handler(message: Message, state: FSMContext) -> None:
     if not title or title.startswith("/"):
         await _send_trending_prompt(message, state, "⚠️ Invalid", "Send a title, not a command.")
         return
-    await state.update_data(title=title)
+    await state.update_data(title=title, media=[])
     await state.set_state(TrendState.waiting_media)
-    await _send_trending_prompt(message, state, "🔥 Add Trending", "Step 3/6: Send a thumbnail photo or preview video.")
+    await _send_trending_prompt(message, state, "🔥 Add Trending", "Step 3/6: Send preview photos/videos one by one. Send /done when finished.")
 
 
 @dp.message(StateFilter(TrendState.waiting_media), F.photo | F.video)
@@ -2559,14 +2559,32 @@ async def trending_media_handler(message: Message, state: FSMContext) -> None:
     else:
         await _send_trending_prompt(message, state, "⚠️ Invalid", "Send a photo or video preview.")
         return
-    await state.update_data(media_file_id=media_file_id, media_type=media_type)
+    data = await state.get_data()
+    media = list(data.get("media", []) or [])
+    media.append({"file_id": media_file_id, "type": media_type})
+    await state.update_data(media=media, media_file_id=media_file_id, media_type=media_type)
+    await _send_trending_prompt(
+        message,
+        state,
+        "✅ Preview Added",
+        f"{len(media)} preview saved. Send another photo/video, or send /done to continue.",
+    )
+
+
+@dp.message(StateFilter(TrendState.waiting_media), Command("done"))
+async def trending_media_done_handler(message: Message, state: FSMContext) -> None:
+    data = await state.get_data()
+    media = list(data.get("media", []) or [])
+    if not media:
+        await _send_trending_prompt(message, state, "⚠️ Add Preview", "Send at least one photo or video preview before /done.")
+        return
     await state.set_state(TrendState.waiting_description)
     await _send_trending_prompt(message, state, "🔥 Add Trending", "Step 4/6: Send the description.")
 
 
 @dp.message(StateFilter(TrendState.waiting_media))
 async def trending_media_wrong_handler(message: Message, state: FSMContext) -> None:
-    await _send_trending_prompt(message, state, "⚠️ Invalid", "Send a thumbnail photo or preview video.")
+    await _send_trending_prompt(message, state, "⚠️ Invalid", "Send a photo/video preview, or send /done after adding previews.")
 
 
 @dp.message(StateFilter(TrendState.waiting_description), F.text)
@@ -2602,6 +2620,7 @@ async def trending_premium_link_handler(message: Message, state: FSMContext) -> 
         "bar": data.get("bar", ""),
         "title": data.get("title", ""),
         "description": data.get("description", ""),
+        "media": data.get("media", []),
         "media_file_id": data.get("media_file_id", ""),
         "media_type": data.get("media_type", ""),
         "normal_link": data.get("normal_link", ""),
@@ -2620,7 +2639,12 @@ async def trending_premium_link_handler(message: Message, state: FSMContext) -> 
     await message.reply(
         format_msg(
             "✅ Content Added",
-            sections=[("ID", code(item.get("id", ""))), ("Bar", esc(item.get("bar", ""))), ("Title", esc(item.get("title", "")))],
+            sections=[
+                ("ID", code(item.get("id", ""))),
+                ("Bar", esc(item.get("bar", ""))),
+                ("Title", esc(item.get("title", ""))),
+                ("Previews", str(len(item.get("media", []) or []))),
+            ],
             tip="Trending card is now live on the website.",
         ),
         parse_mode="HTML",
