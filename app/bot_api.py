@@ -2140,6 +2140,52 @@ async def pay_custom_amount_handler(message: Message, state: FSMContext) -> None
         await _track_payment_message(req_id, sent)
         _spawn_xwallet_poll(req_id)
         return
+    if gateway == "razorpay":
+        settings_doc = await _get_payment_settings()
+        key_id = str(settings_doc.get("razorpay_key_id", "") or "").strip()
+        key_secret = str(settings_doc.get("razorpay_key_secret", "") or "").strip()
+        if not key_id or not key_secret:
+            await message.reply(
+                format_msg("Gateway Not Ready", sections=[("Gateway", "Razorpay"), ("", "Admin must set /setrazorpaykeys first.")]),
+                parse_mode="HTML",
+            )
+            return
+        expires_at = int(time.time()) + ORDER_TIMEOUT_SEC
+        await store.create_payment_request(req_id, user_id, amount, credits, plan_type="credits", gateway="razorpay", expires_at=expires_at)
+        username = message.from_user.username or f"user_{user_id}"
+        plan_label = _payment_plan_label("credits", credits)
+        qr_code_id, payment_link = await _razorpay_create_payment(key_id, key_secret, amount, username, plan_label)
+        if not qr_code_id or not payment_link:
+            await store.delete_payment_request(req_id)
+            await message.reply(
+                format_msg("âŒ Payment Init Failed", sections=[("Gateway", "Razorpay"), ("", "Could not generate UPI QR right now.")]),
+                parse_mode="HTML",
+            )
+            return
+        await store.update_payment_request(req_id, {"status": "processing", "qr_code_id": qr_code_id, "payment_link": payment_link})
+        caption = format_msg(
+            "Scan & Pay via UPI",
+            sections=[
+                ("Request ID", code(req_id)),
+                ("Plan", esc(plan_label)),
+                ("Amount", f"INR {amount:.2f}"),
+                ("Status", "Awaiting Automated Verification..."),
+                ("Expires", esc(_format_expiry_ts(expires_at))),
+            ],
+            tip="Scan the QR Code with any UPI app (GPay, PhonePe, Paytm, BHIM) and complete the payment. Do NOT close this screen; credit will be applied automatically.",
+        )
+        sent = await message.reply_photo(
+            photo=URLInputFile(payment_link, filename="razorpay_qr.png"),
+            caption=caption,
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="âŒ Cancel Request", callback_data=f"cxl:{req_id}")]
+            ])
+        )
+        await store.set_payment_prompt(req_id, sent.chat.id, sent.message_id)
+        await _track_payment_message(req_id, sent)
+        _spawn_razorpay_poll(req_id)
+        return
     await store.create_payment_request(req_id, user_id, amount, credits, plan_type="credits")
     await _send_payment_instructions(message.chat.id, req_id, amount, credits, "credits")
 
