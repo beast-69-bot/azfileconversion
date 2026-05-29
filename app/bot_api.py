@@ -461,7 +461,7 @@ async def _razorpay_create_payment(key_id: str, key_secret: str, amount: float, 
         "name": "Bridge Link Protector",
         "usage": "single_use",
         "fixed_amount": True,
-        "amount": int(amount * 100),  # Razorpay expects amount in paise (1 INR = 100 paise)
+        "payment_amount": int(amount * 100),  # Razorpay expects amount in paise (1 INR = 100 paise)
         "description": f"BLP Plan: {plan_label} - User: {username}"[:250],
         "notes": {
             "username": username,
