@@ -499,7 +499,7 @@ async def _razorpay_check_payment(qr_code_id: str, key_id: str, key_secret: str)
     code_id = str(qr_code_id or "").strip()
     if not code_id:
         return "", ""
-    url = f"https://api.razorpay.com/v1/payments?qr_code_id={code_id}"
+    url = f"https://api.razorpay.com/v1/payments/qr_codes/{urllib.parse.quote(code_id, safe='')}/payments?count=10"
 
     def _call() -> tuple[str, str]:
         import base64
