@@ -1,4 +1,4 @@
-﻿import json
+import json
 import secrets
 import time
 from dataclasses import asdict, dataclass
@@ -542,6 +542,8 @@ return {1, newval}
         defaults = {
             "payment_gateway": "manual",
             "xwallet_api_key": "",
+            "razorpay_key_id": "",
+            "razorpay_key_secret": "",
             "tutorial_chat_id": 0,
             "tutorial_message_id": 0,
             "total_earnings": 0.0,
@@ -551,6 +553,8 @@ return {1, newval}
             return {
                 "payment_gateway": str(data.get("payment_gateway", defaults["payment_gateway"]) or defaults["payment_gateway"]).strip().lower(),
                 "xwallet_api_key": str(data.get("xwallet_api_key", defaults["xwallet_api_key"]) or ""),
+                "razorpay_key_id": str(data.get("razorpay_key_id", defaults["razorpay_key_id"]) or ""),
+                "razorpay_key_secret": str(data.get("razorpay_key_secret", defaults["razorpay_key_secret"]) or ""),
                 "tutorial_chat_id": int(data.get("tutorial_chat_id", "0") or 0),
                 "tutorial_message_id": int(data.get("tutorial_message_id", "0") or 0),
                 "total_earnings": float(data.get("total_earnings", "0") or 0.0),
@@ -559,6 +563,8 @@ return {1, newval}
         settings.update(self._payment_settings)
         settings["payment_gateway"] = str(settings.get("payment_gateway", "manual") or "manual").strip().lower()
         settings["xwallet_api_key"] = str(settings.get("xwallet_api_key", "") or "")
+        settings["razorpay_key_id"] = str(settings.get("razorpay_key_id", "") or "")
+        settings["razorpay_key_secret"] = str(settings.get("razorpay_key_secret", "") or "")
         settings["tutorial_chat_id"] = int(settings.get("tutorial_chat_id", 0) or 0)
         settings["tutorial_message_id"] = int(settings.get("tutorial_message_id", 0) or 0)
         settings["total_earnings"] = float(settings.get("total_earnings", 0.0) or 0.0)
@@ -569,7 +575,7 @@ return {1, newval}
         for key, value in (updates or {}).items():
             if key == "payment_gateway":
                 clean[key] = str(value or "manual").strip().lower()
-            elif key in {"xwallet_api_key"}:
+            elif key in {"xwallet_api_key", "razorpay_key_id", "razorpay_key_secret"}:
                 clean[key] = str(value or "").strip()
             elif key in {"tutorial_chat_id", "tutorial_message_id"}:
                 clean[key] = str(int(value or 0))
@@ -1214,6 +1220,39 @@ return {1, newval}
 
         for req in sorted(self._pay_requests.values(), key=lambda x: x.get("created_at", 0), reverse=True):
             if str(req.get("gateway", "")).strip().lower() != "xwallet":
+                continue
+            if str(req.get("status", "")).strip().lower() not in {"pending", "processing"}:
+                continue
+            if int(req.get("expires_at", 0) or 0) <= now:
+                continue
+            items.append(req)
+            if len(items) >= limit:
+                break
+        return items
+
+    async def pending_razorpay_orders(self, limit: int = 1000) -> list[dict]:
+        limit = max(1, int(limit))
+        now = int(time.time())
+        items: list[dict] = []
+        if self._redis is not None:
+            request_ids = await self._redis.zrevrange(self._pay_req_index, 0, limit * 5)
+            for request_id in request_ids:
+                req = await self.get_payment_request(request_id)
+                if not req:
+                    continue
+                if str(req.get("gateway", "")).strip().lower() != "razorpay":
+                    continue
+                if str(req.get("status", "")).strip().lower() not in {"pending", "processing"}:
+                    continue
+                if int(req.get("expires_at", 0) or 0) <= now:
+                    continue
+                items.append(req)
+                if len(items) >= limit:
+                    break
+            return items
+
+        for req in sorted(self._pay_requests.values(), key=lambda x: x.get("created_at", 0), reverse=True):
+            if str(req.get("gateway", "")).strip().lower() != "razorpay":
                 continue
             if str(req.get("status", "")).strip().lower() not in {"pending", "processing"}:
                 continue

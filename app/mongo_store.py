@@ -472,6 +472,8 @@ class MongoTokenStore(TokenStore):
         defaults = {
             "payment_gateway": "manual",
             "xwallet_api_key": "",
+            "razorpay_key_id": "",
+            "razorpay_key_secret": "",
             "tutorial_chat_id": 0,
             "tutorial_message_id": 0,
             "total_earnings": 0.0,
@@ -480,6 +482,8 @@ class MongoTokenStore(TokenStore):
         return {
             "payment_gateway": str((doc or {}).get("payment_gateway", defaults["payment_gateway"]) or defaults["payment_gateway"]).strip().lower(),
             "xwallet_api_key": str((doc or {}).get("xwallet_api_key", defaults["xwallet_api_key"]) or ""),
+            "razorpay_key_id": str((doc or {}).get("razorpay_key_id", defaults["razorpay_key_id"]) or ""),
+            "razorpay_key_secret": str((doc or {}).get("razorpay_key_secret", defaults["razorpay_key_secret"]) or ""),
             "tutorial_chat_id": int((doc or {}).get("tutorial_chat_id", defaults["tutorial_chat_id"]) or 0),
             "tutorial_message_id": int((doc or {}).get("tutorial_message_id", defaults["tutorial_message_id"]) or 0),
             "total_earnings": float((doc or {}).get("total_earnings", defaults["total_earnings"]) or 0.0),
@@ -490,7 +494,7 @@ class MongoTokenStore(TokenStore):
         for key, value in (updates or {}).items():
             if key == "payment_gateway":
                 clean[key] = str(value or "manual").strip().lower()
-            elif key == "xwallet_api_key":
+            elif key in {"xwallet_api_key", "razorpay_key_id", "razorpay_key_secret"}:
                 clean[key] = str(value or "").strip()
             elif key in {"tutorial_chat_id", "tutorial_message_id"}:
                 clean[key] = int(value or 0)
@@ -499,6 +503,8 @@ class MongoTokenStore(TokenStore):
         if clean:
             await self._config_col.update_one({"_id": "pay_plan"}, {"$set": clean}, upsert=True)
         return await self.get_payment_settings()
+
+
 
     async def add_total_earnings(self, amount: float) -> float:
         doc = await self._config_col.find_one_and_update(
@@ -831,6 +837,26 @@ class MongoTokenStore(TokenStore):
             self._payment_requests.find(
                 {
                     "gateway": "xwallet",
+                    "status": {"$in": ["pending", "processing"]},
+                    "expires_at": {"$gt": now},
+                }
+            )
+            .sort("created_at", DESCENDING)
+            .limit(max(1, int(limit)))
+        )
+        async for row in cursor:
+            item = self._payment_doc_to_dict(row)
+            if item:
+                rows.append(item)
+        return rows
+
+    async def pending_razorpay_orders(self, limit: int = 1000) -> list[dict]:
+        now = int(time.time())
+        rows: list[dict] = []
+        cursor = (
+            self._payment_requests.find(
+                {
+                    "gateway": "razorpay",
                     "status": {"$in": ["pending", "processing"]},
                     "expires_at": {"$gt": now},
                 }

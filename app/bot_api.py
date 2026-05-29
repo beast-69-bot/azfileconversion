@@ -1,4 +1,4 @@
-﻿import asyncio
+import asyncio
 import contextlib
 import io
 import json
@@ -83,6 +83,7 @@ CAPTCHA_EMOJIS = [
 
 _payment_expiry_task: asyncio.Task | None = None
 _xwallet_poll_tasks: dict[str, asyncio.Task] = {}
+_razorpay_poll_tasks: dict[str, asyncio.Task] = {}
 
 
 # ---------------------------------------------------------------------------
@@ -236,6 +237,7 @@ BOT_COMMANDS = [
     BotCommand(command="paysettings", description="Show payment settings (admin)"),
     BotCommand(command="setgateway", description="Set payment gateway (admin)"),
     BotCommand(command="setxwalletkey", description="Set XWallet API key (admin)"),
+    BotCommand(command="setrazorpaykeys", description="Set Razorpay keys (admin)"),
     BotCommand(command="settutorial", description="Set tutorial video (admin)"),
     BotCommand(command="setautodelete", description="Set file auto-delete time (admin)"),
     BotCommand(command="setthumbnail", description="Set delivery thumbnail (admin)"),
@@ -319,6 +321,7 @@ def parse_send_all_payload(payload: str) -> tuple[str, str] | None:
         return None
     return section_id, access
 
+
 def parse_period(value: str) -> int | None:
     value = value.strip().lower()
     if value in {"life", "lifetime", "permanent", "perm"}:
@@ -361,7 +364,7 @@ def _format_expiry_ts(expires_at: int | None) -> str:
 
 def _resolve_gateway_name(raw: str) -> str:
     gateway = str(raw or 'manual').strip().lower()
-    return gateway if gateway in {'manual', 'xwallet'} else 'manual'
+    return gateway if gateway in {'manual', 'xwallet', 'razorpay'} else 'manual'
 
 
 def _buy_plan_kb() -> InlineKeyboardMarkup:
@@ -447,6 +450,78 @@ async def _xwallet_check_payment(qr_code_id: str) -> tuple[str, str]:
         return await asyncio.to_thread(_call)
     except (HTTPError, URLError, TimeoutError, json.JSONDecodeError) as exc:
         logger.warning("xwallet check payment failed: %s", exc)
+        return "", ""
+
+
+async def _razorpay_create_payment(key_id: str, key_secret: str, amount: float, username: str, plan_label: str) -> tuple[str, str]:
+    url = "https://api.razorpay.com/v1/payments/qr_codes"
+
+    payload = {
+        "type": "upi_qr",
+        "name": "Bridge Link Protector",
+        "usage": "single_use",
+        "fixed_amount": True,
+        "amount": int(amount * 100),  # Razorpay expects amount in paise (1 INR = 100 paise)
+        "description": f"BLP Plan: {plan_label} - User: {username}"[:250],
+        "notes": {
+            "username": username,
+            "planLabel": plan_label
+        }
+    }
+
+    def _call() -> tuple[str, str]:
+        import base64
+        from urllib.request import Request
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Basic {base64.b64encode(f'{key_id}:{key_secret}'.encode('utf-8')).decode('utf-8')}"
+        }
+        req = Request(
+            url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers=headers,
+            method="POST"
+        )
+        with urlopen(req, timeout=15) as response:
+            data = json.loads(response.read().decode("utf-8", errors="replace"))
+            qr_code_id = str(data.get("id") or "").strip()
+            payment_link = str(data.get("image_url") or "").strip()
+            return qr_code_id, payment_link
+
+    try:
+        return await asyncio.to_thread(_call)
+    except Exception as exc:
+        logger.warning("razorpay create payment failed: %s", exc)
+        return "", ""
+
+
+async def _razorpay_check_payment(qr_code_id: str, key_id: str, key_secret: str) -> tuple[str, str]:
+    code_id = str(qr_code_id or "").strip()
+    if not code_id:
+        return "", ""
+    url = f"https://api.razorpay.com/v1/payments?qr_code_id={code_id}"
+
+    def _call() -> tuple[str, str]:
+        import base64
+        from urllib.request import Request
+        headers = {
+            "Authorization": f"Basic {base64.b64encode(f'{key_id}:{key_secret}'.encode('utf-8')).decode('utf-8')}"
+        }
+        req = Request(url, headers=headers, method="GET")
+        with urlopen(req, timeout=15) as response:
+            data = json.loads(response.read().decode("utf-8", errors="replace"))
+            items = data.get("items", [])
+            for payment in items:
+                status = str(payment.get("status") or "").strip().upper()
+                if status in ("CAPTURED", "AUTHORIZED"):
+                    txn_id = str(payment.get("id") or "").strip()
+                    return "TXN_SUCCESS", txn_id
+            return "PENDING", ""
+
+    try:
+        return await asyncio.to_thread(_call)
+    except Exception as exc:
+        logger.warning("razorpay check payment failed: %s", exc)
         return "", ""
 
 
@@ -568,6 +643,9 @@ async def _finalize_credit_request(req: dict, approver: str, *, txn_id: str = ""
             "note": note,
             "approved_by": approver,
             "txn_id": str(txn_id or ""),
+
+
+
             "grant_type": grant_type or str(req.get("grant_type", "") or ""),
         },
     )
@@ -662,6 +740,81 @@ def _spawn_xwallet_poll(request_id: str) -> None:
     if task and not task.done():
         return
     _xwallet_poll_tasks[req_id] = asyncio.create_task(_poll_xwallet_order(req_id))
+
+
+async def _poll_razorpay_order(request_id: str) -> None:
+    try:
+        while True:
+            req = await store.get_payment_request(request_id)
+            if not req:
+                return
+            status = str(req.get("status", "")).strip().lower()
+            if status in PAY_CLOSED_STATUSES:
+                return
+            expires_at = int(req.get("expires_at", 0) or 0)
+            if expires_at > 0 and int(time.time()) >= expires_at:
+                await store.transition_payment_request_status(request_id, ("pending", "processing"), "expired", note="razorpay timeout", admin_id=0)
+                user_id = int(req.get("user_id", 0) or 0)
+                if user_id > 0:
+                    with contextlib.suppress(Exception):
+                        await bot.send_message(user_id, format_msg("⌛ Payment Expired", sections=[("Request ID", code(request_id))], tip="Start /pay again if needed."), parse_mode="HTML")
+                return
+
+            settings_doc = await _get_payment_settings()
+            key_id = str(settings_doc.get("razorpay_key_id") or "").strip()
+            key_secret = str(settings_doc.get("razorpay_key_secret") or "").strip()
+            if not key_id or not key_secret:
+                logger.warning("razorpay poll key secret missing for %s", request_id)
+                await asyncio.sleep(10)
+                continue
+
+            status_str, txn_id = await _razorpay_check_payment(str(req.get("qr_code_id", "") or ""), key_id, key_secret)
+            if status_str == "TXN_SUCCESS":
+                plan_type = str(req.get("plan_type", "credits") or "credits").strip().lower()
+                if _subscription_plan_from_type(plan_type) or plan_type == "premium_30d":
+                    ok, plan_label, expires_at = await _finalize_premium_request(req, "razorpay:auto", txn_id=txn_id, extend_existing=False, grant_type="razorpay", send_tutorial=True)
+                    if ok:
+                        await _broadcast_payment_resolution(
+                            req_id=request_id,
+                            user_id=int(req.get("user_id", 0) or 0),
+                            amount=float(req.get("amount_inr", 0) or 0),
+                            credits=int(req.get("credits", 0) or 0),
+                            plan_type=plan_type,
+                            action="approved",
+                            actor_admin_id=0,
+                            note=f"{plan_label} until {_format_expiry_ts(expires_at)}",
+                        )
+                    return
+                ok, credits_added, balance = await _finalize_credit_request(req, "razorpay:auto", txn_id=txn_id, grant_type="razorpay")
+                if ok:
+                    await _broadcast_payment_resolution(
+                        req_id=request_id,
+                        user_id=int(req.get("user_id", 0) or 0),
+                        amount=float(req.get("amount_inr", 0) or 0),
+                        credits=int(req.get("credits", 0) or 0),
+                        plan_type=plan_type,
+                        action="approved",
+                        actor_admin_id=0,
+                        note=f"{credits_added} credits added. New balance: {balance}",
+                    )
+                return
+            await asyncio.sleep(5)
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:
+        logger.exception("razorpay poll failed for %s: %s", request_id, exc)
+    finally:
+        _razorpay_poll_tasks.pop(str(request_id), None)
+
+
+def _spawn_razorpay_poll(request_id: str) -> None:
+    req_id = str(request_id or "").strip()
+    if not req_id:
+        return
+    task = _razorpay_poll_tasks.get(req_id)
+    if task and not task.done():
+        return
+    _razorpay_poll_tasks[req_id] = asyncio.create_task(_poll_razorpay_order(req_id))
 
 
 def _plan_kb(*, include_premium: bool = True) -> InlineKeyboardMarkup:
@@ -1520,30 +1673,20 @@ async def buy_plan_callback(callback: CallbackQuery, state: FSMContext) -> None:
         )
         return
 
+    req_id = await store.next_payment_request_id()
     gateway = await _resolve_payment_gateway()
-    settings_doc = await _get_payment_settings()
-    req_id = _payment_order_id()
     expires_at = int(time.time()) + ORDER_TIMEOUT_SEC
-    plan_type = _subscription_plan_type(plan.code)
-    await store.create_payment_request(
-        req_id,
-        user_id,
-        plan.amount,
-        0,
-        plan_type=plan_type,
-        gateway=gateway,
-        expires_at=expires_at,
-    )
 
     if gateway == "xwallet":
+        settings_doc = await _get_payment_settings()
         api_key = str(settings_doc.get("xwallet_api_key", "") or "").strip()
         if not api_key:
-            await store.delete_payment_request(req_id)
             await callback.message.reply(
                 format_msg("Gateway Not Ready", sections=[("Gateway", "XWallet"), ("", "Admin must set /setxwalletkey first.")]),
                 parse_mode="HTML",
             )
             return
+        await store.create_payment_request(req_id, user_id, plan.amount, plan.credits, plan_type=plan.plan_type, gateway="xwallet", expires_at=expires_at)
         qr_code_id, payment_link = await _xwallet_create_payment(api_key, plan.amount)
         if not qr_code_id or not payment_link:
             await store.delete_payment_request(req_id)
@@ -1573,6 +1716,52 @@ async def buy_plan_callback(callback: CallbackQuery, state: FSMContext) -> None:
         _spawn_xwallet_poll(req_id)
         return
 
+    if gateway == "razorpay":
+        settings_doc = await _get_payment_settings()
+        key_id = str(settings_doc.get("razorpay_key_id", "") or "").strip()
+        key_secret = str(settings_doc.get("razorpay_key_secret", "") or "").strip()
+        if not key_id or not key_secret:
+            await callback.message.reply(
+                format_msg("Gateway Not Ready", sections=[("Gateway", "Razorpay"), ("", "Admin must set /setrazorpaykeys first.")]),
+                parse_mode="HTML",
+            )
+            return
+        await store.create_payment_request(req_id, user_id, plan.amount, plan.credits, plan_type=plan.plan_type, gateway="razorpay", expires_at=expires_at)
+        username = callback.from_user.username or f"user_{user_id}"
+        qr_code_id, payment_link = await _razorpay_create_payment(key_id, key_secret, plan.amount, username, plan.label)
+        if not qr_code_id or not payment_link:
+            await store.delete_payment_request(req_id)
+            await callback.message.reply(
+                format_msg("❌ Payment Init Failed", sections=[("Gateway", "Razorpay"), ("", "Could not generate UPI QR right now.")]),
+                parse_mode="HTML",
+            )
+            return
+        await store.update_payment_request(req_id, {"status": "processing", "qr_code_id": qr_code_id, "payment_link": payment_link})
+        caption = format_msg(
+            "Scan & Pay via UPI",
+            sections=[
+                ("Request ID", code(req_id)),
+                ("Plan", esc(plan.label)),
+                ("Amount", f"INR {plan.amount:.2f}"),
+                ("Status", "Awaiting Automated Verification..."),
+                ("Expires", esc(_format_expiry_ts(expires_at))),
+            ],
+            tip="Scan the QR Code with any UPI app (GPay, PhonePe, Paytm, BHIM) and complete the payment. Do NOT close this screen; credit will be applied automatically.",
+        )
+        sent = await callback.message.reply_photo(
+            photo=URLInputFile(payment_link, filename="razorpay_qr.png"),
+            caption=caption,
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="❌ Cancel Request", callback_data=f"cxl:{req_id}")]
+            ])
+        )
+        await store.set_payment_prompt(req_id, sent.chat.id, sent.message_id)
+        await _track_payment_message(req_id, sent)
+        _spawn_razorpay_poll(req_id)
+        return
+
+    await store.create_payment_request(req_id, user_id, plan.amount, plan.credits, plan_type=plan.plan_type)
     upi_id = await store.get_upi_id() or "example@upi"
     sent = await callback.message.reply(
         format_msg(
@@ -1592,7 +1781,6 @@ async def buy_plan_callback(callback: CallbackQuery, state: FSMContext) -> None:
     )
     await store.set_payment_prompt(req_id, sent.chat.id, sent.message_id)
     await _track_payment_message(req_id, sent)
-
 
 @dp.callback_query(F.data.startswith("buypaid:"))
 async def buy_paid_callback(callback: CallbackQuery, state: FSMContext) -> None:
@@ -1773,6 +1961,53 @@ async def pay_plan_callback(callback: CallbackQuery, state: FSMContext) -> None:
         await _track_payment_message(req_id, sent)
         _spawn_xwallet_poll(req_id)
         return
+    if gateway == "razorpay":
+        settings_doc = await _get_payment_settings()
+        key_id = str(settings_doc.get("razorpay_key_id", "") or "").strip()
+        key_secret = str(settings_doc.get("razorpay_key_secret", "") or "").strip()
+        if not key_id or not key_secret:
+            await callback.message.reply(
+                format_msg("Gateway Not Ready", sections=[("Gateway", "Razorpay"), ("", "Admin must set /setrazorpaykeys first.")]),
+                parse_mode="HTML",
+            )
+            return
+        expires_at = int(time.time()) + ORDER_TIMEOUT_SEC
+        await store.create_payment_request(req_id, user_id, amount, credits, plan_type=plan_type, gateway="razorpay", expires_at=expires_at)
+        username = callback.from_user.username or f"user_{user_id}"
+        plan_label = _payment_plan_label(plan_type, credits)
+        qr_code_id, payment_link = await _razorpay_create_payment(key_id, key_secret, amount, username, plan_label)
+        if not qr_code_id or not payment_link:
+            await store.delete_payment_request(req_id)
+            await callback.message.reply(
+                format_msg("❌ Payment Init Failed", sections=[("Gateway", "Razorpay"), ("", "Could not generate UPI QR right now.")]),
+                parse_mode="HTML",
+            )
+            return
+        await store.update_payment_request(req_id, {"status": "processing", "qr_code_id": qr_code_id, "payment_link": payment_link})
+        caption = format_msg(
+            "Scan & Pay via UPI",
+            sections=[
+                ("Request ID", code(req_id)),
+                ("Plan", esc(plan_label)),
+                ("Amount", f"INR {amount:.2f}"),
+                ("Status", "Awaiting Automated Verification..."),
+                ("Expires", esc(_format_expiry_ts(expires_at))),
+            ],
+            tip="Scan the QR Code with any UPI app (GPay, PhonePe, Paytm, BHIM) and complete the payment. Do NOT close this screen; credit will be applied automatically.",
+        )
+        sent = await callback.message.reply_photo(
+            photo=URLInputFile(payment_link, filename="razorpay_qr.png"),
+            caption=caption,
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="❌ Cancel Request", callback_data=f"cxl:{req_id}")]
+            ])
+        )
+        await store.set_payment_prompt(req_id, sent.chat.id, sent.message_id)
+        await _track_payment_message(req_id, sent)
+        _spawn_razorpay_poll(req_id)
+        return
+
     await store.create_payment_request(req_id, user_id, amount, credits, plan_type=plan_type)
     await _send_payment_instructions(callback.message.chat.id, req_id, amount, credits, plan_type)
 
@@ -3021,6 +3256,8 @@ async def paysettings_cmd(message: Message) -> None:
         format_msg("💳 Payment Settings", sections=[
             ("Gateway", esc(str(settings_doc.get("payment_gateway", "manual")).title())),
             ("XWallet Key", "Set" if str(settings_doc.get("xwallet_api_key", "")).strip() else "Missing"),
+            ("Razorpay Key ID", "Set" if str(settings_doc.get("razorpay_key_id", "")).strip() else "Missing"),
+            ("Razorpay Secret", "Set" if str(settings_doc.get("razorpay_key_secret", "")).strip() else "Missing"),
             ("Tutorial", "Configured" if int(settings_doc.get("tutorial_message_id", 0) or 0) > 0 else "Not set"),
             ("Earnings", f"INR {_format_money(float(settings_doc.get('total_earnings', 0.0) or 0.0))}"),
         ]),
@@ -3035,7 +3272,7 @@ async def setgateway_cmd(message: Message) -> None:
         return
     parts = (message.text or "").split(maxsplit=1)
     if len(parts) < 2:
-        await message.reply(format_msg("⚠️ Usage", sections=[("", code("/setgateway <manual|xwallet>"))]), parse_mode="HTML")
+        await message.reply(format_msg("⚠️ Usage", sections=[("", code("/setgateway <manual|xwallet|razorpay>"))]), parse_mode="HTML")
         return
     gateway = _resolve_gateway_name(parts[1])
     await store.update_payment_settings({"payment_gateway": gateway})
@@ -3053,6 +3290,30 @@ async def setxwalletkey_cmd(message: Message) -> None:
         return
     await store.update_payment_settings({"xwallet_api_key": parts[1].strip()})
     await message.reply(format_msg("✅ XWallet Key Saved", sections=[("", "Gateway key updated.")]), parse_mode="HTML")
+
+
+@dp.message(Command("setrazorpaykeys"))
+async def setrazorpaykeys_cmd(message: Message) -> None:
+    if not is_admin(message.from_user.id if message.from_user else None):
+        await message.reply(format_msg("Access Denied", sections=[("", "Admins only.")]), parse_mode="HTML")
+        return
+    parts = (message.text or "").split(maxsplit=2)
+    if len(parts) < 3:
+        await message.reply(
+            format_msg("Usage", sections=[("", code("/setrazorpaykeys <key_id> <key_secret>"))]),
+            parse_mode="HTML",
+        )
+        return
+    key_id = parts[1].strip()
+    key_secret = parts[2].strip()
+    if not key_id or not key_secret:
+        await message.reply(
+            format_msg("Usage", sections=[("", code("/setrazorpaykeys <key_id> <key_secret>"))]),
+            parse_mode="HTML",
+        )
+        return
+    await store.update_payment_settings({"razorpay_key_id": key_id, "razorpay_key_secret": key_secret})
+    await message.reply(format_msg("Razorpay Keys Saved", sections=[("", "Gateway keys updated.")]), parse_mode="HTML")
 
 
 @dp.message(Command("settutorial"))
@@ -3546,6 +3807,8 @@ async def _startup() -> None:
         _payment_expiry_task = asyncio.create_task(_expire_pending_payment_requests_loop())
     for row in await store.pending_xwallet_orders(limit=200):
         _spawn_xwallet_poll(str(row.get("id", "")))
+    for row in await store.pending_razorpay_orders(limit=200):
+        _spawn_razorpay_poll(str(row.get("id", "")))
     await _notify_restart()
     logger.info("Bot started (aiogram)")
 
@@ -3564,6 +3827,14 @@ async def _shutdown() -> None:
         with contextlib.suppress(asyncio.CancelledError):
             await poll_task
     _xwallet_poll_tasks.clear()
+
+    for poll_task in list(_razorpay_poll_tasks.values()):
+        poll_task.cancel()
+    for poll_task in list(_razorpay_poll_tasks.values()):
+        with contextlib.suppress(asyncio.CancelledError):
+            await poll_task
+    _razorpay_poll_tasks.clear()
+
     await store.close()
     await db.close()
 
