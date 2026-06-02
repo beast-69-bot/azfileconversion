@@ -1964,3 +1964,84 @@ body.age-gate-open {
   text-align: center;
   padding: var(--space-8) 0;
 }
+
+/* ===== BRAND NEON CYBERPUNK ANIMATIONS ===== */
+
+/* 1. Nebula Cosmic Background Drift */
+@keyframes drift-nebula {
+  0%, 100% {
+    transform: translate(0, 0) scale(1);
+  }
+  33% {
+    transform: translate(3%, 4%) scale(1.04);
+  }
+  66% {
+    transform: translate(-2%, -3%) scale(0.97);
+  }
+}
+body::before {
+  animation: drift-nebula 25s infinite ease-in-out;
+}
+
+/* 2. Top Border Neon Sweep (Header & Hero Card scan lines) */
+@keyframes border-sweep {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 200% 50%;
+  }
+}
+.home-hero::before,
+.site-header::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 1.5px;
+  background: linear-gradient(90deg, transparent, var(--accent), var(--pink-accent), var(--purple-accent), transparent);
+  background-size: 200% 100%;
+  animation: border-sweep 4s infinite linear;
+  z-index: 2;
+}
+
+/* 3. Dynamic Pulsing Neon Dot on Main Title */
+h1#home-title::after {
+  content: " .";
+  background: linear-gradient(135deg, #e11d48, #f43f5e);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: dot-pulse 2s infinite ease-in-out;
+}
+@keyframes dot-pulse {
+  0%, 100% {
+    opacity: 0.35;
+    filter: drop-shadow(0 0 2px var(--accent));
+  }
+  50% {
+    opacity: 1;
+    filter: drop-shadow(0 0 8px var(--accent));
+  }
+}
+
+/* 4. Brand Tagline Breath Glow */
+@keyframes brand-glow {
+  0%, 100% {
+    text-shadow: 0 0 8px rgba(236, 72, 153, 0.25), 0 0 20px rgba(236, 72, 153, 0.1);
+    opacity: 0.85;
+  }
+  50% {
+    text-shadow: 0 0 16px rgba(236, 72, 153, 0.6), 0 0 30px rgba(236, 72, 153, 0.25);
+    opacity: 1;
+  }
+}
+.brand-tagline {
+  animation: brand-glow 3s infinite ease-in-out;
+}
+
+/* 5. Smooth Scroll-reveal enhancements */
+.reveal {
+  will-change: transform, opacity;
+}
+
