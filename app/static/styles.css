@@ -2008,3 +2008,96 @@ body.age-gate-open {
     grid-auto-columns: minmax(240px, 88vw);
   }
 }
+
+/* --- PREMIUM ADDITIONS START --- */
+
+:root {
+  --accent: #7F77DD;
+}
+
+::-webkit-scrollbar {
+  width: 4px;
+}
+::-webkit-scrollbar-thumb {
+  background: #ffffff25;
+  border-radius: 2px;
+}
+
+::selection {
+  background: #7F77DD;
+  color: white;
+}
+
+.channel-card {
+  transition: transform 0.2s ease, border-left 0.2s ease, box-shadow 0.2s ease;
+}
+
+.channel-card:hover {
+  transform: translateY(-2px);
+  border-left: 2px solid var(--accent);
+}
+
+@keyframes pulse-opacity {
+  0%, 100% {
+    opacity: 0.7;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.badge-trending {
+  animation: pulse-opacity 2s infinite ease-in-out;
+}
+
+.preview-wave span:nth-child(1) { animation-delay: 0s; }
+.preview-wave span:nth-child(2) { animation-delay: 0.15s; }
+.preview-wave span:nth-child(3) { animation-delay: 0.3s; }
+.preview-wave span:nth-child(4) { animation-delay: 0.45s; }
+.preview-wave span:nth-child(5) { animation-delay: 0.6s; }
+
+.btn-primary {
+  transition: letter-spacing 0.2s ease, filter 0.2s ease, background-color 0.2s ease;
+}
+
+.btn-primary:hover {
+  letter-spacing: 0.03em;
+  filter: brightness(1.1);
+}
+
+.site-header {
+  transition: border-bottom 0.3s ease, background-color 0.3s ease;
+}
+
+.site-header.scrolled {
+  border-bottom: 0.5px solid rgba(255, 255, 255, 0.08);
+}
+
+@keyframes border-pulse {
+  0% {
+    border-color: rgba(127, 119, 221, 0.2);
+    box-shadow: 0 0 0 0 rgba(127, 119, 221, 0.4);
+  }
+  70% {
+    border-color: rgba(127, 119, 221, 0.6);
+    box-shadow: 0 0 0 8px rgba(127, 119, 221, 0);
+  }
+  100% {
+    border-color: rgba(127, 119, 221, 0.2);
+    box-shadow: 0 0 0 0 rgba(127, 119, 221, 0);
+  }
+}
+
+.preview-shell {
+  border: 1.5px solid rgba(127, 119, 221, 0.2);
+  animation: border-pulse 2s infinite ease-in-out;
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.site-nav a.active {
+  border-bottom: 1.5px solid currentColor;
+}
+
+/* --- PREMIUM ADDITIONS END --- */
+
+

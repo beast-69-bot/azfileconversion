@@ -21,7 +21,7 @@
                     <span class="brand-name">AZ Stream</span>
                     <span class="holi-chip">Editorial Dark</span>
                 </div>
-                <p class="brand-copy">Fast playback, protected delivery, and Telegram-first access in one interface.</p>
+                <p class="brand-copy">Fast delivery. Bot-first access.</p>
             </div>
             <div class="header-rail">
                 <nav class="site-nav" aria-label="Primary navigation">
@@ -29,7 +29,7 @@
                     <a href="/sections">Public sections</a>
                     <a href="/trending">Trending</a>
                 </nav>
-                <span class="status-pill">Archive delivery interface</span>
+                <span class="status-pill">Live archive</span>
                 {% block header_extra %}{% endblock %}
             </div>
         </header>
@@ -39,11 +39,47 @@
         </main>
 
         <footer class="site-footer">
-            <span>Powered by AZ Stream</span>
+            <span>Powered by AZ Stream (<span id="year"></span>)</span>
             <span class="footer-dot" aria-hidden="true"></span>
             <span>Private archive delivery interface</span>
+            <span class="footer-dot" aria-hidden="true"></span>
+            <span>Made for the AZ network</span>
         </footer>
     </div>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            // Mark active navigation link
+            const currentPath = window.location.pathname;
+            const navLinks = document.querySelectorAll(".site-nav a");
+            navLinks.forEach(link => {
+                const href = link.getAttribute("href");
+                if (href === currentPath || (href !== "/" && currentPath.startsWith(href))) {
+                    link.classList.add("active");
+                }
+            });
+
+            // Add scrolled class to header
+            const header = document.querySelector(".site-header");
+            if (header) {
+                const handleScroll = () => {
+                    if (window.scrollY > 20) {
+                        header.classList.add("scrolled");
+                    } else {
+                        header.classList.remove("scrolled");
+                    }
+                };
+                window.addEventListener("scroll", handleScroll);
+                handleScroll(); // Initial check
+            }
+
+            // Set current year
+            const yearSpan = document.getElementById("year");
+            if (yearSpan) {
+                yearSpan.textContent = new Date().getFullYear();
+            }
+        });
+    </script>
 </body>
 
 </html>
