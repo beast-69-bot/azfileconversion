@@ -2045,3 +2045,404 @@ h1#home-title::after {
   will-change: transform, opacity;
 }
 
+/* ===== MOBILE EXPERIENCE REFINEMENT ===== */
+@media (max-width: 900px) {
+  :root {
+    --header-height: auto;
+  }
+
+  body {
+    background:
+      radial-gradient(circle at 50% 0%, rgba(225, 29, 72, 0.16), transparent 34%),
+      linear-gradient(180deg, #020204 0%, #07070c 48%, #020204 100%);
+  }
+
+  body::before {
+    filter: blur(42px);
+    opacity: 0.72;
+  }
+
+  body::after {
+    background-size: 34px 34px;
+    opacity: 0.42;
+  }
+
+  .container {
+    width: 100%;
+    padding: 0 14px;
+  }
+
+  .site-header {
+    position: sticky;
+    top: 0;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+    align-items: stretch;
+    padding: 14px 0 12px;
+    margin: 0 -14px;
+    border-radius: 0;
+    background: rgba(2, 2, 4, 0.92);
+  }
+
+  .brand-lockup {
+    padding: 0 14px;
+    min-width: 0;
+  }
+
+  .brand {
+    min-width: 0;
+    gap: 8px;
+  }
+
+  .brand-name {
+    font-size: 20px;
+    letter-spacing: 0;
+  }
+
+  .brand-prefix,
+  .brand-copy,
+  .status-pill {
+    display: none;
+  }
+
+  .holi-chip {
+    flex: 0 0 auto;
+    padding: 3px 8px;
+    font-size: 8px;
+  }
+
+  .header-rail {
+    display: grid;
+    gap: 10px;
+    width: 100%;
+  }
+
+  .site-nav {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    width: 100%;
+    padding: 0 14px;
+  }
+
+  .site-nav a,
+  .header-action {
+    min-height: 42px;
+    padding: 10px 8px;
+    border-radius: 12px;
+    font-size: 11px;
+    text-align: center;
+    justify-content: center;
+    white-space: normal;
+    line-height: 1.2;
+  }
+
+  .header-action {
+    display: none;
+  }
+
+  .home-hero,
+  .hero-panel,
+  .content-panel,
+  .support-panel,
+  .panel {
+    border-radius: 16px;
+    padding: 18px;
+  }
+
+  .home-hero {
+    margin: 16px 0;
+    gap: 22px;
+  }
+
+  .home-hero-copy h1,
+  h1,
+  .h1 {
+    font-size: 32px;
+    line-height: 1.1;
+    letter-spacing: 0;
+  }
+
+  .lede,
+  .toolbar-copy,
+  .support-head p {
+    font-size: 14px;
+    line-height: 1.55;
+  }
+
+  .actions-row,
+  .age-gate-actions,
+  .support-actions,
+  .trending-actions,
+  .public-section-actions,
+  .section-controls,
+  .file-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+    width: 100%;
+  }
+
+  .actions-row .btn,
+  .support-actions .btn,
+  .trending-actions .btn,
+  .public-section-actions .btn,
+  .section-controls .btn,
+  .file-actions .btn,
+  .age-gate-actions .btn {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .btn {
+    min-height: 46px;
+    height: auto;
+    padding: 12px 14px;
+    border-radius: 12px;
+    white-space: normal;
+    line-height: 1.25;
+  }
+
+  .home-metrics,
+  .hero-grid,
+  .section-toolbar,
+  .route-grid,
+  .player-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .home-metrics {
+    gap: 12px;
+  }
+
+  .home-metrics > div.metric-card {
+    min-height: auto;
+    padding: 16px;
+  }
+
+  .preview-shell {
+    min-height: 310px;
+  }
+
+  .preview-stack {
+    grid-template-columns: 1fr;
+  }
+
+  .hero-grid {
+    align-items: stretch;
+    gap: 18px;
+  }
+
+  .hero-stats,
+  .meta-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .meta-box {
+    min-height: 84px;
+    padding: 12px;
+  }
+
+  .meta-label {
+    font-size: 10px;
+    letter-spacing: 0.08em;
+  }
+
+  .meta-value {
+    font-size: 15px;
+  }
+
+  .chip-row,
+  .section-meta {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 2px;
+    scrollbar-width: none;
+  }
+
+  .chip-row::-webkit-scrollbar,
+  .section-meta::-webkit-scrollbar {
+    display: none;
+  }
+
+  .chip {
+    flex: 0 0 auto;
+    min-height: 38px;
+    padding: 9px 12px;
+    font-size: 12px;
+    border-radius: 12px;
+  }
+
+  .section-toolbar {
+    align-items: stretch;
+  }
+
+  .section-controls {
+    gap: 10px;
+  }
+
+  .control-field {
+    width: 100%;
+  }
+
+  .form-select,
+  input,
+  select {
+    width: 100%;
+    min-height: 46px;
+    font-size: 16px;
+  }
+
+  .public-section-card,
+  .file-card,
+  .trending-card {
+    border-radius: 16px;
+    padding: 16px;
+  }
+
+  .public-section-card,
+  .file-card {
+    display: grid;
+    grid-template-columns: 1fr;
+    align-items: stretch;
+    gap: 14px;
+  }
+
+  .file-card-main {
+    gap: 12px;
+  }
+
+  .file-index {
+    min-width: 42px;
+    min-height: 42px;
+    border-radius: 12px;
+    font-size: 13px;
+  }
+
+  .file-topline {
+    gap: 8px;
+  }
+
+  .file-name,
+  .trending-body strong,
+  .public-section-card strong {
+    font-size: 15px;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+  }
+
+  .file-meta {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 4px;
+    font-size: 12px;
+  }
+
+  .file-actions {
+    justify-content: stretch;
+    gap: 10px;
+  }
+
+  .pagination {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+    text-align: center;
+  }
+
+  .pagination-summary {
+    order: -1;
+  }
+
+  .page-link {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .trending-card-row,
+  .channel-grid,
+  .public-section-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .trending-gallery {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(220px, 82vw);
+    overflow-x: auto;
+  }
+
+  .trending-media {
+    width: 100%;
+  }
+
+  .support-head {
+    align-items: stretch;
+  }
+
+  .site-footer {
+    display: grid;
+    gap: 8px;
+    padding: 20px 12px;
+    text-align: center;
+  }
+
+  .footer-dot {
+    display: none;
+  }
+
+  .age-gate {
+    padding: 16px;
+  }
+
+  .age-gate-card {
+    padding: 22px;
+    border-radius: 18px;
+  }
+}
+
+@media (max-width: 420px) {
+  .container {
+    padding: 0 10px;
+  }
+
+  .site-header {
+    margin-inline: -10px;
+  }
+
+  .site-nav {
+    padding: 0 10px;
+    gap: 6px;
+  }
+
+  .site-nav a {
+    font-size: 10px;
+    padding-inline: 6px;
+  }
+
+  .home-hero,
+  .hero-panel,
+  .content-panel,
+  .support-panel,
+  .panel {
+    padding: 14px;
+  }
+
+  .home-hero-copy h1,
+  h1,
+  .h1 {
+    font-size: 28px;
+  }
+
+  .hero-stats,
+  .meta-strip {
+    grid-template-columns: 1fr;
+  }
+
+  .file-card-main {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+}
