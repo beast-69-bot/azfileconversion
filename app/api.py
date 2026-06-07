@@ -6,9 +6,10 @@ import mimetypes
 import secrets
 from typing import AsyncGenerator, Optional
 from urllib.parse import urlencode
+from xml.sax.saxutils import escape
 
 from fastapi import FastAPI, Form, Header, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pyrogram import Client
@@ -49,6 +50,24 @@ _client_lock = asyncio.Lock()
 _warm_lock = asyncio.Lock()
 
 
+def canonical_url(path: str = "/") -> str:
+    clean_path = "/" + path.lstrip("/")
+    if clean_path != "/":
+        clean_path = clean_path.rstrip("/")
+    return f"{settings.base_url}{clean_path}"
+
+
+def xml_url(location: str, priority: str, changefreq: str = "daily") -> str:
+    safe_location = escape(location, {'"': "&quot;"})
+    return (
+        "  <url>\n"
+        f"    <loc>{safe_location}</loc>\n"
+        f"    <changefreq>{changefreq}</changefreq>\n"
+        f"    <priority>{priority}</priority>\n"
+        "  </url>"
+    )
+
+
 @app.middleware("http")
 async def add_cache_headers(request: Request, call_next):
     response = await call_next(request)
@@ -84,6 +103,7 @@ async def root(request: Request):
             "bot_ready": bool(settings.bot_username),
             "site_visits_total": 0,
             "site_visits_text": "0",
+            "canonical_url": canonical_url("/"),
         },
     )
     if not visitor_cookie:
@@ -110,7 +130,11 @@ async def public_sections(request: Request):
     return templates.TemplateResponse(
         request=request,
         name="public_sections.html",
-        context={"request": request, "section_cards": section_cards},
+        context={
+            "request": request,
+            "section_cards": section_cards,
+            "canonical_url": canonical_url("/sections"),
+        },
     )
 
 
@@ -144,7 +168,12 @@ async def trending_page(request: Request):
     return templates.TemplateResponse(
         request=request,
         name="trending.html",
-        context={"request": request, "trending_rows": rows, "total_items": len(items)},
+        context={
+            "request": request,
+            "trending_rows": rows,
+            "total_items": len(items),
+            "canonical_url": canonical_url("/trending"),
+        },
     )
 
 
@@ -209,6 +238,46 @@ async def trending_media(item_id: str, media_index: int, range: Optional[str] = 
 @app.get("/health")
 async def health():
     return {"status": "healthy"}
+
+
+@app.get("/robots.txt", include_in_schema=False)
+async def robots_txt():
+    body = "\n".join(
+        [
+            "User-agent: *",
+            "Allow: /",
+            "Disallow: /stream/",
+            "Disallow: /download/",
+            "Disallow: /player/",
+            f"Sitemap: {canonical_url('/sitemap.xml')}",
+            "",
+        ]
+    )
+    return Response(content=body, media_type="text/plain; charset=utf-8")
+
+
+@app.get("/sitemap.xml", include_in_schema=False)
+async def sitemap_xml():
+    urls = [
+        xml_url(canonical_url("/"), "1.0"),
+        xml_url(canonical_url("/sections"), "0.8"),
+        xml_url(canonical_url("/trending"), "0.8"),
+    ]
+    try:
+        rows = await store.list_public_sections()
+    except Exception:
+        rows = []
+    for _, section_id in rows:
+        if section_id:
+            urls.append(xml_url(canonical_url(f"/section/{section_id}"), "0.7", "weekly"))
+
+    body = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+        + "\n".join(urls)
+        + "\n</urlset>\n"
+    )
+    return Response(content=body, media_type="application/xml; charset=utf-8")
 
 
 @app.get("/favicon.ico", include_in_schema=False)
@@ -702,6 +771,7 @@ async def render_section(section_id: str, access_filter: str, request: Request) 
             "request": request,
             "section_id": section_id,
             "base_url": settings.base_url,
+            "canonical_url": canonical_url(f"/section/{section_id}"),
             "total_items": total_items,
             "section_views_total": section_views_total,
             "section_views_unique": section_views_unique,

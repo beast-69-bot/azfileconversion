@@ -5,6 +5,12 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{% block title %}AZ Stream{% endblock %}</title>
+    <meta name="description" content="{% block meta_description %}AzhawaSadda is an adults-only private stream archive with public sections, trending media, and Telegram bot delivery.{% endblock %}" />
+    <meta name="robots" content="{% block robots %}index, follow, max-image-preview:large{% endblock %}" />
+    <meta name="rating" content="adult" />
+    {% if canonical_url is defined %}
+    <link rel="canonical" href="{{ canonical_url }}" />
+    {% endif %}
     <link rel="icon" type="image/svg+xml" href="/static/favicon.svg" />
     <link rel="shortcut icon" href="/favicon.ico" />
     <meta name="theme-color" content="#030305" />
