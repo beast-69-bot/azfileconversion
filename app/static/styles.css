@@ -85,7 +85,7 @@
   --transition-bounce: 0.48s cubic-bezier(0.34, 1.56, 0.64, 1);
 
   /* Typography */
-  --font-sans: 'Outfit', 'Plus Jakarta Sans', 'Inter', sans-serif;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
 
   /* Grid System */
@@ -2633,5 +2633,57 @@ h1#home-title::after {
     display: grid !important;
     grid-template-columns: 1fr !important;
     gap: 3px !important;
+  }
+}
+
+/* Performance pass: reduce paint-heavy effects on mobile and respect motion settings. */
+@media (hover: none) and (pointer: coarse), (max-width: 700px), (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  body::before {
+    animation: none !important;
+    filter: blur(18px) !important;
+    opacity: 0.45 !important;
+  }
+
+  .card,
+  .panel,
+  .home-hero,
+  .site-header,
+  .age-gate,
+  .age-gate-card,
+  .glass,
+  .glass-strong {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+
+  .card:hover,
+  .panel:hover,
+  .file-card:hover,
+  .trending-card:hover,
+  .public-section-card:hover,
+  .channel-card:hover,
+  .btn:hover,
+  .route-card:hover {
+    transform: none !important;
+  }
+
+  .card,
+  .panel,
+  .home-hero,
+  .file-card,
+  .trending-card,
+  .public-section-card,
+  .channel-card,
+  .site-header {
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.42) !important;
   }
 }

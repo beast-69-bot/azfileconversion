@@ -13,6 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pyrogram import Client
 from pyrogram.errors import FloodWait
+from starlette.middleware.gzip import GZipMiddleware
 
 from app.config import get_settings
 from app.mongo_store import MongoTokenStore
@@ -26,6 +27,7 @@ store = (
 )
 
 app = FastAPI()
+app.add_middleware(GZipMiddleware, minimum_size=1024)
 
 # --- Jinja2 Templates + Static Files ---
 templates = Jinja2Templates(directory="app/templates")
@@ -47,15 +49,32 @@ _client_lock = asyncio.Lock()
 _warm_lock = asyncio.Lock()
 
 
+@app.middleware("http")
+async def add_cache_headers(request: Request, call_next):
+    response = await call_next(request)
+    path = request.url.path
+    if path.startswith("/static/"):
+        response.headers.setdefault("Cache-Control", "public, max-age=31536000, immutable")
+    elif path == "/favicon.ico":
+        response.headers.setdefault("Cache-Control", "public, max-age=86400")
+    elif request.method == "GET" and response.headers.get("content-type", "").startswith("text/html"):
+        response.headers.setdefault("Cache-Control", "public, max-age=60")
+    return response
+
+
+async def register_site_visit_safely(visitor_id: str) -> None:
+    try:
+        await store.register_site_visit(visitor_id)
+    except Exception:
+        return
+
+
 @app.get("/", response_class=HTMLResponse)
 async def root(request: Request):
     bot_link = f"https://t.me/{settings.bot_username}" if settings.bot_username else "#"
     visitor_cookie = request.cookies.get("site_visitor_id")
     visitor_id = visitor_cookie or secrets.token_hex(16)
-    try:
-        site_visits_total = await store.register_site_visit(visitor_id)
-    except Exception:
-        site_visits_total = 0
+    asyncio.create_task(register_site_visit_safely(visitor_id))
     response = templates.TemplateResponse(
         request=request,
         name="home.html",
@@ -63,8 +82,8 @@ async def root(request: Request):
             "request": request,
             "bot_link": bot_link,
             "bot_ready": bool(settings.bot_username),
-            "site_visits_total": site_visits_total,
-            "site_visits_text": f"{site_visits_total:,}",
+            "site_visits_total": 0,
+            "site_visits_text": "0",
         },
     )
     if not visitor_cookie:
