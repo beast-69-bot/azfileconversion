@@ -86,6 +86,81 @@
             }
         });
     </script>
+
+    <!-- Movie Bot 3-Hour Verification & Adsterra Monetization Widget -->
+    <div id="verify-overlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.9); z-index:999999; justify-content:center; align-items:center; flex-direction:column; color:#fff; font-family:sans-serif; text-align:center; padding:20px;">
+        <div style="background:#1e1e1e; border: 1px solid #333; padding:30px; border-radius:15px; max-width:450px; width:90%; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
+            <h2 style="margin:0 0 15px 0; color:#4e9af1;">🔐 Bot Access Verification</h2>
+            <p style="margin:0 0 20px 0; color:#bbb; font-size:14px;">Please wait 10 seconds while we verify your access. Ads will load below.</p>
+            
+            <!-- Adsterra 300x250 Banner Ad Placement -->
+            <div id="adsterra-ad-container" style="min-height:250px; margin-bottom:20px; background:#121212; display:flex; align-items:center; justify-content:center; border-radius:8px; border:1px dashed #444;">
+                <div id="adsterra-banner">
+                    <!-- Adsterra 300x250 Ad Script -->
+                    <script type="text/javascript">
+                        atOptions = {
+                            'key' : '42a27b95e3a9b56ead80e085e7995838',
+                            'format' : 'iframe',
+                            'height' : 250,
+                            'width' : 300,
+                            'params' : {}
+                        };
+                    </script>
+                    <script type="text/javascript" src="https://www.highperformanceformat.com/42a27b95e3a9b56ead80e085e7995838/invoke.js"></script>
+                </div>
+            </div>
+
+            <div id="timer-box" style="font-size:24px; font-weight:bold; margin-bottom:20px; color:#ff7675;">
+                10 seconds remaining...
+            </div>
+            <button id="verify-btn" disabled style="background:#55efc4; color:#2d3436; border:none; padding:12px 30px; font-size:16px; font-weight:bold; border-radius:8px; cursor:not-allowed; opacity:0.5; transition: 0.3s;">
+                Please Wait...
+            </button>
+        </div>
+    </div>
+
+    <script>
+    (function() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const token = urlParams.get('token');
+        const user = urlParams.get('user');
+        const bot = urlParams.get('bot') || 'azmovieadda1bot';
+
+        if (token && user) {
+            const overlay = document.getElementById('verify-overlay');
+            overlay.style.display = 'flex';
+
+            const popunderScript = document.createElement('script');
+            popunderScript.src = "https://pl30206606.effectivecpmnetwork.com/49/ab/7d/49ab7dfb108993d1f4f8ec013d1e453c.js";
+            document.body.appendChild(popunderScript);
+
+            let count = 10;
+            const timerBox = document.getElementById('timer-box');
+            const verifyBtn = document.getElementById('verify-btn');
+
+            const interval = setInterval(() => {
+                count--;
+                if (count > 0) {
+                    timerBox.innerText = count + " seconds remaining...";
+                } else {
+                    clearInterval(interval);
+                    timerBox.style.display = 'none';
+                    verifyBtn.innerText = "👉 Click to Complete Verification";
+                    verifyBtn.disabled = false;
+                    verifyBtn.style.opacity = "1";
+                    verifyBtn.style.cursor = "pointer";
+                    verifyBtn.style.background = "#00b894";
+                    verifyBtn.style.color = "#fff";
+                }
+            }, 1000);
+
+            verifyBtn.addEventListener('click', () => {
+                window.location.href = `https://t.me/${bot}?start=verify_${token}`;
+            });
+        }
+    })();
+    </script>
+    <!-- End Widget -->
 </body>
 
 </html>
