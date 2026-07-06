@@ -596,6 +596,309 @@
         font-weight: 600;
     }
 
+    /* Modal Styles */
+    .modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(3, 3, 7, 0.7);
+        backdrop-filter: blur(15px);
+        z-index: 10000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.3s ease;
+        padding: 20px;
+    }
+
+    .modal-overlay.open {
+        opacity: 1;
+        pointer-events: auto;
+    }
+
+    .modal-container {
+        background: rgba(20, 20, 35, 0.85);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 24px;
+        width: 100%;
+        max-width: 850px;
+        position: relative;
+        padding: 40px 30px 30px 30px;
+        box-shadow: 0 25px 50px rgba(0,0,0,0.6), 0 0 40px rgba(138, 43, 226, 0.15);
+        transform: scale(0.9);
+        transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+        backdrop-filter: blur(25px);
+    }
+
+    .modal-overlay.open .modal-container {
+        transform: scale(1);
+    }
+
+    .modal-close {
+        position: absolute;
+        top: 20px;
+        right: 20px;
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        color: #fff;
+        font-size: 24px;
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.2s ease;
+        z-index: 10010;
+    }
+
+    .modal-close:hover {
+        background: rgba(255, 255, 255, 0.1);
+        border-color: rgba(255, 255, 255, 0.2);
+        color: var(--color-danger);
+    }
+
+    .modal-content {
+        display: grid;
+        grid-template-columns: 1.2fr 1fr;
+        gap: 30px;
+    }
+
+    @media (max-width: 768px) {
+        .modal-content {
+            grid-template-columns: 1fr;
+        }
+        .modal-container {
+            padding: 30px 20px;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+    }
+
+    .modal-bot-header {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        margin-bottom: 20px;
+    }
+
+    .modal-bot-icon {
+        width: 56px;
+        height: 56px;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 28px;
+        background: var(--modal-theme-gradient, linear-gradient(135deg, #8a2be2 0%, #6366f1 100%));
+    }
+
+    .modal-bot-cat {
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        color: var(--modal-theme-color, #8a2be2);
+    }
+
+    .modal-bot-name {
+        font-family: 'Outfit', sans-serif;
+        font-size: 24px;
+        font-weight: 800;
+        color: #fff;
+    }
+
+    .modal-bot-desc {
+        font-size: 14px;
+        color: var(--text-cyber-muted);
+        line-height: 1.6;
+        margin-bottom: 24px;
+    }
+
+    .modal-features-section h4, .modal-right h4 {
+        font-family: 'Outfit', sans-serif;
+        font-size: 16px;
+        font-weight: 700;
+        color: #fff;
+        margin-bottom: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .modal-features-section ul {
+        list-style: none;
+    }
+
+    .modal-features-section li {
+        font-size: 13px;
+        color: var(--text-cyber-muted);
+        margin-bottom: 8px;
+        position: relative;
+        padding-left: 20px;
+    }
+
+    .modal-features-section li::before {
+        content: "✦";
+        position: absolute;
+        left: 0;
+        color: var(--modal-theme-color, #00f2fe);
+    }
+
+    /* Comparison Table Styling */
+    .plans-table-wrapper {
+        width: 100%;
+        background: rgba(0, 0, 0, 0.2);
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        border-radius: 12px;
+        overflow: hidden;
+        margin-bottom: 24px;
+    }
+
+    .plans-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+    }
+
+    .plans-table th {
+        background: rgba(255, 255, 255, 0.03);
+        padding: 12px;
+        text-align: left;
+        color: #fff;
+        font-weight: 700;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .plans-table td {
+        padding: 12px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+        color: var(--text-cyber-muted);
+    }
+
+    .plans-table tr:last-child td {
+        border-bottom: none;
+    }
+
+    .plan-badge {
+        font-size: 10px;
+        font-weight: 700;
+        padding: 2px 6px;
+        border-radius: 4px;
+        text-transform: uppercase;
+    }
+
+    .plan-badge-free {
+        background: rgba(255, 255, 255, 0.05);
+        color: #ccc;
+    }
+
+    .plan-badge-vip {
+        background: rgba(255, 184, 0, 0.1);
+        color: #ffb800;
+        border: 1px solid rgba(255, 184, 0, 0.2);
+    }
+
+    /* Coming Soon / Launching Soon Button */
+    .coming-soon-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        width: 100%;
+        background: rgba(255, 255, 255, 0.01) !important;
+        border: 1px solid rgba(255, 255, 255, 0.04) !important;
+        color: rgba(255, 255, 255, 0.3) !important;
+        padding: 12px 20px;
+        border-radius: 12px;
+        font-weight: 700;
+        font-size: 13px;
+        text-decoration: none;
+        cursor: pointer;
+        position: relative;
+        box-shadow: inset 0 0 10px rgba(255, 255, 255, 0.02) !important;
+        transition: all 0.3s ease;
+    }
+
+    .coming-soon-btn:hover {
+        background: rgba(255, 255, 255, 0.03) !important;
+        border-color: rgba(255, 255, 255, 0.1) !important;
+    }
+
+    .coming-soon-btn svg {
+        width: 14px;
+        height: 14px;
+        opacity: 0.3;
+    }
+
+    /* Tooltip container styling */
+    .tooltip-container {
+        position: relative;
+        width: 100%;
+    }
+
+    .tooltip-text {
+        visibility: hidden;
+        width: 240px;
+        background: #0b0b14;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        color: #fff;
+        text-align: center;
+        border-radius: 8px;
+        padding: 10px;
+        position: absolute;
+        z-index: 100;
+        bottom: 125%;
+        left: 50%;
+        transform: translateX(-50%) translateY(10px);
+        opacity: 0;
+        transition: all 0.3s cubic-bezier(0.165, 0.84, 0.44, 1);
+        font-size: 12px;
+        line-height: 1.4;
+        pointer-events: none;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.6);
+        backdrop-filter: blur(10px);
+    }
+
+    .tooltip-container:hover .tooltip-text {
+        visibility: visible;
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+    }
+
+    .modal-launch-btn {
+        width: 100%;
+        background: linear-gradient(135deg, rgba(138, 43, 226, 0.1) 0%, rgba(0, 242, 254, 0.1) 100%);
+        border: 1px solid rgba(0, 242, 254, 0.2);
+        color: #00f2fe;
+        padding: 14px 20px;
+        border-radius: 12px;
+        font-weight: 700;
+        font-size: 15px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        cursor: not-allowed;
+    }
+
+    .pulse-dot {
+        width: 8px;
+        height: 8px;
+        background-color: #00f2fe;
+        border-radius: 50%;
+        box-shadow: 0 0 10px #00f2fe;
+        animation: pulse-glow 1.5s infinite;
+    }
+
+    .hub-bot-card {
+        cursor: pointer;
+    }
+
     /* Responsive */
     @media (max-width: 768px) {
         .hero-title {
@@ -833,7 +1136,15 @@
             💖 Auto Request Join Enabled – Your request will be approved instantly! 💯<br>
             <span style="font-size: 12px; color: var(--text-cyber-muted); margin-top: 6px; display: inline-block;">➖ Regards: @Az_Mods_Adda ➖</span>
         </div>
-    </section>
+    <!-- Summary & Plans Modal -->
+    <div id="botDetailModal" class="modal-overlay">
+        <div class="modal-container">
+            <button class="modal-close" id="closeModalBtn">&times;</button>
+            <div class="modal-content" id="modalContentArea">
+                <!-- Content will be rendered dynamically via JS -->
+            </div>
+        </div>
+    </div>
 </div>
 
 <script>
@@ -873,7 +1184,16 @@
                     gradient: "linear-gradient(135deg, #a855f7 0%, #7c3aed 100%)",
                     shadow: "rgba(124, 58, 237, 0.4)",
                     color: "#a855f7"
-                }
+                },
+                features: [
+                    "Control all network bots from one command center",
+                    "Manage user access and authorization databases",
+                    "Send network-wide broadcast alerts and notification pings",
+                    "Monitor real-time system logs and CPU/RAM health metrics"
+                ],
+                plans: [
+                    { tier: "Admin Only", detail: "Private Admin Access" }
+                ]
             },
             {
                 name: "Movies Search & Download Bot",
@@ -888,7 +1208,17 @@
                     gradient: "linear-gradient(135deg, #00f2fe 0%, #4facfe 100%)",
                     shadow: "rgba(0, 242, 254, 0.4)",
                     color: "#00f2fe"
-                }
+                },
+                features: [
+                    "Auto-filter and search movies directly in groups",
+                    "Generate instant direct streamable/download links",
+                    "Multiple resolution qualities available (480p, 720p, 1080p)",
+                    "Fast multi-threaded server routing for lag-free playback"
+                ],
+                plans: [
+                    { tier: "Free Tier", detail: "3 searches/day, normal speed, contains ads" },
+                    { tier: "VIP Plan", detail: "Unlimited search, instant links, high-speed servers, ad-free" }
+                ]
             },
             {
                 name: "AZ Source / VVIP Premium Content Bot",
@@ -903,7 +1233,17 @@
                     gradient: "linear-gradient(135deg, #ec4899 0%, #f43f5e 100%)",
                     shadow: "rgba(244, 63, 94, 0.4)",
                     color: "#ec4899"
-                }
+                },
+                features: [
+                    "Priority premium stream routes bypassing default paths",
+                    "Exclusive access to VVIP drops and verified uploads",
+                    "Secure double-encrypted private vault archive folders",
+                    "Automated Telegram channel content feed synchronization"
+                ],
+                plans: [
+                    { tier: "Free Tier", detail: "No access to VVIP vaults" },
+                    { tier: "VIP Plan", detail: "Full access to premium databases, custom streams & vault archives" }
+                ]
             },
             {
                 name: "Faphouse Helper Bot",
@@ -918,7 +1258,17 @@
                     gradient: "linear-gradient(135deg, #f97316 0%, #ef4444 100%)",
                     shadow: "rgba(239, 68, 68, 0.4)",
                     color: "#f97316"
-                }
+                },
+                features: [
+                    "Bypass default Faphouse stream time limit caps",
+                    "Direct MP4 stream link extractor for immediate viewing",
+                    "Download completely sanitized media (no pop-up ads/redirects)",
+                    "Auto-sorting by actors, categories, and resolution parameters"
+                ],
+                plans: [
+                    { tier: "Free Tier", detail: "Standard quality streams, limited daily downloads" },
+                    { tier: "VIP Plan", detail: "Ultra HD streaming, unlimited instant downloads, automated scraper access" }
+                ]
             },
             {
                 name: "Brazzers Cleaner Utility",
@@ -933,7 +1283,17 @@
                     gradient: "linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)",
                     shadow: "rgba(59, 130, 246, 0.4)",
                     color: "#3b82f6"
-                }
+                },
+                features: [
+                    "Scrub meta tags, unwanted URL embeds, and original filenames",
+                    "Format titles automatically using preset network patterns",
+                    "Generate neat clean feeds suitable for clean group posting",
+                    "Optimize preview trailer links and crop watermarks"
+                ],
+                plans: [
+                    { tier: "Free Tier", detail: "Limited cleans/day, manual upload only" },
+                    { tier: "VIP Plan", detail: "Automated API feed integration, unlimited batch cleaning" }
+                ]
             },
             {
                 name: "Mega Downloader Bot",
@@ -948,7 +1308,17 @@
                     gradient: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
                     shadow: "rgba(16, 185, 129, 0.4)",
                     color: "#10b981"
-                }
+                },
+                features: [
+                    "Input Mega.nz links and fetch files directly into Telegram",
+                    "Bypass the strict Mega daily bandwidth transfer limits",
+                    "High-speed server mirroring over Gigabit connection pipes",
+                    "Automatic file compression & segmenting for large archives"
+                ],
+                plans: [
+                    { tier: "Free Tier", detail: "Max file size 500MB, slow queue speed" },
+                    { tier: "VIP Plan", detail: "Max file size 4GB, parallel downloads, priority processing queue" }
+                ]
             },
             {
                 name: "Mega Renamer / File Renamer Bot",
@@ -963,7 +1333,17 @@
                     gradient: "linear-gradient(135deg, #eab308 0%, #ca8a04 100%)",
                     shadow: "rgba(234, 179, 8, 0.4)",
                     color: "#eab308"
-                }
+                },
+                features: [
+                    "Auto-rename file titles using custom prefixes, suffixes, and tags",
+                    "Attach custom media thumbnail previews automatically",
+                    "Batch file rename queueing capabilities",
+                    "Format media metadata tags for audio, video, and PDF formats"
+                ],
+                plans: [
+                    { tier: "Free Tier", detail: "Default naming format presets, max 500MB limit" },
+                    { tier: "VIP Plan", detail: "Custom prefix/suffix headers, custom thumbnail, no size restrictions" }
+                ]
             },
             {
                 name: "Thumbnail Capture / Generator Bot",
@@ -978,12 +1358,105 @@
                     gradient: "linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)",
                     shadow: "rgba(6, 182, 212, 0.4)",
                     color: "#06b6d4"
-                }
+                },
+                features: [
+                    "Extract video keyframes and compile screenshot grid templates",
+                    "Customizable grid sizes (e.g. 3x3, 4x4, 5x5 thumbnails)",
+                    "Fast video frame processing with GPU decoding assistance",
+                    "Watermark and metadata injection onto generated preview sheets"
+                ],
+                plans: [
+                    { tier: "Free Tier", detail: "Default grid size (3x3), standard resolution grids" },
+                    { tier: "VIP Plan", detail: "Custom grid configurations, HD output, custom header/footer text" }
+                ]
             }
         ];
 
         const hubGrid = document.getElementById("hubGrid");
         const hubTabButtons = document.querySelectorAll("#hubTabs .hub-tab-btn");
+
+        // Modal Elements
+        const modal = document.getElementById("botDetailModal");
+        const closeModalBtn = document.getElementById("closeModalBtn");
+        const modalContentArea = document.getElementById("modalContentArea");
+
+        function openModal(bot) {
+            if (!modal || !modalContentArea) return;
+
+            const plansRows = bot.plans.map(p => `
+                <tr>
+                    <td><span class="plan-badge ${p.tier.includes('VIP') || p.tier.includes('Admin') ? 'plan-badge-vip' : 'plan-badge-free'}">${p.tier}</span></td>
+                    <td>${p.detail}</td>
+                </tr>
+            `).join('');
+
+            const featuresItems = bot.features.map(f => `
+                <li>${f}</li>
+            `).join('');
+
+            modalContentArea.innerHTML = `
+                <div class="modal-left">
+                    <div class="modal-bot-header">
+                        <div class="modal-bot-icon" style="background: ${bot.theme.gradient}; box-shadow: 0 4px 12px ${bot.theme.shadow}">${bot.icon}</div>
+                        <div>
+                            <span class="modal-bot-cat" style="color: ${bot.theme.color}">${bot.categoryLabel}</span>
+                            <h3 class="modal-bot-name">${bot.name}</h3>
+                        </div>
+                    </div>
+                    <p class="modal-bot-desc">${bot.desc}</p>
+                    <div class="modal-features-section">
+                        <h4 style="border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 8px;">Advanced Features</h4>
+                        <ul style="margin-top: 12px; display: flex; flex-direction: column; gap: 8px;">
+                            ${featuresItems}
+                        </ul>
+                    </div>
+                </div>
+                <div class="modal-right" style="display: flex; flex-direction: column; justify-content: space-between;">
+                    <div>
+                        <h4 style="border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 8px;">Subscription Tiers</h4>
+                        <div class="plans-table-wrapper" style="margin-top: 12px;">
+                            <table class="plans-table">
+                                <thead>
+                                    <tr>
+                                        <th>Plan</th>
+                                        <th>Access Details</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${plansRows}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="modal-launch-btn-container" style="margin-top: 20px;">
+                        <button class="modal-launch-btn" style="border-color: ${bot.theme.color}40; color: ${bot.theme.color}">
+                            <span class="pulse-dot" style="background-color: ${bot.theme.color}; box-shadow: 0 0 10px ${bot.theme.color}"></span> Launching Soon...
+                        </button>
+                    </div>
+                </div>
+            `;
+
+            modal.classList.add("open");
+        }
+
+        function closeModal() {
+            if (modal) {
+                modal.classList.remove("open");
+            }
+        }
+
+        if (closeModalBtn) {
+            closeModalBtn.addEventListener("click", closeModal);
+        }
+
+        // Close Modal when clicking outside the container
+        if (modal) {
+            modal.addEventListener("click", function (e) {
+                if (e.target === modal) {
+                    closeModal();
+                }
+            });
+        }
 
         function renderHub(category = "all") {
             if (!hubGrid) return;
@@ -1011,14 +1484,21 @@
                         <p class="bot-card-desc">${bot.desc}</p>
                     </div>
                     <div class="bot-card-bottom">
-                        <a href="https://t.me/${bot.username}" target="_blank" rel="noopener" class="bot-card-btn">
-                            Launch Bot
-                            <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69.01-.03.01-.14-.07-.2-.08-.06-.19-.04-.27-.02-.12.02-1.96 1.24-5.54 3.65-.52.36-.99.53-1.42.52-.47-.01-1.37-.27-2.04-.49-.82-.27-1.47-.41-1.42-.87.03-.24.36-.49.99-.75 3.89-1.69 6.49-2.8 7.8-3.32 3.71-1.47 4.48-1.73 4.98-1.74.11 0 .36.03.52.16.14.11.18.27.2.42.01.12.01.25 0 .36z"/>
-                            </svg>
-                        </a>
+                        <div class="tooltip-container" onclick="event.stopPropagation();">
+                            <div class="coming-soon-btn" style="border-color: ${bot.theme.color}20 !important;">
+                                <span style="font-weight: 700;">Coming Soon</span>
+                                <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" style="fill: ${bot.theme.color}; opacity: 0.7;">
+                                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69.01-.03.01-.14-.07-.2-.08-.06-.19-.04-.27-.02-.12.02-1.96 1.24-5.54 3.65-.52.36-.99.53-1.42.52-.47-.01-1.37-.27-2.04-.49-.82-.27-1.47-.41-1.42-.87.03-.24.36-.49.99-.75 3.89-1.69 6.49-2.8 7.8-3.32 3.71-1.47 4.48-1.73 4.98-1.74.11 0 .36.03.52.16.14.11.18.27.2.42.01.12.01.25 0 .36z"/>
+                                </svg>
+                            </div>
+                            <span class="tooltip-text">This bot is currently undergoing setup. Launching soon!</span>
+                        </div>
                     </div>
                 `;
+
+                // Card Click opens summary modal
+                card.addEventListener("click", () => openModal(bot));
+
                 hubGrid.appendChild(card);
             });
         }
