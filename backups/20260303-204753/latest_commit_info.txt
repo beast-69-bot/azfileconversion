@@ -1,0 +1,4 @@
+325ff016f72d5d3a0e8a48ebc0ef093c01e5fc5e
+2026-03-01 11:39:05 +0530
+Anxhu
+feat: thumbnail support for delivered media (/setthumbnail, /thumbnail, /delthumbnail)

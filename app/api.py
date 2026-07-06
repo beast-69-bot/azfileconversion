@@ -1,4 +1,4 @@
-﻿import asyncio
+import asyncio
 import hashlib
 import hmac
 import math
@@ -109,6 +109,20 @@ async def root(request: Request):
     if not visitor_cookie:
         response.set_cookie("site_visitor_id", visitor_id, httponly=True, max_age=60 * 60 * 24 * 365, samesite="lax")
     return response
+
+
+@app.get("/bots", response_class=HTMLResponse)
+async def bots_page(request: Request):
+    return templates.TemplateResponse(
+        request=request,
+        name="bots.html",
+        context={
+            "request": request,
+            "canonical_url": canonical_url("/bots"),
+        },
+    )
+
+
 
 
 @app.get("/sections", response_class=HTMLResponse)

@@ -1,0 +1,11 @@
+Payment backup contents:
+.env.example
+app\bot_api.py
+app\bot_pyrogram_legacy.py
+app\config.py
+app\store.py
+commit.txt
+latest_commit_info.txt
+manifest.txt
+README.md
+requirements.txt
