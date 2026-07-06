@@ -899,6 +899,94 @@
         cursor: pointer;
     }
 
+    /* Tree Network Layout */
+    .network-tree-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        margin-top: 40px;
+        position: relative;
+        width: 100%;
+    }
+
+    .tree-root-section {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        width: 100%;
+        max-width: 480px;
+        position: relative;
+        margin-bottom: 60px;
+    }
+
+    .root-card {
+        border-color: rgba(168, 85, 247, 0.4) !important;
+        box-shadow: 0 0 25px rgba(168, 85, 247, 0.15), inset 0 0 15px rgba(168, 85, 247, 0.1) !important;
+        position: relative;
+        z-index: 10;
+        width: 100%;
+    }
+
+    .central-badge {
+        background: linear-gradient(135deg, #a855f7 0%, #7c3aed 100%);
+        color: #fff;
+        font-size: 11px;
+        font-weight: 800;
+        text-transform: uppercase;
+        padding: 4px 12px;
+        border-radius: 50px;
+        letter-spacing: 1px;
+        box-shadow: 0 0 15px rgba(168, 85, 247, 0.5);
+        display: inline-block;
+        margin-bottom: 16px;
+    }
+
+    .tree-connector-line {
+        width: 2px;
+        height: 60px;
+        background: linear-gradient(180deg, #a855f7 0%, rgba(0, 242, 254, 0.5) 100%);
+        position: absolute;
+        bottom: -60px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 1;
+    }
+
+    .tree-branches-container {
+        width: 100%;
+        position: relative;
+        padding-top: 30px;
+    }
+
+    .tree-branches-container::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 15%;
+        right: 15%;
+        height: 2px;
+        background: linear-gradient(90deg, rgba(0, 242, 254, 0) 0%, rgba(0, 242, 254, 0.4) 20%, rgba(168, 85, 247, 0.4) 50%, rgba(0, 242, 254, 0.4) 80%, rgba(0, 242, 254, 0) 100%);
+    }
+
+    .tree-connector-vertical {
+        width: 2px;
+        height: 30px;
+        background: rgba(168, 85, 247, 0.4);
+        margin: 0 auto 30px auto;
+    }
+
+    @media (max-width: 768px) {
+        .tree-connector-line, .tree-branches-container::before, .tree-connector-vertical {
+            display: none;
+        }
+        .tree-root-section {
+            margin-bottom: 30px;
+        }
+        .tree-branches-container {
+            padding-top: 0;
+        }
+    }
+
     /* Responsive */
     @media (max-width: 768px) {
         .hero-title {
@@ -1035,19 +1123,37 @@
 
     <!-- Categorized Bot Hub -->
     <section class="bot-hub-panel">
-        <h2 class="section-title">Interactive Bot Hub</h2>
+        <h2 class="section-title">Network Architecture & Bot Hub</h2>
         
-        <div class="hub-tabs" id="hubTabs">
-            <button class="hub-tab-btn active" data-category="all">All Bots</button>
-            <button class="hub-tab-btn" data-category="core">Core Command</button>
-            <button class="hub-tab-btn" data-category="media">Media & Entertainment</button>
-            <button class="hub-tab-btn" data-category="nsfw">Adult Utilities</button>
-            <button class="hub-tab-btn" data-category="file">File Helpers</button>
-            <button class="hub-tab-btn" data-category="processing">Media Processing</button>
-        </div>
+        <div class="network-tree-container">
+            <!-- Root Node (Master Controller Bot) -->
+            <div class="tree-root-section">
+                <span class="central-badge">Central Billing & Command Center</span>
+                <div id="masterRootGrid" style="width: 100%;">
+                    <!-- Rendered Dynamically -->
+                </div>
+                <p style="font-size: 12px; color: var(--text-cyber-muted); text-align: center; margin-top: 12px; max-width: 400px; line-height: 1.5;">
+                    💡 This is the Main Controller Bot where you can buy plans for all the bots listed below.
+                </p>
+                <div class="tree-connector-line"></div>
+            </div>
 
-        <div class="hub-grid" id="hubGrid">
-            <!-- Rendered Dynamically -->
+            <!-- Branches Grid -->
+            <div class="tree-branches-container">
+                <div class="tree-connector-vertical"></div>
+                
+                <div class="hub-tabs" id="hubTabs" style="margin-bottom: 30px;">
+                    <button class="hub-tab-btn active" data-category="all">All Sub-Bots</button>
+                    <button class="hub-tab-btn" data-category="media">Media & Entertainment</button>
+                    <button class="hub-tab-btn" data-category="nsfw">Adult Utilities</button>
+                    <button class="hub-tab-btn" data-category="file">File Helpers</button>
+                    <button class="hub-tab-btn" data-category="processing">Media Processing</button>
+                </div>
+
+                <div class="hub-grid" id="hubGrid">
+                    <!-- Rendered Dynamically -->
+                </div>
+            </div>
         </div>
     </section>
 
@@ -1260,7 +1366,7 @@
                     color: "#f97316"
                 },
                 features: [
-                    "Bypass default Faphouse stream time limit caps",
+                    "Bypass Faphouse stream limit caps",
                     "Direct MP4 stream link extractor for immediate viewing",
                     "Download completely sanitized media (no pop-up ads/redirects)",
                     "Auto-sorting by actors, categories, and resolution parameters"
@@ -1268,31 +1374,6 @@
                 plans: [
                     { tier: "Free Tier", detail: "Standard quality streams, limited daily downloads" },
                     { tier: "VIP Plan", detail: "Ultra HD streaming, unlimited instant downloads, automated scraper access" }
-                ]
-            },
-            {
-                name: "Brazzers Cleaner Utility",
-                category: "nsfw",
-                categoryLabel: "Adult/NSFW Utilities",
-                status: "maintenance",
-                statusLabel: "Maintenance",
-                desc: "Auto metadata scrubbing, tag format adjustment, and feed title optimization tool.",
-                username: "az_brazzers_cleaner_bot",
-                icon: "🧹",
-                theme: {
-                    gradient: "linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)",
-                    shadow: "rgba(59, 130, 246, 0.4)",
-                    color: "#3b82f6"
-                },
-                features: [
-                    "Scrub meta tags, unwanted URL embeds, and original filenames",
-                    "Format titles automatically using preset network patterns",
-                    "Generate neat clean feeds suitable for clean group posting",
-                    "Optimize preview trailer links and crop watermarks"
-                ],
-                plans: [
-                    { tier: "Free Tier", detail: "Limited cleans/day, manual upload only" },
-                    { tier: "VIP Plan", detail: "Automated API feed integration, unlimited batch cleaning" }
                 ]
             },
             {
@@ -1372,6 +1453,9 @@
             }
         ];
 
+        const masterBot = botsList.find(b => b.category === "core");
+        const subBotsList = botsList.filter(b => b.category !== "core");
+
         const hubGrid = document.getElementById("hubGrid");
         const hubTabButtons = document.querySelectorAll("#hubTabs .hub-tab-btn");
 
@@ -1394,6 +1478,20 @@
                 <li>${f}</li>
             `).join('');
 
+            let purchaseFlowHTML = "";
+            if (bot.category !== "core") {
+                purchaseFlowHTML = `
+                    <div style="margin-top: 15px; border-top: 1px dashed rgba(255,255,255,0.05); padding-top: 15px; width: 100%;">
+                        <a href="https://t.me/az_network_master_bot" target="_blank" rel="noopener" class="modal-buy-btn" style="background: linear-gradient(135deg, #a855f7 0%, #7c3aed 100%); color:#fff; display: flex; align-items: center; justify-content: center; gap: 8px; font-weight: 700; border-radius: 8px; padding: 12px; text-decoration: none; font-size: 14px; text-align: center; border: 1px solid rgba(255,255,255,0.1); box-shadow: 0 4px 15px rgba(168, 85, 247, 0.3);">
+                            Buy VIP via Master Bot
+                        </a>
+                        <p style="font-size: 11px; color: var(--text-cyber-muted); text-align: center; margin-top: 8px; line-height: 1.4;">
+                            ⚠️ All billing, subscription activations, and payments are centrally managed. Start the Master Controller bot to purchase plans.
+                        </p>
+                    </div>
+                `;
+            }
+
             modalContentArea.innerHTML = `
                 <div class="modal-left">
                     <div class="modal-bot-header">
@@ -1414,7 +1512,7 @@
                 <div class="modal-right" style="display: flex; flex-direction: column; justify-content: space-between;">
                     <div>
                         <h4 style="border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 8px;">Subscription Tiers</h4>
-                        <div class="plans-table-wrapper" style="margin-top: 12px;">
+                        <div class="plans-table-wrapper" style="margin-top: 12px; margin-bottom: 12px;">
                             <table class="plans-table">
                                 <thead>
                                     <tr>
@@ -1427,6 +1525,7 @@
                                 </tbody>
                             </table>
                         </div>
+                        ${purchaseFlowHTML}
                     </div>
                     <div class="modal-launch-btn-container" style="margin-top: 20px;">
                         <button class="modal-launch-btn" style="border-color: ${bot.theme.color}40; color: ${bot.theme.color}">
@@ -1458,11 +1557,53 @@
             });
         }
 
+        function renderMasterRoot() {
+            const masterRootGrid = document.getElementById("masterRootGrid");
+            if (!masterRootGrid || !masterBot) return;
+            masterRootGrid.innerHTML = "";
+
+            const statusClass = masterBot.status === "active" ? "status-active" : "status-maintenance";
+            const card = document.createElement("div");
+            card.className = "hub-bot-card root-card";
+            card.style.setProperty("--theme-gradient", masterBot.theme.gradient);
+            card.style.setProperty("--theme-shadow", masterBot.theme.shadow);
+            card.style.setProperty("--theme-color", masterBot.theme.color);
+            card.style.setProperty("--hover-glow-color", masterBot.theme.color + "26");
+
+            card.innerHTML = `
+                <div class="bot-card-top">
+                    <div class="bot-card-meta">
+                        <div class="bot-card-icon">${masterBot.icon}</div>
+                        <span class="bot-card-status ${statusClass}">${masterBot.statusLabel}</span>
+                    </div>
+                    <div class="bot-card-cat">${masterBot.categoryLabel}</div>
+                    <h3 class="bot-card-name">${masterBot.name}</h3>
+                    <p class="bot-card-desc">${masterBot.desc}</p>
+                </div>
+                <div class="bot-card-bottom">
+                    <div class="tooltip-container" onclick="event.stopPropagation();">
+                        <div class="coming-soon-btn" style="border-color: ${masterBot.theme.color}20 !important;">
+                            <span style="font-weight: 700;">Coming Soon</span>
+                            <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" style="fill: ${masterBot.theme.color}; opacity: 0.7;">
+                                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69.01-.03.01-.14-.07-.2-.08-.06-.19-.04-.27-.02-.12.02-1.96 1.24-5.54 3.65-.52.36-.99.53-1.42.52-.47-.01-1.37-.27-2.04-.49-.82-.27-1.47-.41-1.42-.87.03-.24.36-.49.99-.75 3.89-1.69 6.49-2.8 7.8-3.32 3.71-1.47 4.48-1.73 4.98-1.74.11 0 .36.03.52.16.14.11.18.27.2.42.01.12.01.25 0 .36z"/>
+                            </svg>
+                        </div>
+                        <span class="tooltip-text">This bot is currently undergoing setup. Launching soon!</span>
+                    </div>
+                </div>
+            `;
+
+            // Card Click opens summary modal
+            card.addEventListener("click", () => openModal(masterBot));
+
+            masterRootGrid.appendChild(card);
+        }
+
         function renderHub(category = "all") {
             if (!hubGrid) return;
             hubGrid.innerHTML = "";
 
-            const filtered = botsList.filter(b => category === "all" || b.category === category);
+            const filtered = subBotsList.filter(b => category === "all" || b.category === category);
 
             filtered.forEach(bot => {
                 const statusClass = bot.status === "active" ? "status-active" : "status-maintenance";
@@ -1513,6 +1654,7 @@
         });
 
         // Trigger Render
+        renderMasterRoot();
         renderHub("all");
     });
 </script>
