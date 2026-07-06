@@ -500,6 +500,102 @@
         fill: currentColor;
     }
 
+    /* Channel Grid Styling */
+    .channel-network-panel {
+        background: rgba(255, 255, 255, 0.02);
+        border: 1px solid var(--card-border);
+        border-radius: 20px;
+        padding: 40px 30px;
+        margin-top: 50px;
+        backdrop-filter: blur(12px);
+        box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+    }
+    .channels-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 24px;
+        margin-bottom: 30px;
+    }
+    .channel-item-card {
+        background: rgba(255, 255, 255, 0.01);
+        border: 1px solid rgba(255, 255, 255, 0.04);
+        border-radius: 16px;
+        padding: 24px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        transition: all 0.3s ease;
+    }
+    .channel-item-card:hover {
+        transform: translateY(-4px);
+        border-color: rgba(0, 242, 254, 0.3);
+        box-shadow: 0 10px 25px rgba(0,0,0,0.4), 0 0 15px rgba(0, 242, 254, 0.15);
+    }
+    .channel-meta {
+        margin-bottom: 16px;
+    }
+    .channel-name {
+        font-family: 'Outfit', sans-serif;
+        font-size: 20px;
+        font-weight: 700;
+        color: #ffffff;
+        margin-bottom: 8px;
+    }
+    .channel-badge {
+        font-size: 10px;
+        font-weight: 700;
+        text-transform: uppercase;
+        padding: 3px 8px;
+        border-radius: 30px;
+        letter-spacing: 0.5px;
+        background: rgba(138, 43, 226, 0.1);
+        color: #a855f7;
+        border: 1px solid rgba(138, 43, 226, 0.2);
+    }
+    .channel-desc {
+        font-size: 13px;
+        color: var(--text-cyber-muted);
+        line-height: 1.5;
+        margin-bottom: 20px;
+    }
+    .channel-join-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        background: rgba(0, 242, 254, 0.1);
+        border: 1px solid rgba(0, 242, 254, 0.2);
+        color: #00f2fe;
+        padding: 10px 16px;
+        border-radius: 10px;
+        font-weight: 700;
+        font-size: 13px;
+        text-decoration: none;
+        transition: all 0.3s ease;
+        width: 100%;
+    }
+    .channel-join-btn svg {
+        width: 14px;
+        height: 14px;
+        fill: currentColor;
+    }
+    .channel-item-card:hover .channel-join-btn {
+        background: linear-gradient(135deg, #00f2fe 0%, #4facfe 100%);
+        color: #ffffff;
+        border-color: transparent;
+        box-shadow: 0 4px 12px rgba(0, 242, 254, 0.3);
+    }
+    .auto-req-notice {
+        text-align: center;
+        background: rgba(0, 245, 160, 0.05);
+        border: 1px solid rgba(0, 245, 160, 0.15);
+        color: #00f5a0;
+        padding: 15px;
+        border-radius: 12px;
+        font-size: 14px;
+        font-weight: 600;
+    }
+
     /* Responsive */
     @media (max-width: 768px) {
         .hero-title {
@@ -649,6 +745,93 @@
 
         <div class="hub-grid" id="hubGrid">
             <!-- Rendered Dynamically -->
+        </div>
+    </section>
+
+    <!-- Telegram Channels Network Section -->
+    <section class="channel-network-panel">
+        <h2 class="section-title">🚨 SUPPORT ALL CHANNELS 🚨</h2>
+        <div class="channels-grid">
+            <!-- AZ INFO HUB -->
+            <div class="channel-item-card">
+                <div class="channel-meta">
+                    <span class="channel-badge">Information Hub</span>
+                    <h3 class="channel-name">🌹 AZ INFO HUB</h3>
+                    <p class="channel-desc">Official news channel for the bot network, feature updates, announcements, and help documents.</p>
+                </div>
+                <a href="https://t.me/+Z_KkSZ37BudmNGFl" class="channel-join-btn" target="_blank" rel="noopener">
+                    Join Channel
+                    <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69.01-.03.01-.14-.07-.2-.08-.06-.19-.04-.27-.02-.12.02-1.96 1.24-5.54 3.65-.52.36-.99.53-1.42.52-.47-.01-1.37-.27-2.04-.49-.82-.27-1.47-.41-1.42-.87.03-.24.36-.49.99-.75 3.89-1.69 6.49-2.8 7.8-3.32 3.71-1.47 4.48-1.73 4.98-1.74.11 0 .36.03.52.16.14.11.18.27.2.42.01.12.01.25 0 .36z"/>
+                    </svg>
+                </a>
+            </div>
+
+            <!-- D@4K Channel -->
+            <div class="channel-item-card">
+                <div class="channel-meta">
+                    <span class="channel-badge">Updates & Releases</span>
+                    <h3 class="channel-name">💎 D@4K Channel</h3>
+                    <p class="channel-desc">Exclusive and direct releases, update channels, and community chat connections.</p>
+                </div>
+                <a href="https://t.me/+zNRJtgwANHcwYTRl" class="channel-join-btn" target="_blank" rel="noopener">
+                    Join Channel
+                    <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69.01-.03.01-.14-.07-.2-.08-.06-.19-.04-.27-.02-.12.02-1.96 1.24-5.54 3.65-.52.36-.99.53-1.42.52-.47-.01-1.37-.27-2.04-.49-.82-.27-1.47-.41-1.42-.87.03-.24.36-.49.99-.75 3.89-1.69 6.49-2.8 7.8-3.32 3.71-1.47 4.48-1.73 4.98-1.74.11 0 .36.03.52.16.14.11.18.27.2.42.01.12.01.25 0 .36z"/>
+                    </svg>
+                </a>
+            </div>
+
+            <!-- All MEGA LINKS -->
+            <div class="channel-item-card">
+                <div class="channel-meta">
+                    <span class="channel-badge">Download Mirrors</span>
+                    <h3 class="channel-name">👑 All MEGA LINKS</h3>
+                    <p class="channel-desc">High-speed download links, mirrors list, archive links, and file repository indices.</p>
+                </div>
+                <a href="https://t.me/+f-Jzcmzayds4NTE9" class="channel-join-btn" target="_blank" rel="noopener">
+                    Join Channel
+                    <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69.01-.03.01-.14-.07-.2-.08-.06-.19-.04-.27-.02-.12.02-1.96 1.24-5.54 3.65-.52.36-.99.53-1.42.52-.47-.01-1.37-.27-2.04-.49-.82-.27-1.47-.41-1.42-.87.03-.24.36-.49.99-.75 3.89-1.69 6.49-2.8 7.8-3.32 3.71-1.47 4.48-1.73 4.98-1.74.11 0 .36.03.52.16.14.11.18.27.2.42.01.12.01.25 0 .36z"/>
+                    </svg>
+                </a>
+            </div>
+
+            <!-- AZ ADULT ADDA -->
+            <div class="channel-item-card">
+                <div class="channel-meta">
+                    <span class="channel-badge" style="color: #ff007f; border-color: rgba(255, 0, 127, 0.2); background: rgba(255, 0, 127, 0.1);">NSFW 18+</span>
+                    <h3 class="channel-name">⚠️ ₳Ƶ ₳ƉɄⱠ₮ ₳ƉƉ₳</h3>
+                    <p class="channel-desc">Adult content archive and discussion forum. Exclusive drops, 18+ links, and streaming index.</p>
+                </div>
+                <a href="https://t.me/+xH-QgufKRYU5OWM1" class="channel-join-btn" target="_blank" rel="noopener">
+                    Join Channel
+                    <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69.01-.03.01-.14-.07-.2-.08-.06-.19-.04-.27-.02-.12.02-1.96 1.24-5.54 3.65-.52.36-.99.53-1.42.52-.47-.01-1.37-.27-2.04-.49-.82-.27-1.47-.41-1.42-.87.03-.24.36-.49.99-.75 3.89-1.69 6.49-2.8 7.8-3.32 3.71-1.47 4.48-1.73 4.98-1.74.11 0 .36.03.52.16.14.11.18.27.2.42.01.12.01.25 0 .36z"/>
+                    </svg>
+                </a>
+            </div>
+
+            <!-- AZ THRILLER VAULT -->
+            <div class="channel-item-card">
+                <div class="channel-meta">
+                    <span class="channel-badge" style="color: #ffb800; border-color: rgba(255, 184, 0, 0.2); background: rgba(255, 184, 0, 0.1);">18+ Movies</span>
+                    <h3 class="channel-name">⚠️ Aʐ_ƚԋɾιʅҽɾ_ʋαυʅƚ</h3>
+                    <p class="channel-desc">Exclusive thriller films, mature collections, private releases, and cinematic update links.</p>
+                </div>
+                <a href="https://t.me/+MX3ogyQBFdFiM2Y1" class="channel-join-btn" target="_blank" rel="noopener">
+                    Join Channel
+                    <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69.01-.03.01-.14-.07-.2-.08-.06-.19-.04-.27-.02-.12.02-1.96 1.24-5.54 3.65-.52.36-.99.53-1.42.52-.47-.01-1.37-.27-2.04-.49-.82-.27-1.47-.41-1.42-.87.03-.24.36-.49.99-.75 3.89-1.69 6.49-2.8 7.8-3.32 3.71-1.47 4.48-1.73 4.98-1.74.11 0 .36.03.52.16.14.11.18.27.2.42.01.12.01.25 0 .36z"/>
+                    </svg>
+                </a>
+            </div>
+        </div>
+
+        <!-- Automatic request join note -->
+        <div class="auto-req-notice">
+            💖 Auto Request Join Enabled – Your request will be approved instantly! 💯<br>
+            <span style="font-size: 12px; color: var(--text-cyber-muted); margin-top: 6px; display: inline-block;">➖ Regards: @Az_Mods_Adda ➖</span>
         </div>
     </section>
 </div>
