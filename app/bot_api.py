@@ -23,7 +23,7 @@ from aiogram.types import (
     BotCommand,
     BufferedInputFile,
     CallbackQuery,
-    InlineKeyboardButton,
+    InlineKeyboardButton as AiogramInlineKeyboardButton,
     InlineKeyboardMarkup,
     Message,
     URLInputFile,
@@ -128,6 +128,22 @@ PAYMENT_PLANS: dict[str, PaymentPlan] = {
 #  Format helpers
 # ---------------------------------------------------------------------------
 
+def to_small_caps(text: str) -> str:
+    mapping = {
+        'a': 'ᴀ', 'b': 'ʙ', 'c': 'ᴄ', 'd': 'ᴅ', 'e': 'ᴇ', 'f': 'ꜰ', 'g': 'ɢ', 'h': 'ʜ', 
+        'i': 'ɪ', 'j': 'ᴊ', 'k': 'ᴋ', 'l': 'ʟ', 'm': 'ᴍ', 'n': 'ɴ', 'o': 'ᴏ', 'p': 'ᴘ', 
+        'q': 'Q', 'r': 'ʀ', 's': 'ꜱ', 't': 'ᴛ', 'u': 'ᴜ', 'v': 'ᴠ', 'w': 'ᴡ', 'x': 'x', 
+        'y': 'ʏ', 'z': 'ᴢ',
+        'A': 'ᴀ', 'B': 'ʙ', 'C': 'ᴄ', 'D': 'ᴅ', 'E': 'ᴇ', 'F': 'ꜰ', 'G': 'ɢ', 'H': 'ʜ',
+        'I': 'ɪ', 'J': 'ᴊ', 'K': 'ᴋ', 'L': 'ʟ', 'M': 'ᴍ', 'N': 'ɴ', 'O': 'ᴏ', 'P': 'ᴘ',
+        'Q': 'Q', 'R': 'ʀ', 'S': 'ꜱ', 'T': 'ᴛ', 'U': 'ᴜ', 'V': 'ᴠ', 'W': 'ᴡ', 'X': 'x',
+        'Y': 'ʏ', 'Z': 'ᴢ'
+    }
+    return "".join(mapping.get(c, c) for c in str(text))
+
+def InlineKeyboardButton(text: str, *args, **kwargs):
+    return AiogramInlineKeyboardButton(text=to_small_caps(text), *args, **kwargs)
+
 def esc(text: str) -> str:
     return _esc(str(text), quote=False)
 
@@ -141,7 +157,7 @@ def bold(text: str) -> str:
     return f"<b>{esc(str(text))}</b>"
 
 def bullet(items: list[str]) -> str:
-    return "\n".join(f"• {item}" for item in items)
+    return "\n".join(f"▸ {item}" for item in items)
 
 def _format_money(v: float) -> str:
     return f"{v:.2f}"
@@ -169,19 +185,24 @@ def _format_expiry(expires_at: int | None, now_ts: int | None = None) -> str:
 
 def format_msg(title, sections=None, tip=None, status=None) -> str:
     parts: list[str] = []
+    header_str = f"<b>{to_small_caps(title)}</b>"
     if status:
-        parts.append(status)
-    parts.append(f"<b>{esc(title)}</b>")
-    parts.append("")
+        header_str = f"{status} {header_str}"
+    parts.append(header_str)
+    parts.append("━━━━━━━━━━━━━━\n")
     if sections:
         for label, value in sections:
+            val_str = str(value)
             if label:
-                parts.append(f"<b>{esc(label)}:</b> {value}")
+                if val_str.isdigit() or (val_str.lower() in {"approved", "rejected", "pending", "active", "free", "processing", "delivered", "unlimited", "expired", "lifetime", "yes", "no"}) or (val_str.startswith("-") and val_str[1:].isdigit()):
+                    if not (val_str.startswith("<") and val_str.endswith(">")):
+                        val_str = f"<code>{esc(val_str)}</code>"
+                parts.append(f"▸ <b>{to_small_caps(label)}</b>: {val_str}")
             else:
-                parts.append(value)
+                parts.append(val_str)
     if tip:
         parts.append("")
-        parts.append(f"💡 <i>{esc(tip)}</i>")
+        parts.append(f"<i>💡 {esc(tip)}</i>")
     return "\n".join(parts)
 
 
