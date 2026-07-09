@@ -3791,26 +3791,6 @@ async def bot_cmd(message: Message) -> None:
     await message.reply(format_msg("🟢 Bot Status", sections=[("", "I am alive and running.")]), parse_mode="HTML")
 
 
-@dp.message(F.text)
-async def utr_text_fallback_handler(message: Message, state: FSMContext) -> None:
-    if message.chat.type != "private":
-        return
-    if (message.text or "").startswith("/"):
-        return
-    current_state = await state.get_state()
-    if current_state == PayState.waiting_utr.state:
-        return
-    user_id = message.from_user.id if message.from_user else 0
-    if user_id <= 0:
-        return
-    req_id = await store.get_pending_utr(user_id)
-    if not req_id:
-        return
-    utr = (message.text or "").strip()
-    if not utr:
-        return
-    await _submit_utr(message, state, req_id, utr)
-
 
 
 # ---------------------------------------------------------------------------
@@ -4089,6 +4069,31 @@ async def process_user_vote(callback: CallbackQuery) -> None:
         await callback.message.edit_reply_markup(reply_markup=reply_markup)
     except Exception as e:
         logger.debug(f"Error updating voting reply markup: {e}")
+
+
+# ---------------------------------------------------------------------------
+#  Fallback Handlers
+# ---------------------------------------------------------------------------
+
+@dp.message(F.text)
+async def utr_text_fallback_handler(message: Message, state: FSMContext) -> None:
+    if message.chat.type != "private":
+        return
+    if (message.text or "").startswith("/"):
+        return
+    current_state = await state.get_state()
+    if current_state == PayState.waiting_utr.state:
+        return
+    user_id = message.from_user.id if message.from_user else 0
+    if user_id <= 0:
+        return
+    req_id = await store.get_pending_utr(user_id)
+    if not req_id:
+        return
+    utr = (message.text or "").strip()
+    if not utr:
+        return
+    await _submit_utr(message, state, req_id, utr)
 
 
 # ---------------------------------------------------------------------------
