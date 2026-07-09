@@ -3289,7 +3289,7 @@ async def addpremium_cmd(message: Message) -> None:
             target_user_id = 0
         plan_code = parts[2].strip().lower()
     else:
-        await message.reply(format_msg("⚠️ Usage", sections=[("", bullet([code("/addpremium <user_id> <daily|weekly|monthly>"), "Reply to a user: /addpremium <daily|weekly|monthly>"]))]), parse_mode="HTML")
+        await message.reply(format_msg("⚠️ Usage", sections=[("", bullet([code("/addpremium <user_id> <daily|weekly|monthly>"), f"Reply to a user: /addpremium {esc('<daily|weekly|monthly>')}"]))]), parse_mode="HTML")
         return
 
     plan = PAYMENT_PLANS.get(plan_code)
