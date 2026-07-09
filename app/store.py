@@ -1796,15 +1796,34 @@ return {1, newval}
                 try:
                     results[int(k)] = int(v)
                 except ValueError:
-                    continue
+                    pass
             return results
 
         poll = self._polls.get(poll_id)
         if not poll:
             return {}
+
         results = {}
         for idx in range(len(poll["options"])):
             results[idx] = 0
         for uid, idx in poll["votes"].items():
             results[idx] = results.get(idx, 0) + 1
         return results
+
+    async def list_polls(self) -> list[dict]:
+        if self._redis is not None:
+            keys = await self._redis.keys("poll:*")
+            polls = []
+            for key in keys:
+                # key is a bytes object in aioredis sometimes, but decode it if needed
+                if isinstance(key, bytes):
+                    key = key.decode("utf-8")
+                if key.endswith(":votes") or key.endswith(":results"):
+                    continue
+                poll_id = key.split(":")[1]
+                poll = await self.get_poll(poll_id)
+                if poll:
+                    polls.append(poll)
+            return sorted(polls, key=lambda p: p.get("created_at", 0), reverse=True)
+
+        return sorted([{"poll_id": pid, **data} for pid, data in self._polls.items()], key=lambda p: p.get("created_at", 0), reverse=True)

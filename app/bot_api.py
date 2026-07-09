@@ -264,7 +264,8 @@ PUBLIC_COMMANDS = [
 
 ADMIN_COMMANDS = PUBLIC_COMMANDS + [
     BotCommand(command="createpoll", description="Create a poll (admin)"),
-    BotCommand(command="showsections", description="Show sections (admin)"),
+    BotCommand(command="pollresults", description="View active polls results (admin)"),
+    BotCommand(command="showsections", description="Show all sections (admin)"),
     BotCommand(command="addsection", description="Set upload section (admin)"),
     BotCommand(command="publishsection", description="Show section on website (admin)"),
     BotCommand(command="unpublishsection", description="Hide section from website (admin)"),
@@ -4069,6 +4070,46 @@ async def process_user_vote(callback: CallbackQuery) -> None:
         await callback.message.edit_reply_markup(reply_markup=reply_markup)
     except Exception as e:
         logger.debug(f"Error updating voting reply markup: {e}")
+
+@dp.message(Command("pollresults"))
+async def view_poll_results_cmd(message: Message) -> None:
+    if not is_admin(message.from_user.id):
+        await message.reply("❌ This command is only for admins.")
+        return
+
+    polls = await store.list_polls()
+    if not polls:
+        await message.reply("ℹ️ No active polls found.")
+        return
+
+    # Show up to 10 recent polls
+    polls = polls[:10]
+    
+    response_text = "📊 <b>Recent Poll Results</b>\n\n"
+    
+    for i, poll in enumerate(polls):
+        poll_id = poll.get("poll_id")
+        text = poll.get("text") or poll.get("caption") or "Media Poll"
+        # truncate text if too long
+        if len(text) > 50:
+            text = text[:47] + "..."
+            
+        options = poll.get("options", [])
+        results = await store.get_poll_results(poll_id)
+        total_votes = sum(results.values())
+        
+        response_text += f"<b>{i+1}. {text}</b>\n"
+        response_text += f"Total Votes: {total_votes}\n"
+        
+        for idx, opt in enumerate(options):
+            votes_count = results.get(idx, 0)
+            percentage = int((votes_count / total_votes) * 100) if total_votes > 0 else 0
+            response_text += f"  • {opt} - {votes_count} ({percentage}%)\n"
+            
+        response_text += "\n"
+        
+    await message.reply(response_text, parse_mode="HTML")
+
 
 
 # ---------------------------------------------------------------------------
