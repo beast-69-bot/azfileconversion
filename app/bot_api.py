@@ -3812,72 +3812,6 @@ async def utr_text_fallback_handler(message: Message, state: FSMContext) -> None
     await _submit_utr(message, state, req_id, utr)
 
 
-# ---------------------------------------------------------------------------
-#  Media upload handler
-# ---------------------------------------------------------------------------
-
-@dp.message()
-async def private_media_handler(message: Message, state: FSMContext) -> None:
-    if message.chat.type not in {"private", "channel"}:
-        return
-
-    media = (
-        message.document or message.video or message.audio or message.animation
-        or message.voice or message.video_note
-        or (message.photo[-1] if message.photo else None)
-    )
-
-    if not media:
-        if (message.text or "").startswith("/"):
-            await message.reply(format_msg("❌ Unknown Command", sections=[("", "Use /start to see available commands.")]), parse_mode="HTML")
-            return
-        if message.chat.type == "private" and is_admin(message.from_user.id if message.from_user else None):
-            await message.reply(format_msg("⚠️ Unsupported", sections=[("", "Send a document, video, audio, animation, voice, video_note, or photo.")]), parse_mode="HTML")
-        return
-
-    if message.chat.type == "private" and not is_admin(message.from_user.id if message.from_user else None):
-        await message.reply(format_msg("❌ Access Denied", sections=[("", "Only admins can upload files.")]), parse_mode="HTML")
-        return
-
-    section_id, section_name = await store.get_section()
-    if not section_id:
-        if message.chat.type == "private":
-            await message.reply(format_msg("⚠️ No Active Section", sections=[("", f"Set one first: {code('/addsection <name>')}")]), parse_mode="HTML")
-        return
-
-    normal_token = secrets.token_urlsafe(24)
-    premium_token = secrets.token_urlsafe(24)
-    file_name = getattr(media, "file_name", None)
-    mime_type = getattr(media, "mime_type", None)
-    file_size = getattr(media, "file_size", None)
-
-    media_type = "document"
-    if message.video: media_type = "video"
-    elif message.audio: media_type = "audio"
-    elif message.animation: media_type = "animation"
-    elif message.voice: media_type = "voice"
-    elif message.video_note: media_type = "video_note"
-    elif message.photo: media_type = "photo"
-
-    base_ref = dict(
-        file_id=media.file_id, chat_id=message.chat.id, message_id=message.message_id,
-        file_unique_id=media.file_unique_id, file_name=file_name, mime_type=mime_type,
-        file_size=file_size, media_type=media_type, created_at=time.time(),
-        section_id=section_id, section_name=section_name,
-    )
-    await store.set(normal_token, FileRef(**base_ref, access="normal"), settings.token_ttl_seconds)
-    await store.set(premium_token, FileRef(**base_ref, access="premium"), settings.token_ttl_seconds)
-
-    if message.chat.type == "private":
-        await message.reply(
-            format_msg("✅ File Uploaded", sections=[
-                ("Section", esc(section_name or section_id)),
-                ("Normal", link("▶️ Open Stream", build_link(normal_token))),
-                ("Premium", link("⬇️ Download Stream", build_link(premium_token))),
-            ], tip="Normal = stream only. Premium = downloadable."),
-            parse_mode="HTML",
-        )
-
 
 # ---------------------------------------------------------------------------
 #  Startup / Shutdown
@@ -4155,6 +4089,73 @@ async def process_user_vote(callback: CallbackQuery) -> None:
         await callback.message.edit_reply_markup(reply_markup=reply_markup)
     except Exception as e:
         logger.debug(f"Error updating voting reply markup: {e}")
+
+
+# ---------------------------------------------------------------------------
+#  Media upload handler (Catch-all MUST be at the bottom)
+# ---------------------------------------------------------------------------
+
+@dp.message()
+async def private_media_handler(message: Message, state: FSMContext) -> None:
+    if message.chat.type not in {"private", "channel"}:
+        return
+
+    media = (
+        message.document or message.video or message.audio or message.animation
+        or message.voice or message.video_note
+        or (message.photo[-1] if message.photo else None)
+    )
+
+    if not media:
+        if (message.text or "").startswith("/"):
+            await message.reply(format_msg("❌ Unknown Command", sections=[("", "Use /start to see available commands.")]), parse_mode="HTML")
+            return
+        if message.chat.type == "private" and is_admin(message.from_user.id if message.from_user else None):
+            await message.reply(format_msg("⚠️ Unsupported", sections=[("", "Send a document, video, audio, animation, voice, video_note, or photo.")]), parse_mode="HTML")
+        return
+
+    if message.chat.type == "private" and not is_admin(message.from_user.id if message.from_user else None):
+        await message.reply(format_msg("❌ Access Denied", sections=[("", "Only admins can upload files.")]), parse_mode="HTML")
+        return
+
+    section_id, section_name = await store.get_section()
+    if not section_id:
+        if message.chat.type == "private":
+            await message.reply(format_msg("⚠️ No Active Section", sections=[("", f"Set one first: {code('/addsection <name>')}")]), parse_mode="HTML")
+        return
+
+    normal_token = secrets.token_urlsafe(24)
+    premium_token = secrets.token_urlsafe(24)
+    file_name = getattr(media, "file_name", None)
+    mime_type = getattr(media, "mime_type", None)
+    file_size = getattr(media, "file_size", None)
+
+    media_type = "document"
+    if message.video: media_type = "video"
+    elif message.audio: media_type = "audio"
+    elif message.animation: media_type = "animation"
+    elif message.voice: media_type = "voice"
+    elif message.video_note: media_type = "video_note"
+    elif message.photo: media_type = "photo"
+
+    base_ref = dict(
+        file_id=media.file_id, chat_id=message.chat.id, message_id=message.message_id,
+        file_unique_id=media.file_unique_id, file_name=file_name, mime_type=mime_type,
+        file_size=file_size, media_type=media_type, created_at=time.time(),
+        section_id=section_id, section_name=section_name,
+    )
+    await store.set(normal_token, FileRef(**base_ref, access="normal"), settings.token_ttl_seconds)
+    await store.set(premium_token, FileRef(**base_ref, access="premium"), settings.token_ttl_seconds)
+
+    if message.chat.type == "private":
+        await message.reply(
+            format_msg("✅ File Uploaded", sections=[
+                ("Section", esc(section_name or section_id)),
+                ("Normal", link("▶️ Open Stream", build_link(normal_token))),
+                ("Premium", link("⬇️ Download Stream", build_link(premium_token))),
+            ], tip="Normal = stream only. Premium = downloadable."),
+            parse_mode="HTML",
+        )
 
 
 async def run() -> None:
