@@ -42,6 +42,7 @@ class MongoTokenStore(TokenStore):
         self._trending_items = None
         self._captcha_users = None
         self._captcha_sessions = None
+        self._polls_col = None
 
     async def connect(self) -> None:
         await super().connect()
@@ -70,6 +71,7 @@ class MongoTokenStore(TokenStore):
         self._trending_items = self._mongo["trending_items"]
         self._captcha_users = self._mongo["captcha_users"]
         self._captcha_sessions = self._mongo["captcha_sessions"]
+        self._polls_col = self._mongo["polls"]
 
         await self._tokens.create_index([("created_at", DESCENDING)])
         await self._tokens.create_index([("section_id", ASCENDING), ("created_at", DESCENDING)])
@@ -1037,3 +1039,65 @@ class MongoTokenStore(TokenStore):
         limit = max(int(limit), 1)
         cursor = self._tokens.find(self._live_filter({"section_id": section_id}), {"_id": 1}).sort("created_at", DESCENDING).limit(limit)
         return [str(row["_id"]) async for row in cursor]
+
+    async def create_poll(self, poll_id: str, media_type: str, file_id: Optional[str], caption: Optional[str], text: Optional[str], options: list[str]) -> None:
+        await self._polls_col.update_one(
+            {"_id": poll_id},
+            {
+                "$set": {
+                    "media_type": media_type,
+                    "file_id": file_id,
+                    "caption": caption,
+                    "text": text,
+                    "options": options,
+                    "votes": {},
+                    "created_at": int(time.time()),
+                }
+            },
+            upsert=True,
+        )
+
+    async def get_poll(self, poll_id: str) -> Optional[dict]:
+        row = await self._polls_col.find_one({"_id": poll_id})
+        if not row:
+            return await super().get_poll(poll_id)
+        return {
+            "poll_id": poll_id,
+            "media_type": row.get("media_type", "text"),
+            "file_id": row.get("file_id"),
+            "caption": row.get("caption"),
+            "text": row.get("text"),
+            "options": row.get("options", []),
+            "votes": row.get("votes", {}),
+            "created_at": row.get("created_at", 0),
+        }
+
+    async def cast_vote(self, poll_id: str, user_id: int, option_index: int) -> tuple[bool, str]:
+        poll = await self._polls_col.find_one({"_id": poll_id}, {f"votes.{user_id}": 1})
+        if not poll:
+            return False, "not_found"
+        if "votes" in poll and str(user_id) in poll["votes"]:
+            return False, "already_voted"
+
+        await self._polls_col.update_one(
+            {"_id": poll_id},
+            {"$set": {f"votes.{user_id}": int(option_index)}}
+        )
+        await super().cast_vote(poll_id, user_id, option_index)
+        return True, "success"
+
+    async def get_poll_results(self, poll_id: str) -> dict[int, int]:
+        poll = await self._polls_col.find_one({"_id": poll_id})
+        if not poll:
+            return await super().get_poll_results(poll_id)
+        
+        options = poll.get("options", [])
+        results = {idx: 0 for idx in range(len(options))}
+        votes = poll.get("votes", {})
+        for uid, idx in votes.items():
+            try:
+                results[int(idx)] = results.get(int(idx), 0) + 1
+            except ValueError:
+                continue
+        return results
+

@@ -1,4 +1,4 @@
-﻿import time
+import time
 from dataclasses import dataclass
 from typing import Optional
 
@@ -33,11 +33,33 @@ class PremiumDB:
             )
             """
         )
+        await self._conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS bot_users (
+                user_id INTEGER PRIMARY KEY,
+                username TEXT,
+                first_name TEXT,
+                joined_at INTEGER
+            )
+            """
+        )
         await self._conn.commit()
 
     async def close(self) -> None:
         if self._conn is not None:
             await self._conn.close()
+
+    async def add_bot_user(self, user_id: int, username: Optional[str] = None, first_name: Optional[str] = None) -> None:
+        await self._conn.execute(
+            "INSERT OR IGNORE INTO bot_users (user_id, username, first_name, joined_at) VALUES (?, ?, ?, ?)",
+            (user_id, username, first_name, int(time.time())),
+        )
+        await self._conn.commit()
+
+    async def list_bot_users(self) -> list[int]:
+        cursor = await self._conn.execute("SELECT user_id FROM bot_users")
+        rows = await cursor.fetchall()
+        return [row[0] for row in rows]
 
     async def add_user(self, user_id: int, period_days: Optional[int]) -> None:
         expires_at = None

@@ -73,6 +73,7 @@ class TokenStore:
         self._react_likes: dict[str, set[int]] = {}
         self._react_dislikes: dict[str, set[int]] = {}
         self._credits: dict[int, int] = {}
+        self._polls: dict[str, dict] = {}
         self._history_limit = max(history_limit, 1)
         self._history_key = "history:tokens"
         self._section_key = "section:current"
@@ -1724,3 +1725,86 @@ return {1, newval}
             return [t for t in tokens if t]
         return self._sections.get(section_id, [])[:limit]
 
+    async def create_poll(self, poll_id: str, media_type: str, file_id: Optional[str], caption: Optional[str], text: Optional[str], options: list[str]) -> None:
+        if self._redis is not None:
+            poll_data = {
+                "media_type": media_type,
+                "file_id": file_id or "",
+                "caption": caption or "",
+                "text": text or "",
+                "options": json.dumps(options),
+                "created_at": int(time.time()),
+            }
+            await self._redis.hset(f"poll:{poll_id}", mapping=poll_data)
+            return
+
+        self._polls[poll_id] = {
+            "media_type": media_type,
+            "file_id": file_id,
+            "caption": caption,
+            "text": text,
+            "options": options,
+            "votes": {},
+            "created_at": int(time.time()),
+        }
+
+    async def get_poll(self, poll_id: str) -> Optional[dict]:
+        if self._redis is not None:
+            data = await self._redis.hgetall(f"poll:{poll_id}")
+            if not data:
+                return None
+            return {
+                "poll_id": poll_id,
+                "media_type": data.get("media_type", "text"),
+                "file_id": data.get("file_id") or None,
+                "caption": data.get("caption") or None,
+                "text": data.get("text") or None,
+                "options": json.loads(data.get("options", "[]")),
+                "created_at": int(data.get("created_at", 0)),
+            }
+
+        poll = self._polls.get(poll_id)
+        if poll:
+            return {
+                "poll_id": poll_id,
+                **poll
+            }
+        return None
+
+    async def cast_vote(self, poll_id: str, user_id: int, option_index: int) -> tuple[bool, str]:
+        if self._redis is not None:
+            voted = await self._redis.hget(f"poll:{poll_id}:votes", str(user_id))
+            if voted is not None:
+                return False, "already_voted"
+            await self._redis.hset(f"poll:{poll_id}:votes", str(user_id), str(option_index))
+            await self._redis.hincrby(f"poll:{poll_id}:results", str(option_index), 1)
+            return True, "success"
+
+        poll = self._polls.get(poll_id)
+        if not poll:
+            return False, "not_found"
+        if user_id in poll["votes"]:
+            return False, "already_voted"
+        poll["votes"][user_id] = option_index
+        return True, "success"
+
+    async def get_poll_results(self, poll_id: str) -> dict[int, int]:
+        if self._redis is not None:
+            data = await self._redis.hgetall(f"poll:{poll_id}:results")
+            results = {}
+            for k, v in data.items():
+                try:
+                    results[int(k)] = int(v)
+                except ValueError:
+                    continue
+            return results
+
+        poll = self._polls.get(poll_id)
+        if not poll:
+            return {}
+        results = {}
+        for idx in range(len(poll["options"])):
+            results[idx] = 0
+        for uid, idx in poll["votes"].items():
+            results[idx] = results.get(idx, 0) + 1
+        return results

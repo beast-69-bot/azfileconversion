@@ -29,11 +29,32 @@ class MongoPremiumDB(PremiumDB):
         self._db = self._client[self._mongo_db_name]
         self._premium = self._db["premium_users"]
         self._admins = self._db["admins"]
+        self._bot_users = self._db["bot_users"]
 
     async def close(self) -> None:
         if self._client is not None:
             self._client.close()
             self._client = None
+
+    async def add_bot_user(self, user_id: int, username: Optional[str] = None, first_name: Optional[str] = None) -> None:
+        await self._bot_users.update_one(
+            {"_id": int(user_id)},
+            {
+                "$setOnInsert": {
+                    "username": username,
+                    "first_name": first_name,
+                    "joined_at": int(time.time())
+                }
+            },
+            upsert=True,
+        )
+
+    async def list_bot_users(self) -> list[int]:
+        users: list[int] = []
+        cursor = self._bot_users.find({}, {"_id": 1})
+        async for row in cursor:
+            users.append(int(row["_id"]))
+        return users
 
     async def add_user(self, user_id: int, period_days: Optional[int]) -> None:
         expires_at = None

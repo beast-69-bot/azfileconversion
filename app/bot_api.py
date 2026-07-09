@@ -54,6 +54,21 @@ logger = logging.getLogger("stream_bot_api")
 bot = Bot(token=settings.bot_token)
 dp = Dispatcher(storage=MemoryStorage())
 
+
+@dp.message.outer_middleware()
+async def track_user_middleware(handler, event: Message, data: dict):
+    if event.from_user and not event.from_user.is_bot:
+        try:
+            await db.add_bot_user(
+                user_id=event.from_user.id,
+                username=event.from_user.username,
+                first_name=event.from_user.first_name,
+            )
+        except Exception as e:
+            logger.error(f"Error tracking user {event.from_user.id}: {e}")
+    return await handler(event, data)
+
+
 CREDIT_COST = 1
 DEFAULT_CREDIT_PRICE_INR = 0.45
 DEFAULT_PAY_TEXT = "Price per credit: INR {price}\nTo add credits, contact admin."
@@ -107,6 +122,12 @@ class TrendState(StatesGroup):
     waiting_description = State()
     waiting_normal_link = State()
     waiting_premium_link = State()
+
+
+class PollState(StatesGroup):
+    waiting_for_message = State()
+    waiting_for_options_count = State()
+    waiting_for_option_text = State()
 
 
 @dataclass(frozen=True)
@@ -3904,6 +3925,226 @@ async def _shutdown() -> None:
 
     await store.close()
     await db.close()
+
+
+# ---------------------------------------------------------------------------
+#  Polling and Broadcast System Handlers
+# ---------------------------------------------------------------------------
+
+@dp.message(Command("createpoll"))
+async def create_poll_cmd(message: Message, state: FSMContext) -> None:
+    if not is_admin(message.from_user.id):
+        await message.reply("❌ This command is only for admins.")
+        return
+    await state.clear()
+    await state.set_state(PollState.waiting_for_message)
+    await message.reply(
+        "👋 <b>Create Poll</b>\n\n"
+        "Please send the message (Text, Video, Photo, or Document) that you want to attach to this poll.",
+        parse_mode="HTML"
+    )
+
+@dp.message(PollState.waiting_for_message)
+async def process_poll_message(message: Message, state: FSMContext) -> None:
+    media_type = "text"
+    file_id = None
+    caption = message.caption
+    text = message.text
+
+    if message.video:
+        media_type = "video"
+        file_id = message.video.file_id
+    elif message.photo:
+        media_type = "photo"
+        file_id = message.photo[-1].file_id
+    elif message.document:
+        media_type = "document"
+        file_id = message.document.file_id
+
+    await state.update_data(
+        media_type=media_type,
+        file_id=file_id,
+        caption=caption,
+        text=text
+    )
+    await state.set_state(PollState.waiting_for_options_count)
+    await message.reply("🔢 How many options do you want for this poll? (Enter a number between 2 and 10):")
+
+@dp.message(PollState.waiting_for_options_count)
+async def process_options_count(message: Message, state: FSMContext) -> None:
+    try:
+        count = int(message.text.strip())
+    except ValueError:
+        await message.reply("❌ Invalid number. Please enter a valid number between 2 and 10:")
+        return
+
+    if count < 2 or count > 10:
+        await message.reply("❌ Options count must be between 2 and 10:")
+        return
+
+    await state.update_data(num_options=count, options=[])
+    await state.set_state(PollState.waiting_for_option_text)
+    await message.reply("✍️ Enter <b>Option 1</b> text:", parse_mode="HTML")
+
+@dp.message(PollState.waiting_for_option_text)
+async def process_option_text(message: Message, state: FSMContext) -> None:
+    option_text = message.text.strip()
+    if not option_text:
+        await message.reply("❌ Option text cannot be empty. Please enter option text:")
+        return
+
+    data = await state.get_data()
+    options = data.get("options", [])
+    options.append(option_text)
+    await state.update_data(options=options)
+
+    num_options = data.get("num_options", 0)
+    if len(options) < num_options:
+        await message.reply(f"✍️ Enter <b>Option {len(options) + 1}</b> text:", parse_mode="HTML")
+    else:
+        poll_id = secrets.token_hex(8)
+        await state.update_data(poll_id=poll_id)
+
+        preview_text = "✨ <b>Poll Preview</b>\n\n"
+        if data.get("text"):
+            preview_text += f"{data.get('text')}\n"
+        elif data.get("caption"):
+            preview_text += f"{data.get('caption')}\n"
+        
+        preview_text += "\n<b>Options:</b>\n"
+        for i, opt in enumerate(options):
+            preview_text += f"{i+1}. {opt}\n"
+
+        kb = []
+        for i, opt in enumerate(options):
+            kb.append([AiogramInlineKeyboardButton(text=opt, callback_data=f"preview_vote:{i}")])
+        
+        kb.append([
+            AiogramInlineKeyboardButton(text="🚀 Confirm & Broadcast", callback_data="poll_confirm"),
+            AiogramInlineKeyboardButton(text="❌ Cancel", callback_data="poll_cancel")
+        ])
+        
+        reply_markup = InlineKeyboardMarkup(inline_keyboard=kb)
+
+        if data.get("media_type") == "video":
+            await message.answer_video(video=data.get("file_id"), caption=preview_text, reply_markup=reply_markup, parse_mode="HTML")
+        elif data.get("media_type") == "photo":
+            await message.answer_photo(photo=data.get("file_id"), caption=preview_text, reply_markup=reply_markup, parse_mode="HTML")
+        elif data.get("media_type") == "document":
+            await message.answer_document(document=data.get("file_id"), caption=preview_text, reply_markup=reply_markup, parse_mode="HTML")
+        else:
+            await message.answer(preview_text, reply_markup=reply_markup, parse_mode="HTML")
+
+@dp.callback_query(F.data == "poll_cancel")
+async def process_poll_cancel(callback: CallbackQuery, state: FSMContext) -> None:
+    await state.clear()
+    await callback.message.delete()
+    await callback.answer("❌ Poll creation cancelled.")
+
+@dp.callback_query(F.data == "poll_confirm")
+async def process_poll_confirm(callback: CallbackQuery, state: FSMContext) -> None:
+    data = await state.get_data()
+    if not data:
+        await callback.answer("Error: state lost.", show_alert=True)
+        return
+
+    poll_id = data.get("poll_id")
+    media_type = data.get("media_type")
+    file_id = data.get("file_id")
+    caption = data.get("caption")
+    text = data.get("text")
+    options = data.get("options", [])
+
+    await store.create_poll(poll_id, media_type, file_id, caption, text, options)
+    await state.clear()
+    
+    await callback.message.edit_reply_markup(reply_markup=None)
+    await callback.message.reply("⌛ Starting broadcast of the poll to all users...")
+    await callback.answer("🚀 Poll created & Broadcasting started!")
+
+    asyncio.create_task(broadcast_poll_task(poll_id, media_type, file_id, caption, text, options, callback.message))
+
+async def broadcast_poll_task(poll_id: str, media_type: str, file_id: str, caption: str, text: str, options: list[str], status_msg: Message) -> None:
+    try:
+        user_ids = await db.list_bot_users()
+    except Exception as e:
+        logger.error(f"Error fetching user list for poll: {e}")
+        await status_msg.reply(f"❌ Failed to fetch user list: {e}")
+        return
+
+    total = len(user_ids)
+    sent = 0
+    failed = 0
+
+    kb = []
+    for i, opt in enumerate(options):
+        kb.append([AiogramInlineKeyboardButton(text=f"{opt} (0%)", callback_data=f"vote:{poll_id}:{i}")])
+    reply_markup = InlineKeyboardMarkup(inline_keyboard=kb)
+
+    poll_content = text if media_type == "text" else caption
+    if not poll_content:
+        poll_content = "Please cast your vote:"
+
+    for user_id in user_ids:
+        try:
+            if media_type == "video":
+                await bot.send_video(chat_id=user_id, video=file_id, caption=poll_content, reply_markup=reply_markup)
+            elif media_type == "photo":
+                await bot.send_photo(chat_id=user_id, photo=file_id, caption=poll_content, reply_markup=reply_markup)
+            elif media_type == "document":
+                await bot.send_document(chat_id=user_id, document=file_id, caption=poll_content, reply_markup=reply_markup)
+            else:
+                await bot.send_message(chat_id=user_id, text=poll_content, reply_markup=reply_markup)
+            sent += 1
+        except Exception as e:
+            failed += 1
+            logger.debug(f"Failed to send poll to user {user_id}: {e}")
+        
+        await asyncio.sleep(0.05)
+
+    await status_msg.reply(f"✅ <b>Poll Broadcast Finished</b>\n\nSent to: {sent} users\nFailed: {failed} users", parse_mode="HTML")
+
+@dp.callback_query(F.data.startswith("vote:"))
+async def process_user_vote(callback: CallbackQuery) -> None:
+    parts = callback.data.split(":")
+    if len(parts) < 3:
+        await callback.answer("Error processing vote.")
+        return
+
+    poll_id = parts[1]
+    option_index = int(parts[2])
+    user_id = callback.from_user.id
+
+    success, status = await store.cast_vote(poll_id, user_id, option_index)
+    if not success:
+        if status == "already_voted":
+            await callback.answer("⚠️ You have already voted in this poll!", show_alert=True)
+        else:
+            await callback.answer("❌ Error: Poll not found.")
+        return
+
+    await callback.answer("✅ Your vote has been cast successfully!")
+
+    results = await store.get_poll_results(poll_id)
+    poll = await store.get_poll(poll_id)
+    if not poll:
+        return
+
+    options = poll.get("options", [])
+    total_votes = sum(results.values())
+
+    kb = []
+    for i, opt in enumerate(options):
+        votes_count = results.get(i, 0)
+        percentage = int((votes_count / total_votes) * 100) if total_votes > 0 else 0
+        kb.append([AiogramInlineKeyboardButton(text=f"{opt} ({percentage}% - {votes_count})", callback_data=f"vote:{poll_id}:{i}")])
+    
+    reply_markup = InlineKeyboardMarkup(inline_keyboard=kb)
+    
+    try:
+        await callback.message.edit_reply_markup(reply_markup=reply_markup)
+    except Exception as e:
+        logger.debug(f"Error updating voting reply markup: {e}")
 
 
 async def run() -> None:
