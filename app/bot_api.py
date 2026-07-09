@@ -253,13 +253,17 @@ def _action_from_status(status: str) -> str:
 #  Core helpers
 # ---------------------------------------------------------------------------
 
-BOT_COMMANDS = [
+PUBLIC_COMMANDS = [
     BotCommand(command="start", description="Bot overview and usage"),
     BotCommand(command="buy", description="Buy premium access"),
     BotCommand(command="credit", description="Check credits and plan"),
     BotCommand(command="pay", description="Buy credits"),
     BotCommand(command="premium", description="Premium plan"),
     BotCommand(command="health", description="Health check"),
+]
+
+ADMIN_COMMANDS = PUBLIC_COMMANDS + [
+    BotCommand(command="createpoll", description="Create a poll (admin)"),
     BotCommand(command="showsections", description="Show sections (admin)"),
     BotCommand(command="addsection", description="Set upload section (admin)"),
     BotCommand(command="publishsection", description="Show section on website (admin)"),
@@ -3888,7 +3892,13 @@ async def _startup() -> None:
     admins = await db.list_admins()
     settings.admin_ids.update(admins)
     try:
-        await bot.set_my_commands(BOT_COMMANDS)
+        from aiogram.types import BotCommandScopeDefault, BotCommandScopeChat
+        await bot.set_my_commands(PUBLIC_COMMANDS, scope=BotCommandScopeDefault())
+        for admin_id in settings.admin_ids:
+            try:
+                await bot.set_my_commands(ADMIN_COMMANDS, scope=BotCommandScopeChat(chat_id=admin_id))
+            except Exception as e:
+                logger.warning("Failed to set admin commands for %s: %s", admin_id, e)
     except Exception as exc:
         logger.warning("set_my_commands failed: %s", exc)
     if _payment_expiry_task is None or _payment_expiry_task.done():
