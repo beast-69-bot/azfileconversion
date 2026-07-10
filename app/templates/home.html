@@ -997,18 +997,57 @@
         .tree-branches-container {
             padding-top: 0;
         }
+        .hero-title {
+            font-size: 28px !important;
+            line-height: 1.25 !important;
+        }
+        .hero-subtitle {
+            font-size: 13px !important;
+            line-height: 1.45 !important;
+            margin-bottom: 24px !important;
+        }
+        .hero-desc-container {
+            padding: 0 8px;
+            gap: 12px !important;
+        }
+        .hero-desc-container p {
+            font-size: 13px !important;
+            line-height: 1.5 !important;
+            text-align: justify;
+        }
+        .cta-container {
+            flex-direction: column !important;
+            align-items: stretch !important;
+            gap: 12px !important;
+            width: 100% !important;
+            max-width: 320px;
+            margin-left: auto;
+            margin-right: auto;
+            padding: 0 16px;
+        }
+        .cta-btn-premium, .cta-btn-secondary {
+            display: flex !important;
+            width: 100% !important;
+            justify-content: center !important;
+            text-align: center !important;
+            box-sizing: border-box !important;
+            padding: 14px 20px !important;
+            font-size: 14px !important;
+        }
     }
 
     /* Responsive */
     @media (max-width: 768px) {
         .hero-title {
-            font-size: 38px;
+            font-size: 32px;
         }
         .premium-hero {
             padding: 50px 16px 40px 16px;
         }
         .hero-stats-row {
-            gap: 20px;
+            gap: 16px;
+            flex-wrap: wrap;
+            justify-content: center;
         }
         .progress-grid {
             grid-template-columns: 1fr;
