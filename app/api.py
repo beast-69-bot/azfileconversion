@@ -6,7 +6,7 @@ import math
 import mimetypes
 import secrets
 from typing import AsyncGenerator, Optional
-from urllib.parse import urlencode, quote
+from urllib.parse import urlencode, quote, urljoin
 from xml.sax.saxutils import escape
 
 from fastapi import FastAPI, Form, Header, HTTPException, Request
@@ -1025,7 +1025,6 @@ async def hls_proxy(url: str):
                     
                     if ".m3u8" in url:
                         text = await resp.text()
-                        base_url = url.rsplit("/", 1)[0] + "/"
                         new_lines = []
                         for line in text.splitlines():
                             line = line.strip()
@@ -1034,11 +1033,8 @@ async def hls_proxy(url: str):
                             if line.startswith("#"):
                                 new_lines.append(line)
                             else:
-                                if line.startswith("http://") or line.startswith("https://"):
-                                    new_lines.append(f"/proxy?url={quote(line, safe='')}")
-                                else:
-                                    absolute = base_url + line
-                                    new_lines.append(f"/proxy?url={quote(absolute, safe='')}")
+                                absolute_url = urljoin(url, line)
+                                new_lines.append(f"/proxy?url={quote(absolute_url, safe='')}")
                         yield "\n".join(new_lines).encode("utf-8")
                     else:
                         async for chunk in resp.content.iter_chunked(65536):
