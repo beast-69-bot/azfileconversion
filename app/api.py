@@ -1087,3 +1087,19 @@ async def hls_player_page(request: Request, url: str):
             "stream_url": url,
         }
     )
+
+@app.get("/")
+async def root():
+    html_content = """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>AZ Hawas Adda</title>
+        <meta name="6a97088e-site-verification" content="c29af66ada34d56008c851e7f69be3a7">
+    </head>
+    <body>
+        <h1>Welcome to AZ Hawas Adda</h1>
+    </body>
+    </html>
+    """
+    return HTMLResponse(content=html_content)
