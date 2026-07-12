@@ -45,9 +45,44 @@
             letter-spacing: 2px;
         }
 
+        .main-layout {
+            display: flex;
+            flex-direction: column;
+            width: 100%;
+            max-width: 1600px;
+            margin: 0 auto;
+            align-items: center;
+        }
+
+        @media (min-width: 1100px) {
+            .main-layout {
+                flex-direction: row;
+                justify-content: center;
+                align-items: flex-start;
+                gap: 20px;
+            }
+            .center-col {
+                flex: 1;
+                max-width: 900px;
+                width: 100%;
+            }
+            .side-col {
+                display: flex;
+                flex-direction: column;
+                gap: 20px;
+            }
+        }
+        @media (max-width: 1099px) {
+            .side-col.left-ad, .side-col.right-ad {
+                display: none;
+            }
+            .center-col {
+                width: 100%;
+            }
+        }
+
         .player-container {
             width: 100%;
-            max-width: 900px;
             padding: 0 15px;
             box-sizing: border-box;
             margin-bottom: 25px;
@@ -72,7 +107,6 @@
 
         .ad-container {
             width: 100%;
-            max-width: 900px;
             padding: 0 15px;
             box-sizing: border-box;
             display: flex;
@@ -112,6 +146,7 @@
             margin-bottom: 40px;
             display: inline-flex;
             align-items: center;
+            justify-content: center;
             gap: 10px;
         }
 
@@ -126,34 +161,57 @@
         <h1>AZ Stream</h1>
     </div>
 
-    <div class="player-container">
-        <div class="video-wrapper">
-            <video id="player" controls>
-                <!-- The proxy URL will be set dynamically -->
-            </video>
+    <div class="main-layout">
+        <!-- Left Ad (Desktop Only) -->
+        <div class="side-col left-ad">
+            <div class="banner-ad">
+                <div class="ad-label">Advertisement</div>
+                <script>
+                  atOptions = { 'key' : '42a27b95e3a9b56ead80e085e7995838', 'format' : 'iframe', 'height' : 250, 'width' : 300, 'params' : {} };
+                </script>
+                <script src="https://www.highperformanceformat.com/42a27b95e3a9b56ead80e085e7995838/invoke.js"></script>
+            </div>
+        </div>
+
+        <!-- Center Content -->
+        <div class="center-col">
+            <div class="player-container">
+                <div class="video-wrapper">
+                    <video id="player" controls>
+                        <!-- The proxy URL will be set dynamically -->
+                    </video>
+                </div>
+            </div>
+
+            <div class="ad-container">
+                <div class="banner-ad">
+                    <div class="ad-label">Advertisement</div>
+                    <script>
+                      atOptions = { 'key' : '42a27b95e3a9b56ead80e085e7995838', 'format' : 'iframe', 'height' : 250, 'width' : 300, 'params' : {} };
+                    </script>
+                    <script src="https://www.highperformanceformat.com/42a27b95e3a9b56ead80e085e7995838/invoke.js"></script>
+                </div>
+            </div>
+            
+            <div style="text-align: center;">
+                <a href="https://t.me/azhawasadda" target="_blank" class="btn-telegram">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2L2 10.5L9.5 13.5L13.5 21.5L21.5 2Z"/><path d="M21.5 2L9.5 13.5"/></svg>
+                    Join Main Telegram Channel
+                </a>
+            </div>
+        </div>
+
+        <!-- Right Ad (Desktop Only) -->
+        <div class="side-col right-ad">
+            <div class="banner-ad">
+                <div class="ad-label">Advertisement</div>
+                <script>
+                  atOptions = { 'key' : '42a27b95e3a9b56ead80e085e7995838', 'format' : 'iframe', 'height' : 250, 'width' : 300, 'params' : {} };
+                </script>
+                <script src="https://www.highperformanceformat.com/42a27b95e3a9b56ead80e085e7995838/invoke.js"></script>
+            </div>
         </div>
     </div>
-
-    <div class="ad-container">
-        <div class="banner-ad">
-            <div class="ad-label">Advertisement</div>
-            <script>
-              atOptions = {
-                'key' : '42a27b95e3a9b56ead80e085e7995838',
-                'format' : 'iframe',
-                'height' : 250,
-                'width' : 300,
-                'params' : {}
-              };
-            </script>
-            <script src="https://www.highperformanceformat.com/42a27b95e3a9b56ead80e085e7995838/invoke.js"></script>
-        </div>
-    </div>
-
-    <a href="https://t.me/azhawasadda" target="_blank" class="btn-telegram">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2L2 10.5L9.5 13.5L13.5 21.5L21.5 2Z"/><path d="M21.5 2L9.5 13.5"/></svg>
-        Join Main Telegram Channel
-    </a>
 
 <!-- Fluid Player JS & Hls.js -->
 <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
