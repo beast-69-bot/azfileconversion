@@ -3,9 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Delegate-CH" content="Sec-CH-UA https://s.magsrv.com; Sec-CH-UA-Mobile https://s.magsrv.com; Sec-CH-UA-Arch https://s.magsrv.com; Sec-CH-UA-Model https://s.magsrv.com; Sec-CH-UA-Platform https://s.magsrv.com; Sec-CH-UA-Platform-Version https://s.magsrv.com; Sec-CH-UA-Bitness https://s.magsrv.com; Sec-CH-UA-Full-Version-List https://s.magsrv.com;">
     <title>AZ Hawas Adda - Premium Player</title>
-    <!-- Plyr CSS for premium looks -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/plyr@3.7.8/dist/plyr.css" />
+    
+    <!-- Fluid Player CSS -->
+    <link rel="stylesheet" href="https://cdn.fluidplayer.com/v3/current/fluidplayer.min.css" type="text/css" />
+    
     <style>
         body {
             margin: 0;
@@ -23,11 +26,9 @@
             padding: 10px;
             box-sizing: border-box;
         }
-        /* Custom premium look (Purple theme) */
-        :root {
-            --plyr-color-main: #8a2be2;
-        }
-        .plyr {
+        video {
+            width: 100%;
+            height: 100%;
             border-radius: 12px;
             box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7);
         }
@@ -35,40 +36,51 @@
 </head>
 <body>
 <div class="player-container">
-    <video id="player" playsinline controls></video>
+    <video id="player" controls>
+        <!-- The proxy URL will be set dynamically -->
+    </video>
 </div>
 
-<!-- Plyr & Hls JS -->
-<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
-<script src="https://cdn.jsdelivr.net/npm/plyr@3.7.8/dist/plyr.min.js"></script>
+<!-- Fluid Player JS -->
+<script src="https://cdn.fluidplayer.com/v3/current/fluidplayer.min.js"></script>
 <script>
     document.addEventListener('DOMContentLoaded', () => {
-        const video = document.getElementById('player');
-        
-        // Pass stream URL injected by Jinja2 from backend
         const originalUrl = "{{ stream_url }}";
-        
         if (!originalUrl) {
             alert('Error: No stream URL provided!');
             return;
         }
 
-        // Route URL through our backend FastAPI /proxy endpoint
         const sourceUrl = '/proxy?url=' + encodeURIComponent(originalUrl);
-        const defaultOptions = {};
+        
+        // Add the source dynamically
+        const videoElement = document.getElementById('player');
+        const sourceElement = document.createElement('source');
+        sourceElement.src = sourceUrl;
+        sourceElement.type = 'application/x-mpegURL';
+        videoElement.appendChild(sourceElement);
 
-        if (Hls.isSupported()) {
-            const hls = new Hls();
-            hls.loadSource(sourceUrl);
-            hls.attachMedia(video);
-            hls.on(Hls.Events.MANIFEST_PARSED, function () {
-                const player = new Plyr(video, defaultOptions);
-            });
-        } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-            // Fallback for native HLS (Safari/iOS)
-            video.src = sourceUrl;
-            const player = new Plyr(video, defaultOptions);
-        }
+        fluidPlayer(
+            'player',
+            {
+                layoutControls: {
+                    primaryColor: "#8a2be2",
+                    posterImage: "",
+                    playButtonShowing: true,
+                    fillToContainer: true
+                },
+                vastOptions: {
+                    allowVPAID: true,
+                    adList: [
+                        {
+                            roll: 'preRoll', // Shows ad before video starts
+                            vastTag: 'https://s.magsrv.com/v1/vast.php?idz=5972662',
+                            adText: 'Video will resume in...'
+                        }
+                    ]
+                }
+            }
+        );
     });
 </script>
 </body>
