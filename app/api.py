@@ -1269,6 +1269,10 @@ async def hls_proxy(url: str, request: Request):
         raise HTTPException(status_code=500, detail=f"Proxy error: {str(e)}")
 
 
+@app.get("/c29af66ada34d56008c851e7f69be3a7.html")
+async def exoclick_verification():
+    return HTMLResponse(content="c29af66ada34d56008c851e7f69be3a7")
+
 @app.get("/hlsplayer", response_class=HTMLResponse)
 async def hls_player_page(request: Request, url: str):
     if not url:
