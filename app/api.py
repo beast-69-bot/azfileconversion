@@ -1003,7 +1003,7 @@ async def player_password(token: str, request: Request, password: str = Form(...
 # ---------------------------------------------------------------------------
 
 @app.get("/proxy")
-async def hls_proxy(url: str):
+async def hls_proxy(url: str, request: Request):
     if not url:
         raise HTTPException(status_code=400, detail="Error: No URL provided.")
     
@@ -1013,45 +1013,63 @@ async def hls_proxy(url: str):
     }
     
     try:
-        # Stream the response instead of loading it entirely into memory
-        async def fetch_and_stream():
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url, headers=headers) as resp:
-                    if resp.status != 200:
-                        yield b"Error: Failed to fetch stream."
-                        return
-                    
-                    content_type = resp.headers.get("Content-Type", "application/vnd.apple.mpegurl")
-                    
-                    if ".m3u8" in url:
-                        text = await resp.text()
-                        new_lines = []
-                        for line in text.splitlines():
-                            line = line.strip()
-                            if not line:
-                                continue
-                            if line.startswith("#"):
-                                new_lines.append(line)
-                            else:
-                                absolute_url = urljoin(url, line)
-                                new_lines.append(f"/proxy?url={quote(absolute_url, safe='')}")
-                        yield "\n".join(new_lines).encode("utf-8")
-                    else:
-                        async for chunk in resp.content.iter_chunked(65536):
-                            yield chunk
-                            
-        guessed_type = "application/vnd.apple.mpegurl"
-        if not (".m3u8" in url):
-            guessed_type = "video/MP2T"
-
-        return StreamingResponse(
-            fetch_and_stream(),
-            media_type=guessed_type,
-            headers={
+        session = aiohttp.ClientSession()
+        resp = await session.get(url, headers=headers)
+        
+        if resp.status != 200:
+            await resp.release()
+            await session.close()
+            raise HTTPException(status_code=resp.status, detail="Failed to fetch stream.")
+            
+        content_type = resp.headers.get("Content-Type", "application/octet-stream")
+        
+        if ".m3u8" in url or "mpegurl" in content_type.lower():
+            text = await resp.text()
+            await resp.release()
+            await session.close()
+            
+            new_lines = []
+            for line in text.splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                if line.startswith("#"):
+                    new_lines.append(line)
+                else:
+                    absolute_url = urljoin(url, line)
+                    new_lines.append(f"/proxy?url={quote(absolute_url, safe='')}")
+            
+            return Response(
+                content="\n".join(new_lines).encode("utf-8"),
+                media_type=content_type,
+                headers={
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Allow-Headers": "*"
+                }
+            )
+        else:
+            async def stream_generator():
+                try:
+                    async for chunk in resp.content.iter_chunked(65536):
+                        yield chunk
+                finally:
+                    await resp.release()
+                    await session.close()
+            
+            resp_headers = {
                 "Access-Control-Allow-Origin": "*",
                 "Access-Control-Allow-Headers": "*"
             }
-        )
+            if "Content-Length" in resp.headers:
+                resp_headers["Content-Length"] = resp.headers["Content-Length"]
+                
+            return StreamingResponse(
+                stream_generator(),
+                media_type=content_type,
+                headers=resp_headers
+            )
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Proxy error: {str(e)}")
 
