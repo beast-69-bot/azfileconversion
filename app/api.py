@@ -1,11 +1,12 @@
 import asyncio
+import aiohttp
 import hashlib
 import hmac
 import math
 import mimetypes
 import secrets
 from typing import AsyncGenerator, Optional
-from urllib.parse import urlencode
+from urllib.parse import urlencode, quote
 from xml.sax.saxutils import escape
 
 from fastapi import FastAPI, Form, Header, HTTPException, Request
@@ -995,3 +996,80 @@ async def player_password(token: str, request: Request, password: str = Form(...
     response = RedirectResponse(url=f"/player/{token}", status_code=302)
     response.set_cookie("stream_auth", password_cookie_value(), httponly=True, max_age=60 * 60 * 12, samesite="lax")
     return response
+
+
+# ---------------------------------------------------------------------------
+#  HLS Proxy & Player
+# ---------------------------------------------------------------------------
+
+@app.get("/proxy")
+async def hls_proxy(url: str):
+    if not url:
+        raise HTTPException(status_code=400, detail="Error: No URL provided.")
+    
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+        "Referer": "https://faphouse.com/"
+    }
+    
+    try:
+        # Stream the response instead of loading it entirely into memory
+        async def fetch_and_stream():
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, headers=headers) as resp:
+                    if resp.status != 200:
+                        yield b"Error: Failed to fetch stream."
+                        return
+                    
+                    content_type = resp.headers.get("Content-Type", "application/vnd.apple.mpegurl")
+                    
+                    if ".m3u8" in url:
+                        text = await resp.text()
+                        base_url = url.rsplit("/", 1)[0] + "/"
+                        new_lines = []
+                        for line in text.splitlines():
+                            line = line.strip()
+                            if not line:
+                                continue
+                            if line.startswith("#"):
+                                new_lines.append(line)
+                            else:
+                                if line.startswith("http://") or line.startswith("https://"):
+                                    new_lines.append(f"/proxy?url={quote(line, safe='')}")
+                                else:
+                                    absolute = base_url + line
+                                    new_lines.append(f"/proxy?url={quote(absolute, safe='')}")
+                        yield "\n".join(new_lines).encode("utf-8")
+                    else:
+                        async for chunk in resp.content.iter_chunked(65536):
+                            yield chunk
+                            
+        guessed_type = "application/vnd.apple.mpegurl"
+        if not (".m3u8" in url):
+            guessed_type = "video/MP2T"
+
+        return StreamingResponse(
+            fetch_and_stream(),
+            media_type=guessed_type,
+            headers={
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Headers": "*"
+            }
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Proxy error: {str(e)}")
+
+
+@app.get("/hlsplayer", response_class=HTMLResponse)
+async def hls_player_page(request: Request, url: str):
+    if not url:
+        return HTMLResponse("Error: No stream URL provided!", status_code=400)
+    
+    return templates.TemplateResponse(
+        request=request,
+        name="hls_player.html",
+        context={
+            "request": request,
+            "stream_url": url,
+        }
+    )

@@ -37,6 +37,7 @@
 <div class="player-container">
     <video id="player" playsinline controls></video>
 </div>
+
 <!-- Plyr & Hls JS -->
 <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
 <script src="https://cdn.jsdelivr.net/npm/plyr@3.7.8/dist/plyr.min.js"></script>
@@ -44,17 +45,18 @@
     document.addEventListener('DOMContentLoaded', () => {
         const video = document.getElementById('player');
         
-        // Get URL parameter '?url='
-        const urlParams = new URLSearchParams(window.location.search);
-        const originalUrl = urlParams.get('url');
+        // Pass stream URL injected by Jinja2 from backend
+        const originalUrl = "{{ stream_url }}";
         
         if (!originalUrl) {
             alert('Error: No stream URL provided!');
             return;
         }
-        // Route URL through our local PHP proxy
-        const sourceUrl = 'proxy.php?url=' + encodeURIComponent(originalUrl);
+
+        // Route URL through our backend FastAPI /proxy endpoint
+        const sourceUrl = '/proxy?url=' + encodeURIComponent(originalUrl);
         const defaultOptions = {};
+
         if (Hls.isSupported()) {
             const hls = new Hls();
             hls.loadSource(sourceUrl);
