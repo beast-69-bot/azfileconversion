@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AZ Hawas Adda - Premium Player</title>
+    <!-- Plyr CSS for premium looks -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/plyr@3.7.8/dist/plyr.css" />
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #0b0b0f;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            font-family: 'Inter', sans-serif;
+        }
+        .player-container {
+            width: 100%;
+            max-width: 900px;
+            padding: 10px;
+            box-sizing: border-box;
+        }
+        /* Custom premium look (Purple theme) */
+        :root {
+            --plyr-color-main: #8a2be2;
+        }
+        .plyr {
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7);
+        }
+    </style>
+</head>
+<body>
+<div class="player-container">
+    <video id="player" playsinline controls></video>
+</div>
+<!-- Plyr & Hls JS -->
+<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+<script src="https://cdn.jsdelivr.net/npm/plyr@3.7.8/dist/plyr.min.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const video = document.getElementById('player');
+        
+        // Get URL parameter '?url='
+        const urlParams = new URLSearchParams(window.location.search);
+        const originalUrl = urlParams.get('url');
+        
+        if (!originalUrl) {
+            alert('Error: No stream URL provided!');
+            return;
+        }
+        // Route URL through our local PHP proxy
+        const sourceUrl = 'proxy.php?url=' + encodeURIComponent(originalUrl);
+        const defaultOptions = {};
+        if (Hls.isSupported()) {
+            const hls = new Hls();
+            hls.loadSource(sourceUrl);
+            hls.attachMedia(video);
+            hls.on(Hls.Events.MANIFEST_PARSED, function () {
+                const player = new Plyr(video, defaultOptions);
+            });
+        } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+            // Fallback for native HLS (Safari/iOS)
+            video.src = sourceUrl;
+            const player = new Plyr(video, defaultOptions);
+        }
+    });
+</script>
+</body>
+</html>
