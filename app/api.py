@@ -1100,12 +1100,30 @@ async def exoclick_verification():
 async def hls_player_page(request: Request, url: str):
     if not url:
         return HTMLResponse("Error: No stream URL provided!", status_code=400)
+        
+    url_lower = url.lower()
+    is_terabox = any(domain in url_lower for domain in ["terabox.com", "teraboxapp.com", "1024tera.com", "terasharefile.com", "nephobox.com"])
     
+    stream_url = url
+    if is_terabox:
+        import re
+        surl_match = re.search(r'/s/([A-Za-z0-9_-]+)', url)
+        if surl_match:
+            surl = surl_match.group(1)
+            from app.terabox_helper import get_terabox_info
+            info = await asyncio.to_thread(get_terabox_info, surl)
+            if info and info.get("dlink"):
+                stream_url = info["dlink"]
+            else:
+                return HTMLResponse("❌ **Error:** Failed to extract TeraBox stream link. Please make sure cookies are valid.", status_code=500)
+        else:
+            return HTMLResponse("❌ **Error:** Invalid TeraBox link format.", status_code=400)
+            
     return templates.TemplateResponse(
         request=request,
         name="hls_player.html",
         context={
             "request": request,
-            "stream_url": url,
+            "stream_url": stream_url,
         }
     )
