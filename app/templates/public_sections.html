@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+
+{% block title %}Public Sections - AzhawaSadda{% endblock %}
+{% block meta_description %}Browse admin-published AzhawaSadda public sections with stream-ready archive pages and Telegram premium handoff links.{% endblock %}
+
+{% block header_extra %}
+<a class="header-action" href="#public-list">Open list</a>
+{% endblock %}
+
+{% block content %}
+<div class="page-frame">
+    <section class="card hero-panel animate-in">
+        <div class="hero-grid">
+            <div class="hero-copy">
+                <nav class="breadcrumb" aria-label="Breadcrumb">
+                    <span>Home</span>
+                    <span class="sep">/</span>
+                    <span>Public sections</span>
+                </nav>
+                <div class="eyebrow">Admin published archive</div>
+                <h1>Public sections</h1>
+                <p class="lede">Only admin-approved sections are shown here. Open the normal route for protected streaming or the premium route for Telegram delivery.</p>
+                <div class="chip-row">
+                    <span class="chip chip-accent">{{ section_cards|length }} public routes</span>
+                    <span class="chip">Normal streaming</span>
+                    <span class="chip">Premium handoff</span>
+                </div>
+            </div>
+            <div class="meta-strip hero-stats">
+                <div class="meta-box">
+                    <span class="meta-label">Visible</span>
+                    <span class="meta-value">{{ section_cards|length }}</span>
+                </div>
+                <div class="meta-box">
+                    <span class="meta-label">Access</span>
+                    <span class="meta-value">Public</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="public-list" class="card content-panel public-sections-panel animate-in">
+        <div class="section-toolbar">
+            <div class="toolbar-head">
+                <div class="panel-title">Available sections</div>
+                <p class="toolbar-copy">Admin controls this list from Telegram.</p>
+            </div>
+            <div class="section-meta">
+                <div class="chip">Curated list</div>
+                <div class="chip">Updated by bot</div>
+            </div>
+        </div>
+
+        {% if section_cards %}
+        <div class="public-section-grid">
+            {% for section in section_cards %}
+            <article class="public-section-card">
+                <div>
+                    <span class="route-kicker">Public section</span>
+                    <strong>{{ section.name }}</strong>
+                    <p>Open this published route with normal or premium access.</p>
+                </div>
+                <div class="public-section-actions">
+                    <a class="btn btn-secondary" href="{{ section.href }}">Normal Open</a>
+                    <a class="btn btn-ghost" href="{{ section.premium_href }}">Premium Open</a>
+                </div>
+            </article>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <div class="panel-title">No public sections yet</div>
+            <p>Admin can publish a section from Telegram with /publishsection &lt;section name or id&gt;.</p>
+        </div>
+        {% endif %}
+    </section>
+</div>
+{% endblock %}

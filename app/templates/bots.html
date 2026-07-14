@@ -1,0 +1,793 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AZ Bot Network — Premium Telegram Bots Portfolio</title>
+    <meta name="description" content="Explore the premium network of AZ Telegram bots. File managers, media downloaders, VVIP premium content, and automation bots.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Plus+Jakarta+Sans:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg" />
+    <link rel="shortcut icon" href="/favicon.ico" />
+    <style>
+        :root {
+            --bg-base: #06060c;
+            --bg-surface: rgba(255, 255, 255, 0.03);
+            --bg-surface-hover: rgba(255, 255, 255, 0.06);
+            --border-glow: rgba(138, 43, 226, 0.2);
+            --border-glow-hover: rgba(138, 43, 226, 0.4);
+            
+            /* Neon color scheme */
+            --color-primary: #8a2be2; /* Electric Purple */
+            --color-primary-glow: rgba(138, 43, 226, 0.5);
+            --color-secondary: #00f2fe; /* Cyber Cyan */
+            --color-secondary-glow: rgba(0, 242, 254, 0.5);
+            --color-success: #00f5a0; /* Neon Green */
+            --color-warning: #ffb800; /* Yellow */
+            --color-danger: #ff007f; /* Hot Pink */
+            
+            --text-main: #f3f4f6;
+            --text-muted: #9ca3af;
+            --font-display: 'Outfit', sans-serif;
+            --font-sans: 'Plus Jakarta Sans', sans-serif;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: var(--bg-base);
+            color: var(--text-main);
+            font-family: var(--font-sans);
+            min-height: 100vh;
+            overflow-x: hidden;
+            position: relative;
+        }
+
+        /* Ambient Background Glows */
+        .ambient-glows {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            pointer-events: none;
+            z-index: 0;
+            overflow: hidden;
+        }
+
+        .glow-orb {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(140px);
+            opacity: 0.15;
+            animation: float 20s infinite alternate ease-in-out;
+        }
+
+        .glow-orb-1 {
+            width: 500px;
+            height: 500px;
+            background: radial-gradient(circle, var(--color-primary) 0%, transparent 70%);
+            top: -10%;
+            left: -10%;
+        }
+
+        .glow-orb-2 {
+            width: 600px;
+            height: 600px;
+            background: radial-gradient(circle, var(--color-secondary) 0%, transparent 70%);
+            bottom: -20%;
+            right: -10%;
+            animation-delay: -5s;
+        }
+
+        .glow-orb-3 {
+            width: 400px;
+            height: 400px;
+            background: radial-gradient(circle, var(--color-danger) 0%, transparent 70%);
+            top: 40%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            opacity: 0.08;
+            animation-duration: 25s;
+        }
+
+        @keyframes float {
+            0% { transform: translate(0, 0) scale(1); }
+            50% { transform: translate(30px, -40px) scale(1.1); }
+            100% { transform: translate(-20px, 20px) scale(0.95); }
+        }
+
+        /* Custom Grid Lines Overlay */
+        .grid-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: 
+                linear-gradient(rgba(255, 255, 255, 0.015) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255, 255, 255, 0.015) 1px, transparent 1px);
+            background-size: 40px 40px;
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        .content-container {
+            position: relative;
+            z-index: 2;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 80px 24px;
+        }
+
+        /* Header Styles */
+        header {
+            text-align: center;
+            margin-bottom: 60px;
+        }
+
+        .logo-container {
+            display: inline-flex;
+            align-items: center;
+            gap: 12px;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            padding: 8px 16px;
+            border-radius: 50px;
+            backdrop-filter: blur(10px);
+            margin-bottom: 24px;
+        }
+
+        .logo-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: var(--color-success);
+            box-shadow: 0 0 10px var(--color-success);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.4); opacity: 0.5; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        .logo-text {
+            font-size: 13px;
+            font-weight: 600;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            color: var(--text-muted);
+        }
+
+        h1 {
+            font-family: var(--font-display);
+            font-size: 48px;
+            font-weight: 800;
+            letter-spacing: -1px;
+            line-height: 1.1;
+            margin-bottom: 16px;
+            background: linear-gradient(135deg, #fff 30%, #a78bfa 70%, var(--color-secondary) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .subtitle {
+            font-size: 18px;
+            color: var(--text-muted);
+            max-width: 600px;
+            margin: 0 auto 30px auto;
+            line-height: 1.6;
+        }
+
+        /* Navigation or Action bar */
+        .actions-bar {
+            display: flex;
+            justify-content: center;
+            gap: 16px;
+            margin-bottom: 40px;
+            flex-wrap: wrap;
+        }
+
+        .nav-btn {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            color: var(--text-main);
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 14px;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            text-decoration: none;
+            backdrop-filter: blur(8px);
+        }
+
+        .nav-btn:hover {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: rgba(255, 255, 255, 0.2);
+            transform: translateY(-2px);
+        }
+
+        .nav-btn.primary-nav {
+            background: linear-gradient(135deg, var(--color-primary) 0%, #6366f1 100%);
+            border: none;
+            box-shadow: 0 4px 15px var(--color-primary-glow);
+        }
+
+        .nav-btn.primary-nav:hover {
+            box-shadow: 0 6px 20px rgba(138, 43, 226, 0.7);
+            transform: translateY(-2px);
+        }
+
+        /* Interactive Filter Tabs */
+        .filter-section {
+            background: rgba(255, 255, 255, 0.015);
+            border: 1px solid rgba(255, 255, 255, 0.04);
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 50px;
+            backdrop-filter: blur(12px);
+        }
+
+        .search-box {
+            position: relative;
+            margin-bottom: 20px;
+            width: 100%;
+        }
+
+        .search-input {
+            width: 100%;
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            padding: 14px 20px 14px 45px;
+            border-radius: 10px;
+            color: #fff;
+            font-size: 15px;
+            outline: none;
+            transition: all 0.3s ease;
+        }
+
+        .search-input:focus {
+            border-color: var(--color-secondary);
+            box-shadow: 0 0 15px rgba(0, 242, 254, 0.25);
+        }
+
+        .search-icon {
+            position: absolute;
+            left: 16px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-muted);
+            pointer-events: none;
+        }
+
+        .tab-container {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .tab-btn {
+            background: transparent;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            color: var(--text-muted);
+            padding: 8px 16px;
+            border-radius: 30px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+
+        .tab-btn:hover {
+            color: #fff;
+            background: rgba(255, 255, 255, 0.04);
+            border-color: rgba(255, 255, 255, 0.15);
+        }
+
+        .tab-btn.active {
+            background: rgba(255, 255, 255, 0.08);
+            color: var(--color-secondary);
+            border-color: var(--color-secondary);
+            box-shadow: 0 0 10px rgba(0, 242, 254, 0.15);
+        }
+
+        /* Bot Cards Grid */
+        .bots-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+            gap: 30px;
+        }
+
+        /* Bot Card Styling with Premium Glassmorphism */
+        .bot-card {
+            background: var(--bg-surface);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 20px;
+            padding: 30px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            min-height: 320px;
+            position: relative;
+            overflow: hidden;
+            backdrop-filter: blur(16px);
+            transition: all 0.4s cubic-bezier(0.165, 0.84, 0.44, 1);
+            z-index: 10;
+        }
+
+        /* Subtle ambient highlight border decoration on hover */
+        .bot-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(800px circle at var(--mouse-x, 0) var(--mouse-y, 0), rgba(255, 255, 255, 0.06), transparent 40%);
+            z-index: -1;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .bot-card:hover::before {
+            opacity: 1;
+        }
+
+        .bot-card:hover {
+            transform: translateY(-6px);
+            border-color: var(--hover-border-color, rgba(138, 43, 226, 0.3));
+            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.4), 0 0 20px var(--hover-glow-color, rgba(138, 43, 226, 0.15));
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 20px;
+        }
+
+        .bot-icon-wrapper {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            background: var(--theme-gradient, linear-gradient(135deg, var(--color-primary) 0%, #6366f1 100%));
+            box-shadow: 0 4px 12px var(--theme-shadow, rgba(138, 43, 226, 0.3));
+        }
+
+        .status-badge {
+            font-size: 11px;
+            font-weight: 700;
+            padding: 4px 10px;
+            border-radius: 50px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .status-active {
+            background: rgba(0, 245, 160, 0.1);
+            color: var(--color-success);
+            border: 1px solid rgba(0, 245, 160, 0.2);
+            box-shadow: 0 0 8px rgba(0, 245, 160, 0.1);
+        }
+
+        .status-maintenance {
+            background: rgba(255, 184, 0, 0.1);
+            color: var(--color-warning);
+            border: 1px solid rgba(255, 184, 0, 0.2);
+            box-shadow: 0 0 8px rgba(255, 184, 0, 0.1);
+        }
+
+        .card-body {
+            margin-bottom: 30px;
+            flex-grow: 1;
+        }
+
+        .category-label {
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--theme-color, var(--color-primary));
+            margin-bottom: 6px;
+        }
+
+        .bot-title {
+            font-family: var(--font-display);
+            font-size: 22px;
+            font-weight: 700;
+            margin-bottom: 12px;
+            color: #fff;
+        }
+
+        .bot-desc {
+            font-size: 14px;
+            color: var(--text-muted);
+            line-height: 1.6;
+        }
+
+        .card-footer {
+            margin-top: auto;
+        }
+
+        /* Premium Buttons */
+        .launch-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            width: 100%;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            color: #fff;
+            padding: 12px 20px;
+            border-radius: 12px;
+            font-weight: 700;
+            font-size: 14px;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+
+        .launch-btn svg {
+            width: 16px;
+            height: 16px;
+            fill: currentColor;
+            transition: transform 0.3s ease;
+        }
+
+        .launch-btn:hover {
+            background: var(--theme-gradient, linear-gradient(135deg, var(--color-primary) 0%, #6366f1 100%));
+            border-color: transparent;
+            box-shadow: 0 6px 15px var(--theme-shadow, rgba(138, 43, 226, 0.4));
+            transform: translateY(-2px);
+        }
+
+        .launch-btn:hover svg {
+            transform: translateX(4px);
+        }
+
+        /* Footer styling */
+        footer {
+            margin-top: 80px;
+            text-align: center;
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+            padding-top: 40px;
+            color: var(--text-muted);
+            font-size: 14px;
+        }
+
+        .footer-logo {
+            font-family: var(--font-display);
+            font-size: 20px;
+            font-weight: 700;
+            color: #fff;
+            margin-bottom: 8px;
+            letter-spacing: 1px;
+        }
+
+        .footer-copy {
+            margin-bottom: 16px;
+        }
+
+        .social-links {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+        }
+
+        .social-link {
+            color: var(--text-muted);
+            text-decoration: none;
+            transition: color 0.3s;
+        }
+
+        .social-link:hover {
+            color: var(--color-secondary);
+        }
+
+        /* Responsive Breakpoints */
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 36px;
+            }
+            .content-container {
+                padding: 40px 16px;
+            }
+            .bots-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Ambient Glow Backgrounds -->
+    <div class="ambient-glows">
+        <div class="glow-orb glow-orb-1"></div>
+        <div class="glow-orb glow-orb-2"></div>
+        <div class="glow-orb glow-orb-3"></div>
+    </div>
+
+    <!-- Grid Overlay -->
+    <div class="grid-overlay"></div>
+
+    <div class="content-container">
+        
+        <header>
+            <div class="logo-container">
+                <span class="logo-dot"></span>
+                <span class="logo-text">AZ Network Center</span>
+            </div>
+            <h1>The Ultimate Bot Network</h1>
+            <p class="subtitle">Deploying high-performance automated systems on Telegram. Explore our curated range of controllers, downloader bots, search tools, and media processing utilities.</p>
+            
+            <div class="actions-bar">
+                <a href="/" class="nav-btn primary-nav">Bot Network Hub</a>
+                <a href="/sections" class="nav-btn">Media Sections</a>
+                <a href="/trending" class="nav-btn">Trending Archives</a>
+            </div>
+        </header>
+
+        <section class="filter-section">
+            <div class="search-box">
+                <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                <input type="text" id="botSearch" class="search-input" placeholder="Search bot network by name or category...">
+            </div>
+            <div class="tab-container" id="categoryFilter">
+                <button class="tab-btn active" data-category="all">All Bots</button>
+                <button class="tab-btn" data-category="core">Core Controllers</button>
+                <button class="tab-btn" data-category="media">Media & Movies</button>
+                <button class="tab-btn" data-category="nsfw">Adult Utilities</button>
+                <button class="tab-btn" data-category="file">File Managers</button>
+                <button class="tab-btn" data-category="processing">Media Processing</button>
+            </div>
+        </section>
+
+        <main class="bots-grid" id="botsGrid">
+            <!-- Bot Cards rendered dynamically via JS -->
+        </main>
+
+        <footer>
+            <div class="footer-logo">AZ STREAM</div>
+            <p class="footer-copy">© <span id="currentYear"></span> AZ Network Group. All automated bots are subject to Terms of Service.</p>
+            <div class="social-links">
+                <a href="https://t.me/Az_Mods_Adda" class="social-link" target="_blank" rel="noopener">@Az_Mods_Adda</a>
+                <a href="https://t.me/eurnyme" class="social-link" target="_blank" rel="noopener">Support</a>
+            </div>
+        </footer>
+
+    </div>
+
+    <script>
+        // Set Year
+        document.getElementById('currentYear').textContent = new Date().getFullYear();
+
+        // Bots Data Array
+        const botsData = [
+            {
+                name: "Master Bot / Controller",
+                category: "core",
+                categoryLabel: "Core / Master Controllers",
+                status: "active",
+                statusLabel: "Active",
+                desc: "Used for network management, performance logs, routing endpoints, user configuration databases, and overall network command center control.",
+                username: "az_network_master_bot",
+                icon: "⚙️",
+                theme: {
+                    gradient: "linear-gradient(135deg, #a855f7 0%, #7c3aed 100%)",
+                    shadow: "rgba(124, 58, 237, 0.4)",
+                    color: "#a855f7"
+                }
+            },
+            {
+                name: "Movies Search & Download Bot",
+                category: "media",
+                categoryLabel: "Media & Entertainment",
+                status: "active",
+                statusLabel: "Active",
+                desc: "Fast inline query bot to search and stream/download high-quality movies directly inside Telegram chats. Multi-server links support.",
+                username: "azmovieadda1bot",
+                icon: "🎬",
+                theme: {
+                    gradient: "linear-gradient(135deg, #00f2fe 0%, #4facfe 100%)",
+                    shadow: "rgba(0, 242, 254, 0.4)",
+                    color: "#00f2fe"
+                }
+            },
+            {
+                name: "AZ Source / VVIP Premium Content Bot",
+                category: "media",
+                categoryLabel: "Media & Entertainment",
+                status: "active",
+                statusLabel: "Active",
+                desc: "Exclusive premium media indexer bot. Provides priority delivery routes, VVIP streams, and secure private vault access for subscribed users.",
+                username: "azfantasyworldbot",
+                icon: "💎",
+                theme: {
+                    gradient: "linear-gradient(135deg, #ec4899 0%, #f43f5e 100%)",
+                    shadow: "rgba(244, 63, 94, 0.4)",
+                    color: "#ec4899"
+                }
+            },
+            {
+                name: "Faphouse Helper / Faphouse Bot",
+                category: "nsfw",
+                categoryLabel: "NSFW & Adult Content Utilities",
+                status: "active",
+                statusLabel: "Active",
+                desc: "Specialized helper utility to fetch streamable files, mirror premium links, and search categories on demand.",
+                username: "az_adult_faphouse_bot",
+                icon: "🔞",
+                theme: {
+                    gradient: "linear-gradient(135deg, #f97316 0%, #ef4444 100%)",
+                    shadow: "rgba(239, 68, 68, 0.4)",
+                    color: "#f97316"
+                }
+            },
+            {
+                name: "Brazzers Cleaner Utility",
+                category: "nsfw",
+                categoryLabel: "NSFW & Adult Content Utilities",
+                status: "maintenance",
+                statusLabel: "Maintenance",
+                desc: "Cleans, formats, and sanitizes filenames, metadata, tags and previews from index feeds for neat directory organization.",
+                username: "az_brazzers_cleaner_bot",
+                icon: "🧹",
+                theme: {
+                    gradient: "linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)",
+                    shadow: "rgba(59, 130, 246, 0.4)",
+                    color: "#3b82f6"
+                }
+            },
+            {
+                name: "Mega Downloader Bot",
+                category: "file",
+                categoryLabel: "File & Download Managers",
+                status: "active",
+                statusLabel: "Active",
+                desc: "High-speed downloader bot to bypass Mega limits, fetch secure files, and upload them directly to Telegram servers.",
+                username: "az_mega_downloader_bot",
+                icon: "🚀",
+                theme: {
+                    gradient: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+                    shadow: "rgba(16, 185, 129, 0.4)",
+                    color: "#10b981"
+                }
+            },
+            {
+                name: "Mega Renamer / File Renamer Bot",
+                category: "file",
+                categoryLabel: "File & Download Managers",
+                status: "active",
+                statusLabel: "Active",
+                desc: "Batch file renamer bot supporting custom headers, footers, prefix/suffix additions, and interactive thumbnail attachment during renaming.",
+                username: "az_file_renamer_bot",
+                icon: "📝",
+                theme: {
+                    gradient: "linear-gradient(135deg, #eab308 0%, #ca8a04 100%)",
+                    shadow: "rgba(234, 179, 8, 0.4)",
+                    color: "#eab308"
+                }
+            },
+            {
+                name: "Thumbnail Capture / Generator Bot",
+                category: "processing",
+                categoryLabel: "Thumbnail & Media Processing",
+                status: "active",
+                statusLabel: "Active",
+                desc: "Extracts video keyframes and generates custom grid contact sheets, smart preview thumbnails, and cover arts instantly.",
+                username: "az_thumbnail_generator_bot",
+                icon: "🖼️",
+                theme: {
+                    gradient: "linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)",
+                    shadow: "rgba(6, 182, 212, 0.4)",
+                    color: "#06b6d4"
+                }
+            }
+        ];
+
+        // Render Bots to Grid
+        const botsGrid = document.getElementById('botsGrid');
+
+        function renderBots(filterText = "", activeCategory = "all") {
+            botsGrid.innerHTML = "";
+            
+            const filteredBots = botsData.filter(bot => {
+                const matchesCategory = activeCategory === "all" || bot.category === activeCategory;
+                const matchesSearch = bot.name.toLowerCase().includes(filterText.toLowerCase()) || 
+                                     bot.desc.toLowerCase().includes(filterText.toLowerCase()) ||
+                                     bot.categoryLabel.toLowerCase().includes(filterText.toLowerCase());
+                return matchesCategory && matchesSearch;
+            });
+
+            if (filteredBots.length === 0) {
+                botsGrid.innerHTML = `
+                    <div style="grid-column: 1/-1; text-align: center; padding: 40px; color: var(--text-muted); font-size: 16px;">
+                        No bots found matching your search criteria.
+                    </div>
+                `;
+                return;
+            }
+
+            filteredBots.forEach((bot, index) => {
+                const card = document.createElement('div');
+                card.className = 'bot-card';
+                card.style.setProperty('--theme-gradient', bot.theme.gradient);
+                card.style.setProperty('--theme-shadow', bot.theme.shadow);
+                card.style.setProperty('--theme-color', bot.theme.color);
+                card.style.setProperty('--hover-border-color', bot.theme.color + "66");
+                card.style.setProperty('--hover-glow-color', bot.theme.color + "26");
+
+                const statusClass = bot.status === 'active' ? 'status-active' : 'status-maintenance';
+
+                card.innerHTML = `
+                    <div>
+                        <div class="card-header">
+                            <div class="bot-icon-wrapper">${bot.icon}</div>
+                            <span class="status-badge ${statusClass}">${bot.statusLabel}</span>
+                        </div>
+                        <div class="card-body">
+                            <div class="category-label">${bot.categoryLabel}</div>
+                            <h3 class="bot-title">${bot.name}</h3>
+                            <p class="bot-desc">${bot.desc}</p>
+                        </div>
+                    </div>
+                    <div class="card-footer">
+                        <a href="https://t.me/${bot.username}" target="_blank" rel="noopener" class="launch-btn">
+                            Launch Bot
+                            <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69.01-.03.01-.14-.07-.2-.08-.06-.19-.04-.27-.02-.12.02-1.96 1.24-5.54 3.65-.52.36-.99.53-1.42.52-.47-.01-1.37-.27-2.04-.49-.82-.27-1.47-.41-1.42-.87.03-.24.36-.49.99-.75 3.89-1.69 6.49-2.8 7.8-3.32 3.71-1.47 4.48-1.73 4.98-1.74.11 0 .36.03.52.16.14.11.18.27.2.42.01.12.01.25 0 .36z"/>
+                            </svg>
+                        </a>
+                    </div>
+                `;
+
+                // Add 3D Hover tilt mouse move handling
+                card.addEventListener('mousemove', (e) => {
+                    const rect = card.getBoundingClientRect();
+                    const x = e.clientX - rect.left;
+                    const y = e.clientY - rect.top;
+                    card.style.setProperty('--mouse-x', `${x}px`);
+                    card.style.setProperty('--mouse-y', `${y}px`);
+                });
+
+                botsGrid.appendChild(card);
+            });
+        }
+
+        // Search & Filter Events
+        const searchInput = document.getElementById('botSearch');
+        const filterButtons = document.querySelectorAll('#categoryFilter .tab-btn');
+        let currentCategory = "all";
+
+        searchInput.addEventListener('input', (e) => {
+            renderBots(e.target.value, currentCategory);
+        });
+
+        filterButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                filterButtons.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                currentCategory = btn.getAttribute('data-category');
+                renderBots(searchInput.value, currentCategory);
+            });
+        });
+
+        // Initial Render
+        renderBots();
+    </script>
+</body>
+</html>

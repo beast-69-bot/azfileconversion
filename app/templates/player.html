@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+
+{% block title %}Stream - {{ file_name }}{% endblock %}
+
+{% block header_extra %}
+<span class="badge badge-live">Stream Active</span>
+{% endblock %}
+
+{% block content %}
+<div class="page-frame">
+  <section class="card hero-panel animate-in">
+    <div class="hero-grid">
+      <div class="hero-copy">
+        <div class="eyebrow">Player</div>
+        <h1>{{ file_name }}</h1>
+        <p class="lede">Direct playback panel for archive delivery. Use the stream route for immediate viewing or hand off the premium route for Telegram delivery.</p>
+        <div class="chip-row">
+          <div class="chip chip-accent">Stream ready</div>
+          <div class="chip">Token {{ token[:12] }}...</div>
+        </div>
+      </div>
+      <div class="hero-stats">
+        <div class="meta-box">
+          <span class="meta-label">Views</span>
+          <span class="meta-value">{{ views_total }}</span>
+        </div>
+        <div class="meta-box">
+          <span class="meta-label">Likes</span>
+          <span class="meta-value">{{ likes_total }}</span>
+        </div>
+        <div class="meta-box">
+          <span class="meta-label">Size</span>
+          <span class="meta-value">{{ size_text }}</span>
+        </div>
+        <div class="meta-box">
+          <span class="meta-label">Format</span>
+          <span class="meta-value">{{ mime_type }}</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card content-panel animate-in">
+    <div class="player-layout">
+      <section class="media-card">
+        <div class="media-header">
+          <div>
+            <div class="file-kicker">Current asset</div>
+            <div class="file-title">{{ file_name }}</div>
+            <div class="file-sub">{{ size_text }} &middot; {{ mime_type }}</div>
+          </div>
+          <span class="badge badge-live">Direct playback</span>
+        </div>
+        <div class="player-wrap">
+          {% if media_tag == "audio" %}
+          <audio controls autoplay preload="auto" controlslist="nodownload">
+            <source src="/stream/{{ token }}" type="{{ mime_type }}" />
+            Your browser does not support audio playback.
+          </audio>
+          {% else %}
+          <video controls autoplay preload="auto" controlslist="nodownload">
+            <source src="/stream/{{ token }}" type="{{ mime_type }}" />
+            Your browser does not support video playback.
+          </video>
+          {% endif %}
+        </div>
+        <div class="chip-row">
+          <div class="chip">{{ views_total }} total views</div>
+          <div class="chip">{{ likes_total }} likes</div>
+          {% if download_button_url %}
+          <div class="chip chip-accent">Telegram handoff available</div>
+          {% endif %}
+        </div>
+      </section>
+
+      <aside class="side-panel">
+        <div class="panel">
+          <div class="panel-title">Dispatch</div>
+          <p class="panel-copy">Open the direct stream instantly or hand off the premium route to Telegram for download-friendly delivery.</p>
+          <div class="actions-row">
+            <a class="btn btn-secondary" href="/stream/{{ token }}">Direct Stream</a>
+            {% if download_button_url %}
+            <a class="btn btn-primary" href="{{ download_button_url }}">Telegram Download</a>
+            {% endif %}
+            <button id="like-btn" class="btn btn-ghost {{ 'active' if liked else '' }}" data-liked="{{ 'true' if liked else 'false' }}" data-token="{{ token }}">
+              Like <span id="like-count">{{ likes_total }}</span>
+            </button>
+          </div>
+          <p class="hint">For large files, wait a few seconds after pressing play.</p>
+        </div>
+
+        <div class="panel">
+          <div class="panel-title">Metrics</div>
+          <div class="stats-grid">
+            <div class="stat-row">
+              <span class="stat-label">Views</span>
+              <strong class="stat-value">{{ views_total }}</strong>
+            </div>
+            <div class="stat-row">
+              <span class="stat-label">Likes</span>
+              <strong class="stat-value">{{ likes_total }}</strong>
+            </div>
+            <div class="stat-row">
+              <span class="stat-label">File size</span>
+              <strong class="stat-value">{{ size_text }}</strong>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-title">Notes</div>
+          <p class="panel-copy">If playback stalls, refresh once. Premium Telegram delivery remains the fallback path for downloadable access.</p>
+        </div>
+      </aside>
+    </div>
+  </section>
+</div>
+
+<script>
+  const likeBtn = document.getElementById('like-btn');
+  const likeCount = document.getElementById('like-count');
+  if (likeBtn) {
+    likeBtn.addEventListener('click', async () => {
+      const token = likeBtn.dataset.token;
+      const liked = likeBtn.dataset.liked === 'true';
+      const action = liked ? 'unlike' : 'like';
+      likeBtn.disabled = true;
+      try {
+        const res = await fetch(`/player/${token}/like`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          likeBtn.dataset.liked = data.liked ? 'true' : 'false';
+          likeBtn.classList.toggle('active', data.liked);
+          likeCount.textContent = data.total;
+        }
+      } finally {
+        likeBtn.disabled = false;
+      }
+    });
+  }
+</script>
+{% endblock %}
