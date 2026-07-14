@@ -218,7 +218,7 @@
 <script src="https://cdn.fluidplayer.com/v3/current/fluidplayer.min.js"></script>
 <script>
     document.addEventListener('DOMContentLoaded', () => {
-        const originalUrl = "{{ stream_url }}";
+        const originalUrl = "{{ stream_url | safe }}";
         if (!originalUrl) {
             alert('Error: No stream URL provided!');
             return;
