@@ -230,7 +230,11 @@
         const videoElement = document.getElementById('player');
         const sourceElement = document.createElement('source');
         sourceElement.src = sourceUrl;
-        sourceElement.type = 'application/x-mpegURL';
+        
+        // Set correct mime type based on file extension
+        const isHls = originalUrl.toLowerCase().includes('.m3u8') || originalUrl.toLowerCase().includes('m3u8');
+        sourceElement.type = isHls ? 'application/x-mpegURL' : 'video/mp4';
+        
         videoElement.appendChild(sourceElement);
 
         fluidPlayer(

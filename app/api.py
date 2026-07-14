@@ -1009,7 +1009,7 @@ async def hls_proxy(url: str, request: Request):
         raise HTTPException(status_code=400, detail="Error: No URL provided.")
     
     url_lower = url.lower()
-    is_terabox = any(domain in url_lower for domain in ["terabox.com", "teraboxapp.com", "1024tera.com", "terasharefile.com", "nephobox.com", "pcs.baidu.com"])
+    is_terabox = any(domain in url_lower for domain in ["terabox", "1024tera", "terasharefile", "nephobox", "pcs.baidu.com", "baidupcs.com"])
 
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
