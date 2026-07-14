@@ -91,7 +91,7 @@ async def register_site_visit_safely(visitor_id: str) -> None:
 
 @app.get("/", response_class=HTMLResponse)
 async def root(request: Request):
-    bot_link = f"https://t.me/{settings.bot_username}" if settings.bot_username else "#"
+    bot_link = f"https://telegram.me/{settings.bot_username}" if settings.bot_username else "#"
     visitor_cookie = request.cookies.get("site_visitor_id")
     visitor_id = visitor_cookie or secrets.token_hex(16)
     asyncio.create_task(register_site_visit_safely(visitor_id))
@@ -668,7 +668,7 @@ async def render_section(section_id: str, access_filter: str, request: Request) 
         entry["views_total"] += views_total
         entry["views_unique"] += views_unique
         if settings.bot_username:
-            bot_link = f"https://t.me/{settings.bot_username}?start=dl_{token}"
+            bot_link = f"https://telegram.me/{settings.bot_username}?start=dl_{token}"
             if ref_access == "premium":
                 entry["premium_link"] = bot_link
             else:
@@ -761,8 +761,8 @@ async def render_section(section_id: str, access_filter: str, request: Request) 
     send_all_premium_link = "#"
     send_all_premium_class = "btn btn-ghost btn-disabled"
     if settings.bot_username and total_items > 0:
-        send_all_normal_link = f"https://t.me/{settings.bot_username}?start=sa_{section_id}_normal"
-        send_all_premium_link = f"https://t.me/{settings.bot_username}?start=sa_{section_id}_premium"
+        send_all_normal_link = f"https://telegram.me/{settings.bot_username}?start=sa_{section_id}_normal"
+        send_all_premium_link = f"https://telegram.me/{settings.bot_username}?start=sa_{section_id}_premium"
         send_all_normal_class = "btn btn-secondary"
         send_all_premium_class = "btn btn-ghost"
 
@@ -916,7 +916,7 @@ async def player(token: str, request: Request):
 
     download_button_url = ""
     if ref.access == "premium" and settings.bot_username:
-        download_button_url = f"https://t.me/{settings.bot_username}?start=dl_{token}"
+        download_button_url = f"https://telegram.me/{settings.bot_username}?start=dl_{token}"
 
     response = templates.TemplateResponse(
         request=request,
@@ -947,7 +947,7 @@ async def player_download(token: str, request: Request):
     if ref.access != "premium":
         raise HTTPException(status_code=403, detail="Premium required")
     if settings.bot_username:
-        return RedirectResponse(url=f"https://t.me/{settings.bot_username}?start=dl_{token}", status_code=302)
+        return RedirectResponse(url=f"https://telegram.me/{settings.bot_username}?start=dl_{token}", status_code=302)
     return HTMLResponse(content="Download unavailable.", status_code=404)
 
 

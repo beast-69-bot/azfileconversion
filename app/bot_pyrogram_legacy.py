@@ -265,7 +265,7 @@ def build_payment_request_keyboard(request_id: str) -> InlineKeyboardMarkup:
                 InlineKeyboardButton("Send UTR", callback_data=f"payreq:utr:{request_id}"),
                 InlineKeyboardButton("Cancel", callback_data=f"payreq:cancel:{request_id}"),
             ],
-            [InlineKeyboardButton("Contact Admin", url=f"https://t.me/{ADMIN_CONTACT.lstrip('@')}")],
+            [InlineKeyboardButton("Contact Admin", url=f"https://telegram.me/{ADMIN_CONTACT.lstrip('@')}")],
         ]
     )
 
@@ -495,7 +495,7 @@ def build_pay_keyboard() -> InlineKeyboardMarkup:
                 InlineKeyboardButton("Custom amount (>10rs)", callback_data="payamt:custom"),
             ],
             [InlineKeyboardButton("Premium 499", callback_data="payamt:premium")],
-            [InlineKeyboardButton("Contact Admin", url=f"https://t.me/{ADMIN_CONTACT.lstrip('@')}")],
+            [InlineKeyboardButton("Contact Admin", url=f"https://telegram.me/{ADMIN_CONTACT.lstrip('@')}")],
         ]
     )
 
