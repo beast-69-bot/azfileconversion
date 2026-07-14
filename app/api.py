@@ -1020,12 +1020,17 @@ async def hls_proxy(url: str, request: Request):
         headers["Cookie"] = f"ndus={ndus}"
     else:
         headers["Referer"] = "https://faphouse.com/"
+        
+    # Forward the Range header from client to support seeking/seeking in HTML5 player
+    client_range = request.headers.get("Range")
+    if client_range:
+        headers["Range"] = client_range
     
     try:
         session = aiohttp.ClientSession()
         resp = await session.get(url, headers=headers)
         
-        if resp.status != 200:
+        if resp.status not in (200, 206):
             await resp.release()
             await session.close()
             raise HTTPException(status_code=resp.status, detail="Failed to fetch stream.")
@@ -1067,13 +1072,17 @@ async def hls_proxy(url: str, request: Request):
             
             resp_headers = {
                 "Access-Control-Allow-Origin": "*",
-                "Access-Control-Allow-Headers": "*"
+                "Access-Control-Allow-Headers": "*",
+                "Accept-Ranges": "bytes"
             }
+            if "Content-Range" in resp.headers:
+                resp_headers["Content-Range"] = resp.headers["Content-Range"]
             if "Content-Length" in resp.headers:
                 resp_headers["Content-Length"] = resp.headers["Content-Length"]
                 
             return StreamingResponse(
                 stream_generator(),
+                status_code=resp.status,
                 media_type=content_type,
                 headers=resp_headers
             )
