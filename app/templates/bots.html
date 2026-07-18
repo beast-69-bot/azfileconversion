@@ -499,16 +499,98 @@
         }
 
         /* Responsive Breakpoints */
+        /* ── MOBILE RESPONSIVE ── */
         @media (max-width: 768px) {
             h1 {
-                font-size: 36px;
+                font-size: 28px !important;
+                line-height: 1.25;
+            }
+            .subtitle {
+                font-size: 14px !important;
+                padding: 0 4px;
             }
             .content-container {
-                padding: 40px 16px;
+                padding: 24px 12px 40px;
             }
+
+            /* Nav buttons — horizontal scroll */
+            .actions-bar {
+                display: flex;
+                flex-wrap: nowrap;
+                overflow-x: auto;
+                gap: 8px;
+                padding-bottom: 4px;
+                justify-content: flex-start !important;
+                -webkit-overflow-scrolling: touch;
+                scrollbar-width: none;
+            }
+            .actions-bar::-webkit-scrollbar { display: none; }
+            .nav-btn {
+                white-space: nowrap;
+                flex-shrink: 0;
+                padding: 8px 14px;
+                font-size: 13px;
+            }
+
+            /* Search box full width */
+            .search-box {
+                width: 100%;
+                max-width: 100%;
+            }
+            .search-input {
+                font-size: 14px;
+                padding: 12px 12px 12px 44px;
+            }
+
+            /* Tab filters — horizontal scroll (NO wrap) */
+            .tab-container {
+                flex-wrap: nowrap !important;
+                overflow-x: auto;
+                justify-content: flex-start;
+                padding-bottom: 6px;
+                gap: 8px;
+                -webkit-overflow-scrolling: touch;
+                scrollbar-width: none;
+            }
+            .tab-container::-webkit-scrollbar { display: none; }
+            .tab-btn {
+                white-space: nowrap;
+                flex-shrink: 0;
+                padding: 7px 14px;
+                font-size: 12px;
+            }
+
+            /* Bot cards — single column */
             .bots-grid {
                 grid-template-columns: 1fr;
+                gap: 16px;
             }
+            .bot-card {
+                padding: 20px;
+                min-height: auto;
+                border-radius: 16px;
+            }
+
+            /* Hub grid — single column */
+            .hub-grid {
+                grid-template-columns: 1fr !important;
+                gap: 12px;
+            }
+            .hub-bot-card {
+                padding: 16px !important;
+            }
+
+            /* Filter section spacing */
+            .filter-section {
+                gap: 12px;
+            }
+        }
+
+        /* Extra small phones */
+        @media (max-width: 400px) {
+            h1 { font-size: 22px !important; }
+            .content-container { padding: 16px 10px 32px; }
+            .bot-card { padding: 16px; }
         }
     </style>
 </head>

@@ -745,3 +745,217 @@
     opacity: 0.5;
   }
 }
+
+
+/* =====================================================
+   MOBILE RESPONSIVE — All Base-Template Pages
+   ===================================================== */
+@media (max-width: 768px) {
+
+  /* Page frame */
+  .page-frame {
+    padding: 12px !important;
+    gap: 12px !important;
+  }
+
+  /* Hero panel */
+  .hero-panel {
+    padding: 20px 16px !important;
+  }
+  .hero-grid {
+    grid-template-columns: 1fr !important;
+    gap: 20px !important;
+  }
+  .hero-copy h1 {
+    font-size: 22px !important;
+    line-height: 1.25 !important;
+  }
+  .lede {
+    font-size: 13px !important;
+  }
+
+  /* Chip row — horizontal scroll */
+  .chip-row {
+    flex-wrap: nowrap !important;
+    overflow-x: auto;
+    gap: 6px !important;
+    padding-bottom: 4px;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .chip-row::-webkit-scrollbar { display: none; }
+  .chip {
+    white-space: nowrap;
+    flex-shrink: 0;
+    font-size: 11px !important;
+    padding: 4px 10px !important;
+  }
+
+  /* Hero stats strip */
+  .hero-stats, .meta-strip {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 8px !important;
+  }
+  .meta-box {
+    padding: 10px 12px !important;
+  }
+  .meta-value {
+    font-size: 18px !important;
+  }
+
+  /* Breadcrumb */
+  .breadcrumb {
+    font-size: 11px !important;
+    flex-wrap: wrap;
+    gap: 2px;
+  }
+
+  /* Content panel */
+  .content-panel {
+    padding: 16px !important;
+    border-radius: 14px !important;
+  }
+  .panel-title {
+    font-size: 15px !important;
+  }
+
+  /* Section toolbar */
+  .section-toolbar {
+    flex-direction: column !important;
+    gap: 12px !important;
+    align-items: flex-start !important;
+  }
+  .section-controls {
+    flex-direction: column !important;
+    gap: 8px !important;
+    width: 100%;
+  }
+  .section-controls .btn {
+    width: 100%;
+    text-align: center;
+  }
+
+  /* Search bar */
+  .premium-search-wrap {
+    width: 100% !important;
+  }
+  .premium-search-input {
+    width: 100% !important;
+    font-size: 14px !important;
+    padding: 10px 12px 10px 40px !important;
+  }
+  .section-search-header {
+    flex-direction: column !important;
+    gap: 6px !important;
+  }
+
+  /* File cards — stack full width */
+  .file-card {
+    padding: 12px 14px !important;
+    border-radius: 10px !important;
+  }
+  .file-card-actions {
+    flex-direction: row !important;
+    flex-wrap: wrap !important;
+    gap: 6px !important;
+  }
+  .file-card-actions .btn {
+    font-size: 12px !important;
+    padding: 6px 10px !important;
+  }
+
+  /* Trending Swiper cards */
+  .swiper-slide {
+    width: 260px !important;
+    max-width: 82vw !important;
+  }
+  .trending-card {
+    border-radius: 12px !important;
+  }
+
+  /* Player layout — stack vertically */
+  .player-layout {
+    grid-template-columns: 1fr !important;
+    gap: 16px !important;
+  }
+  .player-wrap video,
+  .player-wrap audio {
+    border-radius: 10px !important;
+  }
+  .media-card {
+    padding: 14px !important;
+  }
+
+  /* Side panel */
+  .side-panel {
+    gap: 12px !important;
+  }
+  .panel {
+    padding: 14px !important;
+    border-radius: 12px !important;
+  }
+
+  /* Actions row — wrap */
+  .actions-row {
+    flex-wrap: wrap !important;
+    gap: 8px !important;
+  }
+  .actions-row .btn {
+    flex: 1 1 auto !important;
+    text-align: center !important;
+    min-width: 120px !important;
+  }
+
+  /* Public sections grid */
+  .public-section-grid {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+  .public-section-card {
+    padding: 16px !important;
+    border-radius: 12px !important;
+    flex-direction: column !important;
+    gap: 12px !important;
+  }
+  .public-section-actions {
+    flex-direction: row !important;
+    gap: 8px !important;
+  }
+
+  /* Stats grid */
+  .stats-grid {
+    gap: 8px !important;
+  }
+
+  /* Pagination */
+  .pagination {
+    flex-wrap: wrap !important;
+    gap: 6px !important;
+    justify-content: center !important;
+  }
+  .pagination a, .pagination span {
+    min-width: 36px !important;
+    height: 36px !important;
+    font-size: 13px !important;
+  }
+
+  /* Swiper nav buttons — smaller */
+  .swiper-button-next,
+  .swiper-button-prev {
+    width: 32px !important;
+    height: 32px !important;
+  }
+  .swiper-button-next::after,
+  .swiper-button-prev::after {
+    font-size: 14px !important;
+  }
+}
+
+/* Extra small phones (< 400px) */
+@media (max-width: 400px) {
+  .hero-copy h1 { font-size: 18px !important; }
+  .page-frame { padding: 8px !important; }
+  .content-panel { padding: 12px !important; }
+  .meta-box .meta-value { font-size: 16px !important; }
+  .chip { font-size: 10px !important; }
+}
