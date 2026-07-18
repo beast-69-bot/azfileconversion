@@ -802,11 +802,14 @@
             var t = setInterval(function() { if (fn()) { clearInterval(t); cb(); } }, 150);
         }
 
-        // Lenis smooth scrolling for bots page
+        // Lenis smooth scrolling — sirf touch devices pe
         waitFor(function() { return typeof Lenis !== 'undefined'; }, function() {
-            var lenis = new Lenis({ duration: 1.1, easing: function(t) { return Math.min(1, 1.001 - Math.pow(2, -10 * t)); } });
-            function raf(time) { lenis.raf(time); requestAnimationFrame(raf); }
-            requestAnimationFrame(raf);
+            var isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+            if (isTouchDevice) {
+                var lenis = new Lenis({ duration: 0.8, smoothWheel: false, touchMultiplier: 1.5 });
+                function raf(time) { lenis.raf(time); requestAnimationFrame(raf); }
+                requestAnimationFrame(raf);
+            }
         });
 
         // GSAP scroll stagger for bot cards

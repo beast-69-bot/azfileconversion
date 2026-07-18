@@ -235,14 +235,18 @@
     if (prefersReducedMotion) return;
     if (typeof Lenis === 'undefined') return;
 
+    // ── Desktop pe Lenis DISABLE — native scroll fast hota hai ──
+    // Touch devices pe hi smooth scroll lagao
+    const isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+    if (!isTouchDevice) return; // Desktop mouse = native scroll, Lenis skip
+
     const lenis = new Lenis({
-      duration: 1.15,
-      easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
+      duration: 0.8,          // Kam duration = snappier feel
+      easing: (t) => 1 - Math.pow(1 - t, 3), // cubic ease-out — natural feel
       orientation: 'vertical',
       gestureOrientation: 'vertical',
-      smoothWheel: true,
-      wheelMultiplier: 1,
-      touchMultiplier: 2,
+      smoothWheel: false,     // Touch devices pe wheel nahi hota
+      touchMultiplier: 1.5,
     });
 
     // Connect to GSAP ScrollTrigger if available
