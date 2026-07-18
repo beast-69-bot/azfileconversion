@@ -15,6 +15,12 @@
     <link rel="shortcut icon" href="/favicon.ico" />
     <meta name="theme-color" content="#030305" />
     <meta name="6a97088e-site-verification" content="c29af66ada34d56008c851e7f69be3a7" />
+
+    <!-- Preconnect for performance -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
+    <link rel="dns-prefetch" href="https://cdnjs.cloudflare.com" />
     
     <!-- Open Graph / Facebook -->
     <meta property="og:type" content="website" />
@@ -46,6 +52,14 @@
     </script>
 
     <link rel="stylesheet" href="/static/styles.min.css?v=20260607-seo-perf" />
+    <!-- Premium UI Layer -->
+    <link rel="stylesheet" href="/static/premium-animations.css?v=20260718" />
+    <!-- Swiper CSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.css" />
+    <!-- Plyr CSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/plyr@3/dist/plyr.css" />
+    <!-- PhotoSwipe CSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@5/dist/photoswipe.css" />
     {% block head %}{% endblock %}
 </head>
 
@@ -88,37 +102,41 @@
         </footer>
     </div>
 
+    <!-- GSAP + ScrollTrigger -->
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/ScrollTrigger.min.js" defer></script>
+    <!-- Lenis Smooth Scroll -->
+    <script src="https://cdn.jsdelivr.net/npm/@studio-freight/lenis@1.0.42/dist/lenis.min.js" defer></script>
+    <!-- Swiper -->
+    <script src="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.js" defer></script>
+    <!-- Plyr Video Player -->
+    <script src="https://cdn.jsdelivr.net/npm/plyr@3/dist/plyr.min.js" defer></script>
+    <!-- PhotoSwipe Lightbox -->
+    <script src="https://cdn.jsdelivr.net/npm/photoswipe@5/dist/photoswipe-lightbox.esm.min.js" type="module" id="pswp-lightbox-script"></script>
+    <script src="https://cdn.jsdelivr.net/npm/photoswipe@5/dist/photoswipe.esm.min.js" type="module" id="pswp-core-script"></script>
+    <!-- tsParticles Slim (lightweight) -->
+    <script src="https://cdn.jsdelivr.net/npm/@tsparticles/engine@3/tsparticles.engine.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/tsparticles-slim@2.12.0/tsparticles.slim.bundle.min.js" defer></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js" defer></script>
+    <!-- AZ Stream Premium JS -->
+    <script src="/static/premium.js?v=20260718" defer></script>
+
     <script>
         document.addEventListener("DOMContentLoaded", function () {
-            // Mark active navigation link
-            const currentPath = window.location.pathname;
-            const navLinks = document.querySelectorAll(".site-nav a");
-            navLinks.forEach(link => {
-                const href = link.getAttribute("href");
-                if (href === currentPath || (href !== "/" && currentPath.startsWith(href))) {
-                    link.classList.add("active");
-                }
-            });
-
-            // Add scrolled class to header
+            // Scrolled header class
             const header = document.querySelector(".site-header");
             if (header) {
                 const handleScroll = () => {
-                    if (window.scrollY > 20) {
-                        header.classList.add("scrolled");
-                    } else {
-                        header.classList.remove("scrolled");
-                    }
+                    header.classList.toggle("scrolled", window.scrollY > 20);
                 };
-                window.addEventListener("scroll", handleScroll);
-                handleScroll(); // Initial check
+                window.addEventListener("scroll", handleScroll, { passive: true });
+                handleScroll();
             }
 
             // Set current year
             const yearSpan = document.getElementById("year");
-            if (yearSpan) {
-                yearSpan.textContent = new Date().getFullYear();
-            }
+            if (yearSpan) yearSpan.textContent = new Date().getFullYear();
         });
     </script>
 

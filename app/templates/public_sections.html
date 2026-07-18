@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Public Sections - AzhawaSadda{% endblock %}
+{% block title %}Public Sections — AzhawaSadda{% endblock %}
 {% block meta_description %}Browse admin-published AzhawaSadda public sections with stream-ready archive pages and Telegram premium handoff links.{% endblock %}
 
 {% block header_extra %}
@@ -21,7 +21,9 @@
                 <h1>Public sections</h1>
                 <p class="lede">Only admin-approved sections are shown here. Open the normal route for protected streaming or the premium route for Telegram delivery.</p>
                 <div class="chip-row">
-                    <span class="chip chip-accent">{{ section_cards|length }} public routes</span>
+                    <span class="chip chip-accent">
+                        <span class="count-up-number" data-target="{{ section_cards|length }}">{{ section_cards|length }}</span> public routes
+                    </span>
                     <span class="chip">Normal streaming</span>
                     <span class="chip">Premium handoff</span>
                 </div>
@@ -29,7 +31,7 @@
             <div class="meta-strip hero-stats">
                 <div class="meta-box">
                     <span class="meta-label">Visible</span>
-                    <span class="meta-value">{{ section_cards|length }}</span>
+                    <span class="meta-value count-up-number" data-target="{{ section_cards|length }}">{{ section_cards|length }}</span>
                 </div>
                 <div class="meta-box">
                     <span class="meta-label">Access</span>
@@ -52,12 +54,28 @@
         </div>
 
         {% if section_cards %}
-        <div class="public-section-grid">
+        <!-- Search bar -->
+        <div class="section-search-header" style="margin-bottom:20px;">
+            <div class="premium-search-wrap">
+                <input type="text"
+                       id="sections-search"
+                       class="premium-search-input"
+                       placeholder="Search sections by name…"
+                       autocomplete="off"
+                       aria-label="Search sections" />
+                <span class="premium-search-icon">🔍</span>
+            </div>
+            <span id="sections-search-count" class="search-result-count"></span>
+        </div>
+
+        <div class="public-section-grid gsap-stagger-parent" id="sections-grid">
             {% for section in section_cards %}
-            <article class="public-section-card">
+            <article class="public-section-card gsap-stagger-child card-hoverable" style="border-radius:var(--radius-md);overflow:hidden;">
                 <div>
                     <span class="route-kicker">Public section</span>
-                    <h2 style="margin:0 0 4px 0;font-size:1rem;"><a href="{{ section.href }}" style="color:inherit;text-decoration:none;">{{ section.name }}</a></h2>
+                    <h2 style="margin:0 0 4px 0;font-size:1rem;">
+                        <a href="{{ section.href }}" style="color:inherit;text-decoration:none;">{{ section.name }}</a>
+                    </h2>
                     <p>Open this published route with normal or premium access.</p>
                 </div>
                 <div class="public-section-actions">
@@ -67,6 +85,12 @@
             </article>
             {% endfor %}
         </div>
+
+        <div id="sections-no-results" class="empty-state" style="display:none;">
+            <div class="panel-title">No sections match your search</div>
+            <p>Try a different search term.</p>
+        </div>
+
         {% else %}
         <div class="empty-state">
             <div class="panel-title">No public sections yet</div>
@@ -75,4 +99,49 @@
         {% endif %}
     </section>
 </div>
+
+<script>
+(function() {
+    // Search filter
+    var input = document.getElementById('sections-search');
+    var noResults = document.getElementById('sections-no-results');
+    if (input) {
+        input.addEventListener('input', function() {
+            var q = this.value.toLowerCase().trim();
+            var cards = document.querySelectorAll('#sections-grid .public-section-card');
+            var visible = 0;
+            cards.forEach(function(card) {
+                var match = !q || card.textContent.toLowerCase().includes(q);
+                card.style.display = match ? '' : 'none';
+                if (match) visible++;
+            });
+            if (noResults) noResults.style.display = (q && visible === 0) ? 'block' : 'none';
+            var counter = document.getElementById('sections-search-count');
+            if (counter) counter.textContent = q ? (visible + ' result' + (visible !== 1 ? 's' : '')) : '';
+        });
+    }
+
+    // GSAP stagger entrance
+    function waitFor(fn, cb) {
+        if (fn()) { cb(); return; }
+        var t = setInterval(function() { if (fn()) { clearInterval(t); cb(); } }, 150);
+    }
+    waitFor(function() { return typeof gsap !== 'undefined' && typeof ScrollTrigger !== 'undefined'; }, function() {
+        gsap.registerPlugin(ScrollTrigger);
+        var cards = document.querySelectorAll('#sections-grid .public-section-card');
+        gsap.from(cards, {
+            opacity: 0,
+            y: 30,
+            duration: 0.5,
+            stagger: 0.07,
+            ease: 'power2.out',
+            scrollTrigger: {
+                trigger: '#sections-grid',
+                start: 'top 85%',
+                once: true,
+            },
+        });
+    });
+})();
+</script>
 {% endblock %}

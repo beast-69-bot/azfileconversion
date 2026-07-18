@@ -63,21 +63,21 @@
                 <div class="chip-row">
                     <div class="chip chip-accent">Telegram dispatch enabled</div>
                     <div class="chip">Live archive listing</div>
-                    <div class="chip">{{ total_items }} files indexed</div>
+                    <div class="chip"><span class="count-up-number" data-target="{{ total_items }}">{{ total_items }}</span> files indexed</div>
                 </div>
             </div>
             <div class="meta-strip hero-stats">
                 <div class="meta-box">
                     <span class="meta-label">Files</span>
-                    <span class="meta-value">{{ total_items }}</span>
+                    <span class="meta-value count-up-number" data-target="{{ total_items }}">{{ total_items }}</span>
                 </div>
                 <div class="meta-box">
                     <span class="meta-label">Visits</span>
-                    <span class="meta-value">{{ section_views_total }}</span>
+                    <span class="meta-value count-up-number" data-target="{{ section_views_total }}">{{ section_views_total }}</span>
                 </div>
                 <div class="meta-box">
                     <span class="meta-label">Unique</span>
-                    <span class="meta-value">{{ section_views_unique }}</span>
+                    <span class="meta-value count-up-number" data-target="{{ section_views_unique }}">{{ section_views_unique }}</span>
                 </div>
                 <div class="meta-box">
                     <span class="meta-label">Page</span>
@@ -102,14 +102,27 @@
                 <div class="chip">Priority delivery ready</div>
             </div>
             <div class="section-controls">
-                <a class="{{ send_all_normal_class }}" href="{{ send_all_normal_link }}">Send All Normal</a>
-                <a class="{{ send_all_premium_class }}" href="{{ send_all_premium_link }}">Send All Premium</a>
+                <a class="{{ send_all_normal_class }}" href="{{ send_all_normal_link }}" id="send-normal-btn">Send All Normal</a>
+                <a class="{{ send_all_premium_class }}" href="{{ send_all_premium_link }}" id="send-premium-btn">Send All Premium</a>
                 <div class="control-field">
                     <label for="sort" class="hint">Sort order</label>
                     <select id="sort" name="sort" class="form-select">
                         {% for opt in sort_options %}{{ opt | safe }}{% endfor %}
                     </select>
                 </div>
+            </div>
+            <!-- Client-side file search -->
+            <div class="section-search-header" style="margin-top:16px;">
+                <div class="premium-search-wrap">
+                    <input type="text"
+                           id="file-search-input"
+                           class="premium-search-input"
+                           placeholder="Filter files by name…"
+                           autocomplete="off"
+                           aria-label="Filter files" />
+                    <span class="premium-search-icon">🔍</span>
+                </div>
+                <span id="file-search-input-count" class="search-result-count"></span>
             </div>
         </div>
 
@@ -174,15 +187,71 @@
 </div>
 
 <script>
-    const sortSelect = document.getElementById('sort');
+    // Sort select change
+    var sortSelect = document.getElementById('sort');
     if (sortSelect) {
-        sortSelect.addEventListener('change', () => {
-            const url = new URL(window.location.href);
+        sortSelect.addEventListener('change', function() {
+            var url = new URL(window.location.href);
             url.searchParams.set('sort', sortSelect.value);
             url.searchParams.set('page', '1');
             window.location.href = url.toString();
         });
     }
     document.body.classList.remove('is-loading');
+
+    // File search filter
+    if (typeof AZSearch !== 'undefined') {
+        AZSearch.init('file-search-input', '.file-card', null);
+    } else {
+        // Fallback inline search
+        var fileSearchInput = document.getElementById('file-search-input');
+        if (fileSearchInput) {
+            fileSearchInput.addEventListener('input', function() {
+                var q = this.value.toLowerCase().trim();
+                var cards = document.querySelectorAll('.file-card');
+                var visible = 0;
+                cards.forEach(function(card) {
+                    var match = !q || card.textContent.toLowerCase().includes(q);
+                    card.style.display = match ? '' : 'none';
+                    if (match) visible++;
+                });
+                var counter = document.getElementById('file-search-input-count');
+                if (counter) counter.textContent = q ? (visible + ' result' + (visible !== 1 ? 's' : '')) : '';
+            });
+        }
+    }
+
+    // GSAP stagger entrance for file cards
+    (function() {
+        function waitFor(fn, cb) {
+            if (fn()) { cb(); return; }
+            var t = setInterval(function() { if (fn()) { clearInterval(t); cb(); } }, 150);
+        }
+        waitFor(function() { return typeof gsap !== 'undefined'; }, function() {
+            var cards = document.querySelectorAll('.file-card');
+            gsap.from(cards, {
+                opacity: 0,
+                y: 20,
+                duration: 0.4,
+                stagger: 0.04,
+                ease: 'power2.out',
+                delay: 0.1,
+            });
+        });
+    })();
+
+    // Toast on send-all buttons
+    var sendNormal = document.getElementById('send-normal-btn');
+    var sendPremium = document.getElementById('send-premium-btn');
+    function attachSendToast(btn, label) {
+        if (!btn || btn.classList.contains('btn-disabled')) return;
+        btn.addEventListener('click', function(e) {
+            if (typeof AZToast !== 'undefined') {
+                setTimeout(function() { AZToast('Dispatching files via ' + label + '…', 'info', 'Dispatch started'); }, 200);
+            }
+        });
+    }
+    attachSendToast(sendNormal, 'normal route');
+    attachSendToast(sendPremium, 'premium route');
 </script>
 {% endblock %}

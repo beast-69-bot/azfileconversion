@@ -1063,22 +1063,23 @@
     <div class="hero-glow-2"></div>
 
     <!-- Hero Section -->
-    <section class="premium-hero" id="home">
-        <div class="hero-badge">
+    <section class="premium-hero" id="home" style="position:relative;overflow:hidden;">
+        <!-- tsParticles canvas -->
+        <div id="tsparticles-hero" style="position:absolute;inset:0;z-index:0;pointer-events:none;"></div>        <div class="hero-badge" style="position:relative;z-index:1;">
             <span class="pulse-green"></span>
             Network Status: Operational
         </div>
-        <h1 class="hero-title">Mega Downloader Bot for 18+ Adult Content & Premium Mod APKs</h1>
-        <p class="hero-subtitle" style="font-size: 16px; color: var(--color-primary); font-weight: 600; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 20px;">
+        <h1 class="hero-title" style="position:relative;z-index:1;">Mega Downloader Bot for 18+ Adult Content & Premium Mod APKs</h1>
+        <p class="hero-subtitle" style="font-size: 16px; color: var(--color-primary); font-weight: 600; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 20px;position:relative;z-index:1;">
             Ultra-Fast Mega.NZ Downloads • Private 18+ Archives • Drama & Faphouse Mod APKs — Exclusive Access on Telegram
         </p>
-        <div class="hero-desc-container" style="max-width: 800px; margin: 0 auto 30px auto; display: flex; flex-direction: column; gap: 15px; text-align: center; line-height: 1.6; color: var(--text-cyber-muted); font-size: 14px;">
+        <div class="hero-desc-container" style="max-width: 800px; margin: 0 auto 30px auto; display: flex; flex-direction: column; gap: 15px; text-align: center; line-height: 1.6; color: var(--text-cyber-muted); font-size: 14px;position:relative;z-index:1;">
             <p>Unleash unlimited pleasure with the most powerful Mega Downloader Bot on Telegram. Download full-length 18+ videos, premium NSFW movies, and exclusive adult archives at lightning speed — no limits, no waiting.</p>
             <p>Get instant access to Drama Mod APK, Faphouse Mod APK, and hundreds of other premium adult apps. Our private bots deliver HD previews, auto-renaming, and bulk processing so you can enjoy your favorite content privately and hassle-free.</p>
             <p>Join thousands of satisfied users who trust AZ Network for the fastest and most reliable adult downloads. Premium. Private. Unlimited.</p>
         </div>
         
-        <div class="cta-container">
+        <div class="cta-container" style="position:relative;z-index:1;">
             <a href="https://telegram.me/az_network_master_bot" target="_blank" rel="noopener" class="cta-btn-premium">
                 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                     <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69.01-.03.01-.14-.07-.2-.08-.06-.19-.04-.27-.02-.12.02-1.96 1.24-5.54 3.65-.52.36-.99.53-1.42.52-.47-.01-1.37-.27-2.04-.49-.82-.27-1.47-.41-1.42-.87.03-.24.36-.49.99-.75 3.89-1.69 6.49-2.8 7.8-3.32 3.71-1.47 4.48-1.73 4.98-1.74.11 0 .36.03.52.16.14.11.18.27.2.42.01.12.01.25 0 .36z"/>
@@ -1089,9 +1090,9 @@
             <a href="#mod-apks" class="cta-btn-secondary" style="border-color: var(--color-secondary); color: var(--color-secondary);">Get Mod APKs</a>
         </div>
 
-        <div class="hero-stats-row">
+        <div class="hero-stats-row" style="position:relative;z-index:1;">
             <div class="hero-stat-item">
-                <div class="hero-stat-val">50,000+</div>
+                <div class="hero-stat-val count-up-number" data-target="50000" data-suffix="+">50,000+</div>
                 <div class="hero-stat-label">Happy Users</div>
             </div>
             <div class="hero-stat-item">
@@ -1754,4 +1755,83 @@
         renderHub("all");
     });
 </script>
+
+<script>
+// ── tsParticles Hero Background ──
+(function() {
+    function waitFor(fn, cb) {
+        if (fn()) { cb(); return; }
+        var t = setInterval(function() { if (fn()) { clearInterval(t); cb(); } }, 200);
+    }
+
+    waitFor(function() {
+        return typeof tsParticles !== 'undefined' || typeof window.tsParticles !== 'undefined';
+    }, function() {
+        var engine = window.tsParticles;
+        if (!engine || !engine.load) return;
+
+        engine.load('tsparticles-hero', {
+            fullScreen: { enable: false },
+            fpsLimit: 60,
+            particles: {
+                number: { value: 45, density: { enable: true, area: 800 } },
+                color: { value: ['#e11d48', '#8b5cf6', '#06b6d4'] },
+                opacity: {
+                    value: { min: 0.08, max: 0.25 },
+                    animation: { enable: true, speed: 0.8, minimumValue: 0.05, sync: false },
+                },
+                size: {
+                    value: { min: 1, max: 3 },
+                    animation: { enable: false },
+                },
+                move: {
+                    enable: true,
+                    speed: 0.6,
+                    direction: 'none',
+                    outModes: { default: 'out' },
+                    random: true,
+                },
+                links: {
+                    enable: true,
+                    distance: 120,
+                    color: '#8b5cf6',
+                    opacity: 0.08,
+                    width: 1,
+                },
+            },
+            interactivity: {
+                events: {
+                    onHover: { enable: true, mode: 'repulse' },
+                    resize: true,
+                },
+                modes: {
+                    repulse: { distance: 80, duration: 0.4 },
+                },
+            },
+            detectRetina: true,
+            background: { color: 'transparent' },
+        }).catch(function() {});
+    });
+})();
+
+// ── GSAP Home Hero Entrance Animations ──
+(function() {
+    function waitFor(fn, cb) {
+        if (fn()) { cb(); return; }
+        var t = setInterval(function() { if (fn()) { clearInterval(t); cb(); } }, 150);
+    }
+
+    waitFor(function() { return typeof gsap !== 'undefined'; }, function() {
+        var tl = gsap.timeline({ defaults: { ease: 'power3.out' } });
+        tl.from('.hero-badge',    { opacity: 0, y: 20, duration: 0.5, delay: 0.2 })
+          .from('.hero-title',    { opacity: 0, y: 30, duration: 0.7 }, '-=0.2')
+          .from('.hero-subtitle', { opacity: 0, y: 20, duration: 0.6 }, '-=0.4')
+          .from('.hero-desc-container', { opacity: 0, y: 15, duration: 0.5 }, '-=0.3')
+          .from('.cta-btn-premium', { opacity: 0, scale: 0.92, duration: 0.45 }, '-=0.2')
+          .from('.cta-btn-secondary', { opacity: 0, y: 10, duration: 0.4, stagger: 0.1 }, '-=0.25')
+          .from('.hero-stats-row .hero-stat-item', { opacity: 0, y: 20, duration: 0.4, stagger: 0.1 }, '-=0.2');
+    });
+})();
+</script>
 {% endblock %}
+

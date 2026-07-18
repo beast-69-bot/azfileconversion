@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Trending - AzhawaSadda{% endblock %}
+{% block title %}Trending — AzhawaSadda{% endblock %}
 {% block meta_description %}Explore trending AzhawaSadda archive picks with preview cards, normal streaming routes, and premium Telegram delivery.{% endblock %}
 
 {% block header_extra %}
@@ -21,7 +21,9 @@
                 <h1>Trending</h1>
                 <p class="lede">Admin-curated preview rows for fast normal streaming and premium Telegram delivery.</p>
                 <div class="chip-row">
-                    <span class="chip chip-accent">{{ total_items }} items</span>
+                    <span class="chip chip-accent">
+                        <span class="count-up-number" data-target="{{ total_items }}">{{ total_items }}</span> items
+                    </span>
                     <span class="chip">Preview cards</span>
                     <span class="chip">Normal + premium routes</span>
                 </div>
@@ -29,11 +31,11 @@
             <div class="meta-strip hero-stats">
                 <div class="meta-box">
                     <span class="meta-label">Rows</span>
-                    <span class="meta-value">{{ trending_rows|length }}</span>
+                    <span class="meta-value count-up-number" data-target="{{ trending_rows|length }}">{{ trending_rows|length }}</span>
                 </div>
                 <div class="meta-box">
                     <span class="meta-label">Items</span>
-                    <span class="meta-value">{{ total_items }}</span>
+                    <span class="meta-value count-up-number" data-target="{{ total_items }}">{{ total_items }}</span>
                 </div>
             </div>
         </div>
@@ -42,38 +44,75 @@
     <section id="trending-list" class="trending-wrap">
         {% if trending_rows %}
             {% for row in trending_rows %}
-            <div class="card content-panel trending-row animate-in">
+            <div class="card content-panel trending-row" style="opacity:0;transform:translateY(30px);">
                 <div class="section-toolbar">
                     <div class="toolbar-head">
-                        <div class="panel-title">{{ row.bar }}</div>
+                        <div class="panel-title">🔥 {{ row.bar }}</div>
                         <p class="toolbar-copy">{{ row["items"]|length }} curated items</p>
                     </div>
                 </div>
-                <div class="trending-card-row">
-                    {% for item in row["items"] %}
-                    <article class="trending-card">
-                        <div class="trending-gallery" aria-label="{{ item.title }} previews">
-                            {% for media in item.media_items %}
-                            <div class="trending-media">
-                                {% if media.type == "video" %}
-                                <video src="{{ media.url }}" muted playsinline controls preload="metadata"></video>
-                                {% else %}
-                                <img src="{{ media.url }}" alt="{{ item.title }} preview {{ loop.index }}" loading="lazy" />
-                                {% endif %}
-                            </div>
-                            {% endfor %}
+
+                <!-- Netflix-style Swiper horizontal carousel -->
+                <div class="swiper trending-swiper-{{ loop.index }}" style="padding-bottom:32px;overflow:visible;">
+                    <div class="swiper-wrapper" style="align-items:stretch;">
+                        {% for item in row["items"] %}
+                        <div class="swiper-slide" style="width:300px;max-width:85vw;height:auto;">
+                            <article class="trending-card" style="height:100%;display:flex;flex-direction:column;border-radius:16px;overflow:hidden;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.05);transition:all 0.35s cubic-bezier(0.16,1,0.3,1);">
+
+                                <!-- Media section -->
+                                <div class="az-gallery-{{ loop.index0 }}" style="position:relative;overflow:hidden;">
+                                    {% if item.media_items %}
+                                        {% set fm = item.media_items[0] %}
+                                        {% if fm.type == "video" %}
+                                        <video
+                                            class="az-plyr-video"
+                                            src="{{ fm.url }}"
+                                            preload="none"
+                                            muted
+                                            playsinline
+                                            style="width:100%;height:180px;object-fit:cover;display:block;border-radius:0;"></video>
+                                        {% else %}
+                                        <div class="az-pswp-gallery" style="position:relative;">
+                                            <a href="{{ fm.url }}"
+                                               data-pswp-type="image"
+                                               data-pswp-width="1280"
+                                               data-pswp-height="720"
+                                               style="display:block;overflow:hidden;">
+                                                <img src="{{ fm.url }}"
+                                                     alt="{{ item.title }} preview"
+                                                     loading="lazy"
+                                                     style="width:100%;height:180px;object-fit:cover;display:block;transition:transform 0.5s ease;" />
+                                            </a>
+                                        </div>
+                                        {% endif %}
+                                        {% if item.media_count > 1 %}
+                                        <div style="position:absolute;top:8px;right:8px;background:rgba(0,0,0,0.7);backdrop-filter:blur(8px);border-radius:6px;padding:3px 8px;font-size:11px;font-weight:600;color:#f1f5f9;">+{{ item.media_count - 1 }}</div>
+                                        {% endif %}
+                                    {% else %}
+                                    <div style="height:180px;background:rgba(255,255,255,0.03);display:flex;align-items:center;justify-content:center;color:#475569;font-size:28px;">📹</div>
+                                    {% endif %}
+                                </div>
+
+                                <!-- Body -->
+                                <div class="trending-body" style="flex:1;padding:16px;">
+                                    <span class="route-kicker">{{ row.bar }} · {{ item.media_count }} preview{% if item.media_count != 1 %}s{% endif %}</span>
+                                    <strong style="display:block;margin:6px 0;font-size:14px;line-height:1.3;color:#f1f5f9;">{{ item.title }}</strong>
+                                    <p style="font-size:13px;color:#64748b;line-height:1.4;margin:0;">{{ item.description }}</p>
+                                </div>
+
+                                <!-- Actions -->
+                                <div class="trending-actions" style="padding:0 16px 16px;display:flex;gap:8px;">
+                                    <a class="btn btn-secondary" href="{{ item.normal_link }}" style="flex:1;text-align:center;font-size:13px;padding:8px 12px;">Normal Open</a>
+                                    <a class="btn btn-ghost" href="{{ item.premium_link }}" style="flex:1;text-align:center;font-size:13px;padding:8px 12px;">Premium Open</a>
+                                </div>
+
+                            </article>
                         </div>
-                        <div class="trending-body">
-                            <span class="route-kicker">{{ row.bar }} · {{ item.media_count }} preview{% if item.media_count != 1 %}s{% endif %}</span>
-                            <strong>{{ item.title }}</strong>
-                            <p>{{ item.description }}</p>
-                        </div>
-                        <div class="trending-actions">
-                            <a class="btn btn-secondary" href="{{ item.normal_link }}">Normal Open</a>
-                            <a class="btn btn-ghost" href="{{ item.premium_link }}">Premium Open</a>
-                        </div>
-                    </article>
-                    {% endfor %}
+                        {% endfor %}
+                    </div>
+                    <div class="swiper-button-prev"></div>
+                    <div class="swiper-button-next"></div>
+                    <div class="swiper-pagination"></div>
                 </div>
             </div>
             {% endfor %}
@@ -87,4 +126,102 @@
         {% endif %}
     </section>
 </div>
+
+<script>
+(function() {
+  // Wait for a global to be defined then call cb
+  function waitFor(fn, cb) {
+    if (fn()) { cb(); return; }
+    var t = setInterval(function() { if (fn()) { clearInterval(t); cb(); } }, 150);
+  }
+
+  // Swiper: each trending row gets its own instance
+  waitFor(function() { return typeof Swiper !== 'undefined'; }, function() {
+    document.querySelectorAll('[class*="trending-swiper-"]').forEach(function(el) {
+      var cls = Array.from(el.classList).find(function(c) { return c.startsWith('trending-swiper-'); });
+      new Swiper('.' + cls, {
+        slidesPerView: 'auto',
+        spaceBetween: 16,
+        grabCursor: true,
+        freeMode: { enabled: true, momentumRatio: 0.8 },
+        navigation: {
+          nextEl: '.' + cls + ' .swiper-button-next',
+          prevEl: '.' + cls + ' .swiper-button-prev',
+        },
+        pagination: {
+          el: '.' + cls + ' .swiper-pagination',
+          clickable: true,
+          dynamicBullets: true,
+        },
+      });
+    });
+  });
+
+  // Plyr: muted autoplay previews on hover
+  waitFor(function() { return typeof Plyr !== 'undefined'; }, function() {
+    document.querySelectorAll('.az-plyr-video').forEach(function(video) {
+      var player = new Plyr(video, {
+        controls: ['play', 'progress', 'mute'],
+        muted: true,
+        autoplay: false,
+        loop: { active: true },
+        tooltips: { controls: false, seek: false },
+        fullscreen: { enabled: false },
+      });
+      // Play on hover
+      var card = video.closest('article');
+      if (card) {
+        card.addEventListener('mouseenter', function() { try { player.play(); } catch(e) {} });
+        card.addEventListener('mouseleave', function() { try { player.pause(); } catch(e) {} });
+      }
+    });
+  });
+
+  // PhotoSwipe for image cards
+  waitFor(function() { return typeof PhotoSwipeLightbox !== 'undefined'; }, function() {
+    document.querySelectorAll('.az-pswp-gallery').forEach(function(gallery) {
+      var lightbox = new PhotoSwipeLightbox({
+        gallery: gallery,
+        children: 'a',
+        pswpModule: function() { return import('https://cdn.jsdelivr.net/npm/photoswipe@5/dist/photoswipe.esm.min.js'); },
+        bgOpacity: 0.97,
+        showHideAnimationType: 'zoom',
+      });
+      lightbox.init();
+    });
+  });
+
+  // GSAP scroll-triggered entrance animations
+  waitFor(function() { return typeof gsap !== 'undefined' && typeof ScrollTrigger !== 'undefined'; }, function() {
+    gsap.registerPlugin(ScrollTrigger);
+    document.querySelectorAll('.trending-row').forEach(function(row) {
+      gsap.to(row, {
+        opacity: 1,
+        y: 0,
+        duration: 0.7,
+        ease: 'power3.out',
+        scrollTrigger: {
+          trigger: row,
+          start: 'top 88%',
+          once: true,
+        },
+      });
+    });
+  });
+
+  // Card hover glow effect
+  document.querySelectorAll('.trending-card').forEach(function(card) {
+    card.addEventListener('mouseenter', function() {
+      card.style.transform = 'translateY(-6px) scale(1.012)';
+      card.style.borderColor = 'rgba(225,29,72,0.25)';
+      card.style.boxShadow = '0 20px 50px rgba(0,0,0,0.5),0 0 0 1px rgba(225,29,72,0.1)';
+    });
+    card.addEventListener('mouseleave', function() {
+      card.style.transform = '';
+      card.style.borderColor = '';
+      card.style.boxShadow = '';
+    });
+  });
+})();
+</script>
 {% endblock %}

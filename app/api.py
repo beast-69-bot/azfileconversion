@@ -268,6 +268,139 @@ async def health():
     return {"status": "healthy"}
 
 
+# ─────────────────────────────────────────────────────────────
+# PREMIUM JSON API ENDPOINTS
+# Used by Chart.js dashboard, infinite scroll, live search
+# ─────────────────────────────────────────────────────────────
+
+@app.get("/api/stats", response_class=JSONResponse)
+async def api_stats():
+    """
+    Returns aggregate site statistics for the analytics dashboard.
+    """
+    try:
+        visit_stats = await store.get_site_visit_stats()
+    except Exception:
+        visit_stats = {}
+
+    try:
+        sections = await store.list_public_sections()
+        section_count = len(sections)
+    except Exception:
+        section_count = 0
+
+    try:
+        trending_items = await store.list_trending_items(limit=1000)
+        trending_count = len(trending_items)
+    except Exception:
+        trending_count = 0
+
+    return JSONResponse({
+        "total_visits": visit_stats.get("total", 0),
+        "unique_visits": visit_stats.get("unique", 0),
+        "section_count": section_count,
+        "trending_count": trending_count,
+        "daily": visit_stats.get("daily", []),
+    })
+
+
+@app.get("/api/trending/latest", response_class=JSONResponse)
+async def api_trending_latest(limit: int = 20):
+    """
+    Returns the latest trending items as JSON.
+    Used for live-refresh without a full page reload.
+    """
+    try:
+        limit = min(max(1, limit), 100)
+        items = await store.list_trending_items(limit)
+    except Exception:
+        items = []
+
+    result = []
+    for item in items:
+        media_items = _trending_media_items(item)
+        result.append({
+            "id": item.get("id", ""),
+            "bar": str(item.get("bar") or "Trending"),
+            "title": item.get("title", ""),
+            "description": item.get("description", ""),
+            "normal_link": item.get("normal_link", "#"),
+            "premium_link": item.get("premium_link", "#"),
+            "media_count": len(media_items),
+            "media_url": media_items[0]["url"] if media_items else None,
+        })
+
+    return JSONResponse({"items": result, "total": len(result)})
+
+
+@app.get("/api/sections/search", response_class=JSONResponse)
+async def api_sections_search(q: str = ""):
+    """
+    Server-side section name search.
+    Returns matching public sections as JSON.
+    """
+    try:
+        rows = await store.list_public_sections()
+    except Exception:
+        rows = []
+
+    query = q.strip().lower()
+    results = []
+    for name, section_id in rows:
+        if not section_id:
+            continue
+        display_name = name or section_id
+        if not query or query in display_name.lower() or query in section_id.lower():
+            results.append({
+                "name": display_name,
+                "id": section_id,
+                "href": f"/section/{section_id}",
+                "premium_href": f"/section/{section_id}/premium",
+            })
+
+    return JSONResponse({"results": results, "total": len(results), "query": q})
+
+
+@app.get("/api/section/{section_id}/files", response_class=JSONResponse)
+async def api_section_files(section_id: str, page: int = 1, sort: str = "default", limit: int = 20):
+    """
+    Returns a page of files for a given section as JSON.
+    Used by infinite scroll in section.html.
+    """
+    try:
+        limit = min(max(1, limit), 100)
+        page = max(1, page)
+
+        all_items = await store.list_section_files(section_id, sort=sort)
+        total = len(all_items)
+        start = (page - 1) * limit
+        end = start + limit
+        page_items = all_items[start:end]
+        page_count = max(1, math.ceil(total / limit))
+
+        def _make_file_entry(item):
+            return {
+                "name": getattr(item, "name", str(item.get("name", ""))),
+                "size_text": getattr(item, "size_text", str(item.get("size_text", ""))),
+                "mime": getattr(item, "mime", str(item.get("mime", ""))),
+                "views_total": getattr(item, "views_total", item.get("views_total", 0)),
+                "normal_link": getattr(item, "normal_link", item.get("normal_link", "#")),
+                "premium_link": getattr(item, "premium_link", item.get("premium_link", "#")),
+                "is_trending": getattr(item, "is_trending", item.get("is_trending", False)),
+            }
+
+        return JSONResponse({
+            "files": [_make_file_entry(it) for it in page_items],
+            "page": page,
+            "page_count": page_count,
+            "total": total,
+            "has_next": page < page_count,
+        })
+    except Exception as exc:
+        return JSONResponse({"error": str(exc), "files": [], "page": 1, "page_count": 1, "total": 0, "has_next": False}, status_code=200)
+
+
+
 @app.get("/robots.txt", include_in_schema=False)
 async def robots_txt():
     body = "\n".join(
