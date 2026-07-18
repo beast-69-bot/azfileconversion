@@ -59,15 +59,27 @@ def canonical_url(path: str = "/") -> str:
     return f"{settings.base_url}{clean_path}"
 
 
-def xml_url(location: str, priority: str, changefreq: str = "daily") -> str:
+def xml_url(location: str, priority: str, changefreq: str = "daily", lastmod: str = "") -> str:
     safe_location = escape(location, {'"': "&quot;"})
+    lastmod_tag = f"    <lastmod>{lastmod}</lastmod>\n" if lastmod else ""
     return (
         "  <url>\n"
         f"    <loc>{safe_location}</loc>\n"
+        f"{lastmod_tag}"
         f"    <changefreq>{changefreq}</changefreq>\n"
         f"    <priority>{priority}</priority>\n"
         "  </url>"
     )
+
+
+def make_section_name(section_id: str) -> str:
+    """Convert a raw section_id slug to a human-readable title.
+    E.g. 'latest-movies-2024' -> 'Latest Movies 2024'
+         'batch_123'          -> 'Batch 123'
+    """
+    import re
+    name = re.sub(r'[-_]+', ' ', section_id)
+    return name.title()
 
 
 @app.middleware("http")
@@ -274,10 +286,12 @@ async def robots_txt():
 
 @app.get("/sitemap.xml", include_in_schema=False)
 async def sitemap_xml():
+    from datetime import date
+    today = date.today().isoformat()
     urls = [
-        xml_url(canonical_url("/"), "1.0"),
-        xml_url(canonical_url("/sections"), "0.8"),
-        xml_url(canonical_url("/trending"), "0.8"),
+        xml_url(canonical_url("/"), "1.0", "daily", today),
+        xml_url(canonical_url("/sections"), "0.8", "daily", today),
+        xml_url(canonical_url("/trending"), "0.8", "daily", today),
     ]
     try:
         rows = await store.list_public_sections()
@@ -285,7 +299,7 @@ async def sitemap_xml():
         rows = []
     for _, section_id in rows:
         if section_id:
-            urls.append(xml_url(canonical_url(f"/section/{section_id}"), "0.7", "weekly"))
+            urls.append(xml_url(canonical_url(f"/section/{section_id}"), "0.7", "weekly", today))
 
     body = (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
@@ -786,6 +800,7 @@ async def render_section(section_id: str, access_filter: str, request: Request) 
         context={
             "request": request,
             "section_id": section_id,
+            "section_name": make_section_name(section_id),
             "base_url": settings.base_url,
             "canonical_url": canonical_url(f"/section/{section_id}"),
             "total_items": total_items,
@@ -848,7 +863,11 @@ async def section_page(section_id: str, request: Request):
 
 @app.get("/section/{section_id}/premium")
 async def section_page_premium(section_id: str, request: Request):
-    return await render_section(section_id, "all", request)
+    response = await render_section(section_id, "all", request)
+    # Tell Google the canonical URL is the non-premium version to avoid duplicate content
+    if hasattr(response, 'headers'):
+        response.headers["Link"] = f'<{canonical_url(f"/section/{section_id}")}>; rel="canonical"'
+    return response
 
 
 

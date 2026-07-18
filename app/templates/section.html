@@ -1,7 +1,43 @@
 {% extends "base.html" %}
 
-{% block title %}{{ section_id }} - AzhawaSadda Section{% endblock %}
-{% block meta_description %}Browse the {{ section_id }} archive section on AzhawaSadda with stream-ready files and Telegram delivery options.{% endblock %}
+{% block title %}{{ section_name }} — AzhawaSadda File Archive{% endblock %}
+{% block meta_description %}Browse {{ total_items }} stream-ready files in the "{{ section_name }}" archive section on AzhawaSadda. Open instantly or dispatch directly to Telegram.{% endblock %}
+
+{% block head %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "CollectionPage",
+  "name": "{{ section_name }} — AzhawaSadda",
+  "description": "Browse {{ total_items }} stream-ready files in the {{ section_name }} archive section on AzhawaSadda.",
+  "url": "{{ canonical_url }}",
+  "numberOfItems": {{ total_items }},
+  "breadcrumb": {
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "Home",
+        "item": "{{ base_url }}/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": "Sections",
+        "item": "{{ base_url }}/sections"
+      },
+      {
+        "@type": "ListItem",
+        "position": 3,
+        "name": "{{ section_name }}",
+        "item": "{{ canonical_url }}"
+      }
+    ]
+  }
+}
+</script>
+{% endblock %}
 
 {% block body_attrs %} class="is-loading"{% endblock %}
 
@@ -11,17 +47,17 @@
         <div class="hero-grid">
             <div class="hero-copy">
                 <nav class="breadcrumb" aria-label="Breadcrumb">
-                    <span>Home</span>
+                    <a href="/">Home</a>
                     <span class="sep">/</span>
-                    <span>Section</span>
+                    <a href="/sections">Sections</a>
                     <span class="sep">/</span>
-                    <span>{{ section_id }}</span>
+                    <span aria-current="page">{{ section_name }}</span>
                 </nav>
                 <div class="section-head">
                     <div>
                         <div class="eyebrow">Curated archive</div>
-                        <h1>{{ section_id }}</h1>
-                        <p class="lede">A sharper index for stream-ready and premium-ready media. Open single files instantly or dispatch the full set directly to Telegram.</p>
+                        <h1>{{ section_name }}</h1>
+                        <p class="lede">A curated archive of {{ total_items }} stream-ready and premium-ready files. Open individual files instantly or dispatch the full set directly to Telegram.</p>
                     </div>
                 </div>
                 <div class="chip-row">
