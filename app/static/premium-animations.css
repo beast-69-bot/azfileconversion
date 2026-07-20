@@ -959,3 +959,40 @@
   .meta-box .meta-value { font-size: 16px !important; }
   .chip { font-size: 10px !important; }
 }
+
+/* ═══════════════════════════════════════════════════════════
+   Plyr Video Player — Force 16:9 aspect ratio before playback
+   (styles.min.css is served so overrides go here)
+   ═══════════════════════════════════════════════════════════ */
+.player-wrap {
+  width: 100%;
+  position: relative;
+  border-radius: 24px;
+  overflow: hidden;
+  background: #030306;
+}
+
+/* Plyr wraps video in this div using padding-bottom trick */
+.player-wrap .plyr__video-wrapper {
+  position: relative !important;
+  padding-bottom: 56.25% !important; /* 16:9 = 9/16 = 56.25% */
+  height: 0 !important;
+  overflow: hidden !important;
+}
+
+/* Video fills the padded container absolutely */
+.player-wrap .plyr__video-wrapper video {
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: contain !important;
+  background: #030306 !important;
+}
+
+/* Plyr container itself fills player-wrap */
+.player-wrap .plyr {
+  width: 100% !important;
+  border-radius: 24px !important;
+}
