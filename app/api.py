@@ -342,12 +342,12 @@ async def api_dark_vault_auth(request: Request):
         if password == vault_pass:
             cookie_hash = hashlib.sha256(vault_pass.encode()).hexdigest()
             response = JSONResponse({"success": True})
-            # Register auth cookie valid for 7 days
+            # Register auth cookie valid for 1 day (24 hours)
             response.set_cookie(
                 "dark_vault_auth",
                 cookie_hash,
                 httponly=True,
-                max_age=60 * 60 * 24 * 7,
+                max_age=60 * 60 * 24 * 1,
                 samesite="lax",
                 secure=False  # Allow local/heroku routing without https restrictions if testing
             )
