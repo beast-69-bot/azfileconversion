@@ -29,6 +29,7 @@ class FileRef:
     created_at: float
     section_id: Optional[str] = None
     section_name: Optional[str] = None
+    dl_token: Optional[str] = None
 
 
 def _normalize_section(value: str) -> str:

@@ -3279,7 +3279,7 @@ async def stream_filename_entered(message: Message, state: FSMContext) -> None:
     )
 
     # Store token references
-    await store.set(normal_token, FileRef(**base_ref, access="normal"), settings.token_ttl_seconds)
+    await store.set(normal_token, FileRef(**base_ref, access="normal", dl_token=premium_token), settings.token_ttl_seconds)
     await store.set(premium_token, FileRef(**base_ref, access="premium"), settings.token_ttl_seconds)
 
     normal_link = build_link(normal_token)
