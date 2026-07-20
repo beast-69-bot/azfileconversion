@@ -6,6 +6,11 @@
 <span class="badge badge-live">Stream Active</span>
 {% endblock %}
 
+{% block head %}
+<!-- Google IMA SDK for Plyr VAST Ads -->
+<script src="https://imasdk.googleapis.com/js/sdkloader/ima3.js"></script>
+{% endblock %}
+
 {% block content %}
 <div class="page-frame">
   <section class="card hero-panel animate-in">
@@ -137,7 +142,7 @@
   }
 
   // ── Plyr initialization ──
-  waitFor(function() { return typeof Plyr !== 'undefined'; }, function() {
+  waitFor(function() { return typeof Plyr !== 'undefined' && typeof google !== 'undefined' && google.ima; }, function() {
     var mediaEl = document.getElementById('player');
     if (!mediaEl) return;
     var player = new Plyr(mediaEl, {
@@ -149,6 +154,10 @@
       settings: ['speed'],
       speed: { selected: 1, options: [0.5, 0.75, 1, 1.25, 1.5, 2] },
       tooltips: { controls: true, seek: true },
+      ads: {
+        enabled: true,
+        tagUrl: 'https://s.magsrv.com/v1/vast.php?idz=5972662'
+      }
     });
 
     // ── Hide loader once video starts playing ──
