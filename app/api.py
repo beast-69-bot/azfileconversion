@@ -1241,10 +1241,8 @@ async def player(token: str, request: Request):
 
     download_button_url = ""
     if settings.bot_username:
-        if ref.access == "premium":
-            download_button_url = f"{settings.base_url}/player/{token}/download"
-        elif getattr(ref, "dl_token", None):
-            download_button_url = f"{settings.base_url}/player/{ref.dl_token}/download"
+        dl_target = getattr(ref, "dl_token", None) or token
+        download_button_url = f"{settings.base_url}/player/{dl_target}/download"
 
     response = templates.TemplateResponse(
         request=request,
@@ -1272,8 +1270,6 @@ async def player_download(token: str, request: Request):
     ref = await store.get(token, settings.token_ttl_seconds)
     if not ref:
         raise HTTPException(status_code=404, detail="Invalid or expired token")
-    if ref.access != "premium":
-        raise HTTPException(status_code=403, detail="Premium required")
     if settings.bot_username:
         return RedirectResponse(url=f"https://telegram.me/{settings.bot_username}?start=dl_{token}", status_code=302)
     return HTMLResponse(content="Download unavailable.", status_code=404)
