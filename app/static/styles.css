@@ -1456,7 +1456,11 @@ body.age-gate-open {
 }
 
 .player-wrap video {
+  width: 100%;
+  aspect-ratio: 16 / 9;
   max-height: 72vh;
+  object-fit: cover;
+  background: #030306;
 }
 
 .player-wrap audio {
