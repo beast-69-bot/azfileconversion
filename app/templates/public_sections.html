@@ -68,9 +68,9 @@
             <span id="sections-search-count" class="search-result-count"></span>
         </div>
 
-        <div class="public-section-grid gsap-stagger-parent" id="sections-grid">
+        <div class="public-section-grid" id="sections-grid">
             {% for section in section_cards %}
-            <article class="public-section-card gsap-stagger-child card-hoverable" style="border-radius:12px;overflow:hidden;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);padding:20px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;transition:all 0.3s ease;">
+            <article class="public-section-card card-hoverable" style="border-radius:12px;overflow:hidden;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);padding:20px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;transition:all 0.3s ease;">
                 <div style="flex:1;">
                     <span class="route-kicker" style="font-size:11px;font-weight:700;color:var(--color-secondary,#00f2fe);text-transform:uppercase;letter-spacing:1px;">Public section</span>
                     <h2 style="margin:4px 0 6px 0;font-size:16px;font-weight:700;">
@@ -126,21 +126,12 @@
         if (fn()) { cb(); return; }
         var t = setInterval(function() { if (fn()) { clearInterval(t); cb(); } }, 150);
     }
-    waitFor(function() { return typeof gsap !== 'undefined' && typeof ScrollTrigger !== 'undefined'; }, function() {
-        gsap.registerPlugin(ScrollTrigger);
+    waitFor(function() { return typeof gsap !== 'undefined'; }, function() {
         var cards = document.querySelectorAll('#sections-grid .public-section-card');
-        gsap.from(cards, {
-            opacity: 0,
-            y: 30,
-            duration: 0.5,
-            stagger: 0.07,
-            ease: 'power2.out',
-            scrollTrigger: {
-                trigger: '#sections-grid',
-                start: 'top 85%',
-                once: true,
-            },
-        });
+        gsap.fromTo(cards, 
+            { opacity: 0, y: 20 },
+            { opacity: 1, y: 0, duration: 0.45, stagger: 0.05, ease: 'power2.out', clearProps: 'transform' }
+        );
     });
 })();
 </script>
