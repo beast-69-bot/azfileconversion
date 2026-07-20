@@ -52,6 +52,25 @@
           <span class="badge badge-live">Direct playback</span>
         </div>
         <div class="player-wrap">
+          <div id="player-loader" class="player-loader">
+            <div class="player-loader-shimmer"></div>
+            <div class="player-loader-icon">
+              <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="32" cy="32" r="31" stroke="rgba(225,29,72,0.4)" stroke-width="2"/>
+                <circle cx="32" cy="32" r="31" stroke="url(#spin-grad)" stroke-width="2" stroke-dasharray="48 150" stroke-linecap="round">
+                  <animateTransform attributeName="transform" type="rotate" from="0 32 32" to="360 32 32" dur="1.2s" repeatCount="indefinite"/>
+                </circle>
+                <defs>
+                  <linearGradient id="spin-grad" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+                    <stop offset="0%" stop-color="#e11d48"/>
+                    <stop offset="100%" stop-color="#8b5cf6"/>
+                  </linearGradient>
+                </defs>
+                <polygon points="26,20 46,32 26,44" fill="rgba(225,29,72,0.9)"/>
+              </svg>
+              <span class="player-loader-text">Loading stream...</span>
+            </div>
+          </div>
           {% if media_tag == "audio" %}
           <audio id="player" controls preload="auto" controlslist="nodownload">
             <source src="/stream/{{ token }}" type="{{ mime_type }}" />
@@ -121,7 +140,7 @@
   waitFor(function() { return typeof Plyr !== 'undefined'; }, function() {
     var mediaEl = document.getElementById('player');
     if (!mediaEl) return;
-    new Plyr(mediaEl, {
+    var player = new Plyr(mediaEl, {
       ratio: '16:9',
       controls: [
         'play-large', 'play', 'progress', 'current-time',
@@ -131,6 +150,19 @@
       speed: { selected: 1, options: [0.5, 0.75, 1, 1.25, 1.5, 2] },
       tooltips: { controls: true, seek: true },
     });
+
+    // ── Hide loader once video starts playing ──
+    var loader = document.getElementById('player-loader');
+    if (loader) {
+      player.on('playing', function() {
+        loader.style.opacity = '0';
+        loader.style.pointerEvents = 'none';
+        setTimeout(function() { loader.style.display = 'none'; }, 400);
+      });
+      player.on('canplay', function() {
+        loader.querySelector('.player-loader-text').textContent = 'Ready — press play';
+      });
+    }
   });
 
   // ── Share button ──
