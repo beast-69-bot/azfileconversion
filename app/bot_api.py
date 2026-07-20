@@ -130,6 +130,13 @@ class PollState(StatesGroup):
     waiting_for_option_text = State()
 
 
+class DarkPostState(StatesGroup):
+    waiting_post_number = State()
+    waiting_demo_link = State()
+    waiting_normal_link = State()
+    waiting_premium_link = State()
+
+
 @dataclass(frozen=True)
 class PaymentPlan:
     code: str
@@ -2996,6 +3003,150 @@ async def unpublishsection_cmd(message: Message) -> None:
         ),
         parse_mode="HTML",
     )
+
+
+# ─────────────────────────────────────────────────────────────
+# DARK ARCHIVES ADMIN COMMAND WIZARD
+# ─────────────────────────────────────────────────────────────
+
+@dp.message(Command("darkpost", "adddark"))
+async def darkpost_start_cmd(message: Message, state: FSMContext) -> None:
+    if not is_admin(message.from_user.id if message.from_user else None):
+        await message.reply(format_msg("❌ Access Denied", sections=[("", "Admins only.")]), parse_mode="HTML")
+        return
+    await state.set_state(DarkPostState.waiting_post_number)
+    await message.reply(
+        format_msg(
+            "🌑 Dark Archives Wizard",
+            sections=[("", "Enter the Post Number (e.g., 18 or 105):")],
+            tip="Type /cancel at any point to exit this wizard."
+        ),
+        parse_mode="HTML"
+    )
+
+
+@dp.message(DarkPostState.waiting_post_number)
+async def darkpost_num_handler(message: Message, state: FSMContext) -> None:
+    if not is_admin(message.from_user.id if message.from_user else None):
+        return
+    text = (message.text or "").strip()
+    if text.startswith("/cancel"):
+        await state.clear()
+        await message.reply("❌ Wizard cancelled.")
+        return
+    
+    try:
+        post_num = int(text)
+    except ValueError:
+        await message.reply("⚠️ Post Number must be an integer. Please send a valid number:")
+        return
+
+    await state.update_data(post_number=post_num)
+    await state.set_state(DarkPostState.waiting_demo_link)
+    await message.reply(
+        format_msg(
+            "🎬 Watch Demo Link",
+            sections=[("", "Send the URL for Watch Demo (e.g., streaming/video link):")],
+            tip="Or send /skip if there is no demo video for this post."
+        ),
+        parse_mode="HTML"
+    )
+
+
+@dp.message(DarkPostState.waiting_demo_link)
+async def darkpost_demo_handler(message: Message, state: FSMContext) -> None:
+    if not is_admin(message.from_user.id if message.from_user else None):
+        return
+    text = (message.text or "").strip()
+    if text.startswith("/cancel"):
+        await state.clear()
+        await message.reply("❌ Wizard cancelled.")
+        return
+        
+    demo_link = "" if text.startswith("/skip") else text
+    await state.update_data(demo_link=demo_link)
+    await state.set_state(DarkPostState.waiting_normal_link)
+    await message.reply(
+        format_msg(
+            "👤 Normal User Link",
+            sections=[("", "Send the URL for Normal Access:")],
+            tip="This is typically a normal streaming or files directory link."
+        ),
+        parse_mode="HTML"
+    )
+
+
+@dp.message(DarkPostState.waiting_normal_link)
+async def darkpost_normal_handler(message: Message, state: FSMContext) -> None:
+    if not is_admin(message.from_user.id if message.from_user else None):
+        return
+    text = (message.text or "").strip()
+    if text.startswith("/cancel"):
+        await state.clear()
+        await message.reply("❌ Wizard cancelled.")
+        return
+
+    if not text.startswith("http"):
+        await message.reply("⚠️ Link must start with http or https. Send a valid URL:")
+        return
+
+    await state.update_data(normal_link=text)
+    await state.set_state(DarkPostState.waiting_premium_link)
+    await message.reply(
+        format_msg(
+            "💎 Premium User Link",
+            sections=[("", "Send the URL for Premium Access:")],
+            tip="This is typically a premium direct download/streaming link."
+        ),
+        parse_mode="HTML"
+    )
+
+
+@dp.message(DarkPostState.waiting_premium_link)
+async def darkpost_premium_handler(message: Message, state: FSMContext) -> None:
+    if not is_admin(message.from_user.id if message.from_user else None):
+        return
+    text = (message.text or "").strip()
+    if text.startswith("/cancel"):
+        await state.clear()
+        await message.reply("❌ Wizard cancelled.")
+        return
+
+    if not text.startswith("http"):
+        await message.reply("⚠️ Link must start with http or https. Send a valid URL:")
+        return
+
+    data = await state.get_data()
+    post_number = data.get("post_number")
+    demo_link = data.get("demo_link", "")
+    normal_link = data.get("normal_link", "")
+    premium_link = text
+
+    # Insert post into database
+    try:
+        if hasattr(store, "save_dark_post"):
+            post_id = await store.save_dark_post(post_number, demo_link, normal_link, premium_link)
+            vault_url = f"{settings.base_url}/dark-archives"
+            await message.reply(
+                format_msg(
+                    "✅ Dark Post Published",
+                    sections=[
+                        ("Post Number", f"#{post_number:03d}"),
+                        ("Demo Link", code(demo_link) if demo_link else "None"),
+                        ("Normal Link", code(normal_link)),
+                        ("Premium Link", code(premium_link)),
+                        ("Live Page", link("Open Vault", vault_url) if _is_http_url(vault_url) else code(vault_url))
+                    ],
+                    tip="This post is live now and will automatically disappear after 24 Hours."
+                ),
+                parse_mode="HTML"
+            )
+        else:
+            await message.reply("❌ Database error: save_dark_post method is missing on store connection.")
+    except Exception as e:
+        await message.reply(f"❌ Failed to publish: {str(e)}")
+
+    await state.clear()
 
 
 @dp.message(Command("publicsections", "showpublic"))

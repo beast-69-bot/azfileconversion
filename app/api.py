@@ -269,6 +269,85 @@ async def health():
 
 
 # ─────────────────────────────────────────────────────────────
+# DARK ARCHIVES ROUTING & VOTE ENDPOINTS
+# ─────────────────────────────────────────────────────────────
+
+@app.get("/dark-archives", response_class=HTMLResponse)
+async def dark_archives_page(request: Request):
+    """
+    Renders the Premium Dark Archives vault page.
+    """
+    try:
+        posts = []
+        if hasattr(store, "list_dark_posts"):
+            posts = await store.list_dark_posts()
+    except Exception:
+        posts = []
+
+    # Inject client IP / Cookie identifier to verify if user has already voted on each card
+    visitor_id = request.cookies.get("site_visitor_id") or request.client.host
+    user_hash = hashlib.md5(visitor_id.encode()).hexdigest()
+
+    # Tag each post with user's specific past vote to highlight buttons
+    for post in posts:
+        votes = post.get("votes", {})
+        post["user_vote"] = votes.get(user_hash, "none")
+        post["seconds_remaining"] = max(0, int(post.get("expires_at", 0) - time.time()))
+
+    return templates.TemplateResponse(
+        request=request,
+        name="dark_archives.html",
+        context={
+            "request": request,
+            "posts": posts,
+            "canonical_url": canonical_url("/dark-archives"),
+        },
+    )
+
+
+@app.post("/api/dark-archives/{post_id}/action", response_class=JSONResponse)
+async def api_dark_post_action(post_id: str):
+    """
+    Increments post view counts on link click actions.
+    """
+    try:
+        if hasattr(store, "increment_dark_post_views"):
+            await store.increment_dark_post_views(post_id)
+            post = await store.get_dark_post(post_id)
+            return JSONResponse({"success": True, "views": post.get("views", 0) if post else 0})
+    except Exception as e:
+        return JSONResponse({"success": False, "error": str(e)}, status_code=500)
+    return JSONResponse({"success": False, "error": "Not supported"}, status_code=400)
+
+
+@app.post("/api/dark-archives/{post_id}/vote", response_class=JSONResponse)
+async def api_dark_post_vote(post_id: str, request: Request):
+    """
+    Casts a vote (like/dislike) for a dynamic post checking user cookie/IP fingerprint to avoid duplicate votes.
+    """
+    try:
+        body = await request.json()
+        vote_type = str(body.get("type", "")).strip().lower()
+        if vote_type not in {"like", "dislike"}:
+            return JSONResponse({"success": False, "error": "Invalid vote type"}, status_code=400)
+
+        visitor_id = request.cookies.get("site_visitor_id") or request.client.host
+        user_hash = hashlib.md5(visitor_id.encode()).hexdigest()
+
+        if hasattr(store, "vote_dark_post"):
+            res = await store.vote_dark_post(post_id, user_hash, vote_type)
+            return JSONResponse({
+                "success": True,
+                "likes": res.get("likes", 0),
+                "dislikes": res.get("dislikes", 0),
+                "user_vote": res.get("user_vote", "none")
+            })
+    except Exception as e:
+        return JSONResponse({"success": False, "error": str(e)}, status_code=500)
+    return JSONResponse({"success": False, "error": "Not supported"}, status_code=400)
+
+
+# ─────────────────────────────────────────────────────────────
 # PREMIUM JSON API ENDPOINTS
 # Used by Chart.js dashboard, infinite scroll, live search
 # ─────────────────────────────────────────────────────────────
@@ -448,6 +527,16 @@ async def favicon():
     return RedirectResponse(url="/static/favicon.svg", status_code=307)
 
 
+async def dark_archives_cleanup_loop() -> None:
+    while True:
+        try:
+            if hasattr(store, "delete_expired_dark_posts"):
+                await store.delete_expired_dark_posts()
+        except Exception:
+            pass
+        await asyncio.sleep(60)
+
+
 async def warm_client() -> None:
     async with _warm_lock:
         if _client_started:
@@ -467,6 +556,7 @@ async def warm_client() -> None:
 async def on_startup() -> None:
     await store.connect()
     asyncio.create_task(warm_client())
+    asyncio.create_task(dark_archives_cleanup_loop())
 
 
 @app.on_event("shutdown")

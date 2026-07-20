@@ -72,6 +72,7 @@ class MongoTokenStore(TokenStore):
         self._captcha_users = self._mongo["captcha_users"]
         self._captcha_sessions = self._mongo["captcha_sessions"]
         self._polls_col = self._mongo["polls"]
+        self._dark_posts = self._mongo["dark_posts"]
 
         await self._tokens.create_index([("created_at", DESCENDING)])
         await self._tokens.create_index([("section_id", ASCENDING), ("created_at", DESCENDING)])
@@ -92,6 +93,9 @@ class MongoTokenStore(TokenStore):
         await self._captcha_users.create_index([("banned_until", ASCENDING)])
         await self._captcha_sessions.create_index([("user_id", ASCENDING), ("status", ASCENDING), ("created_at", DESCENDING)])
         await self._captcha_sessions.create_index([("expires_at", ASCENDING)])
+        await self._dark_posts.create_index([("expires_at", ASCENDING)])
+        await self._dark_posts.create_index([("created_at", DESCENDING)])
+        await self._dark_posts.create_index([("post_number", DESCENDING)], unique=True)
 
     async def close(self) -> None:
         if self._mongo_client is not None:
@@ -1100,4 +1104,119 @@ class MongoTokenStore(TokenStore):
             except ValueError:
                 continue
         return results
+
+    # ─────────────────────────────────────────────────────────────
+    # DARK ARCHIVES VAULT METHODS
+    # ─────────────────────────────────────────────────────────────
+
+    async def save_dark_post(self, post_number: int, demo_link: str, normal_link: str, premium_link: str) -> str:
+        """
+        Saves a new premium temporary dark post with 24 hours expiry time.
+        """
+        now = int(time.time())
+        expires_at = now + 86400  # 24 Hours strict lifetime
+        post_id = secrets.token_hex(12)
+        doc = {
+            "_id": post_id,
+            "post_number": int(post_number),
+            "demo_link": str(demo_link or "").strip(),
+            "normal_link": str(normal_link or "").strip(),
+            "premium_link": str(premium_link or "").strip(),
+            "created_at": now,
+            "expires_at": expires_at,
+            "views": 0,
+            "likes": 0,
+            "dislikes": 0,
+            "votes": {},  # Maps user_hash -> "like" or "dislike"
+        }
+        await self._dark_posts.insert_one(doc)
+        return post_id
+
+    async def list_dark_posts(self) -> list[dict]:
+        """
+        Lists all active non-expired dark posts, sorted by created_at DESC.
+        """
+        now = int(time.time())
+        cursor = self._dark_posts.find({"expires_at": {"$gt": now}}).sort("created_at", -1)
+        results = []
+        async for doc in cursor:
+            payload = dict(doc)
+            payload["id"] = str(payload.pop("_id"))
+            results.append(payload)
+        return results
+
+    async def get_dark_post(self, post_id: str) -> Optional[dict]:
+        """
+        Retrieves a dark post by id.
+        """
+        doc = await self._dark_posts.find_one({"_id": post_id})
+        if not doc:
+            return None
+        payload = dict(doc)
+        payload["id"] = str(payload.pop("_id"))
+        return payload
+
+    async def increment_dark_post_views(self, post_id: str) -> None:
+        """
+        Increments view counter for a dark post.
+        """
+        await self._dark_posts.update_one({"_id": post_id}, {"$inc": {"views": 1}})
+
+    async def vote_dark_post(self, post_id: str, user_hash: str, vote_type: str) -> dict:
+        """
+        Registers like/dislike. Enforces one vote per device/hash pattern.
+        Returns the updated views/likes/dislikes status metrics.
+        """
+        post = await self._dark_posts.find_one({"_id": post_id})
+        if not post:
+            return {}
+
+        votes = post.get("votes", {})
+        old_vote = votes.get(user_hash)
+
+        likes_change = 0
+        dislikes_change = 0
+
+        if old_vote == vote_type:
+            # Retract same vote
+            votes.pop(user_hash, None)
+            if vote_type == "like":
+                likes_change = -1
+            else:
+                dislikes_change = -1
+        else:
+            # Change vote or cast new
+            votes[user_hash] = vote_type
+            if vote_type == "like":
+                likes_change = 1
+                if old_vote == "dislike":
+                    dislikes_change = -1
+            else:
+                dislikes_change = 1
+                if old_vote == "like":
+                    likes_change = -1
+
+        await self._dark_posts.update_one(
+            {"_id": post_id},
+            {
+                "$set": {"votes": votes},
+                "$inc": {"likes": likes_change, "dislikes": dislikes_change}
+            }
+        )
+
+        # Get fresh numbers
+        updated = await self._dark_posts.find_one({"_id": post_id})
+        return {
+            "likes": updated.get("likes", 0),
+            "dislikes": updated.get("dislikes", 0),
+            "user_vote": votes.get(user_hash, "none")
+        }
+
+    async def delete_expired_dark_posts(self) -> int:
+        """
+        TTL clean-up database operation. Removes expired posts, clearing votes, view counts, and metadata.
+        """
+        now = int(time.time())
+        res = await self._dark_posts.delete_many({"expires_at": {"$lte": now}})
+        return int(res.deleted_count or 0)
 

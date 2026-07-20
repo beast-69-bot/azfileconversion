@@ -1,0 +1,916 @@
+{% extends "base.html" %}
+
+{% block title %}Dark Archives — Temporary Content Vault{% endblock %}
+{% block meta_description %}Access exclusive premium temporary archives that disappear forever after 24 hours. Experience the ultimate high-end secure content flow.{% endblock %}
+
+{% block navigation %}
+<nav class="site-nav" aria-label="Primary navigation">
+    <a href="/">Home</a>
+    <a href="/sections">Public Sections</a>
+    <a href="/trending">Trending</a>
+    <a href="/dark-archives" class="active" style="color:var(--color-primary,#e11d48);font-weight:700;">🌑 Dark Archives</a>
+</nav>
+{% endblock %}
+
+{% block content %}
+<style>
+    /* Premium Vault Core Styles */
+    :root {
+        --vault-bg: #090909;
+        --vault-glow-purple: rgba(139, 92, 246, 0.5);
+        --vault-glow-cyan: rgba(6, 182, 212, 0.5);
+        --card-radius: 24px;
+        --glass-surface: rgba(255, 255, 255, 0.02);
+        --glass-border: rgba(255, 255, 255, 0.06);
+    }
+
+    body {
+        background-color: var(--vault-bg) !important;
+        overflow-x: hidden;
+    }
+
+    /* Ambient animated blurred background blobs */
+    .vault-glow-blob {
+        position: absolute;
+        width: 450px;
+        height: 450px;
+        border-radius: 50%;
+        filter: blur(140px);
+        opacity: 0.12;
+        pointer-events: none;
+        z-index: 0;
+        animation: blobFloat 12s infinite ease-in-out;
+    }
+    .vault-blob-1 {
+        background: radial-gradient(circle, #8b5cf6 0%, transparent 80%);
+        top: 10%;
+        left: -100px;
+    }
+    .vault-blob-2 {
+        background: radial-gradient(circle, #06b6d4 0%, transparent 80%);
+        top: 50%;
+        right: -100px;
+        animation-delay: -6s;
+    }
+
+    @keyframes blobFloat {
+        0%, 100% { transform: translateY(0) scale(1); }
+        50% { transform: translateY(30px) scale(1.1); }
+    }
+
+    /* Hero Section Styling */
+    .vault-hero {
+        position: relative;
+        text-align: center;
+        padding: 60px 20px 40px;
+        z-index: 1;
+    }
+    .vault-eyebrow {
+        font-family: 'Outfit', sans-serif;
+        font-size: 11px;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 3px;
+        color: #e11d48;
+        margin-bottom: 12px;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+    }
+    .vault-eyebrow span {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background-color: #e11d48;
+        box-shadow: 0 0 10px #e11d48;
+        animation: heartBeat 1.5s infinite;
+    }
+    @keyframes heartBeat {
+        0%, 100% { transform: scale(1); opacity: 1; }
+        50% { transform: scale(1.4); opacity: 0.4; }
+    }
+
+    .vault-title {
+        font-family: 'Outfit', sans-serif;
+        font-size: 46px;
+        font-weight: 800;
+        background: linear-gradient(135deg, #ffffff 30%, #a855f7 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        letter-spacing: -1px;
+        margin-bottom: 16px;
+    }
+    .vault-subtitle {
+        font-size: 15px;
+        color: #9ca3af;
+        max-width: 600px;
+        margin: 0 auto 28px;
+        line-height: 1.6;
+    }
+
+    /* Sticky Search & Pill Filter System */
+    .vault-controls-bar {
+        position: sticky;
+        top: 80px;
+        z-index: 10;
+        background: rgba(9, 9, 9, 0.7);
+        backdrop-filter: blur(20px);
+        padding: 16px;
+        border-radius: 20px;
+        border: 1px solid rgba(255, 255, 255, 0.03);
+        margin-bottom: 40px;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+    }
+    @media (min-width: 768px) {
+        .vault-controls-bar {
+            flex-direction: row;
+            justify-content: space-between;
+            align-items: center;
+        }
+    }
+
+    .vault-search-wrapper {
+        position: relative;
+        flex: 1;
+        max-width: 400px;
+    }
+    .vault-search-input {
+        width: 100%;
+        background: rgba(255, 255, 255, 0.02);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 30px;
+        padding: 12px 20px 12px 48px;
+        font-size: 14px;
+        color: #ffffff;
+        outline: none;
+        transition: all 0.3s ease;
+    }
+    .vault-search-input:focus {
+        border-color: #a855f7;
+        background: rgba(255, 255, 255, 0.04);
+        box-shadow: 0 0 15px rgba(168, 85, 247, 0.15);
+    }
+    .vault-search-icon {
+        position: absolute;
+        left: 18px;
+        top: 50%;
+        transform: translateY(-50%);
+        font-size: 16px;
+        color: #6b7280;
+        pointer-events: none;
+    }
+
+    .vault-filter-pills {
+        display: flex;
+        gap: 8px;
+        overflow-x: auto;
+        padding-bottom: 4px;
+        scrollbar-width: none;
+    }
+    .vault-filter-pills::-webkit-scrollbar { display: none; }
+    
+    .filter-pill {
+        background: rgba(255, 255, 255, 0.02);
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        color: #9ca3af;
+        padding: 8px 16px;
+        border-radius: 30px;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        white-space: nowrap;
+        transition: all 0.3s ease;
+    }
+    .filter-pill:hover {
+        color: #ffffff;
+        border-color: rgba(255, 255, 255, 0.15);
+    }
+    .filter-pill.active {
+        background: linear-gradient(135deg, #a855f7 0%, #7c3aed 100%);
+        color: #ffffff;
+        border-color: transparent;
+        box-shadow: 0 0 15px rgba(168, 85, 247, 0.3);
+    }
+
+    /* Vault Grid */
+    .vault-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+        gap: 30px;
+        padding-bottom: 80px;
+        z-index: 1;
+        position: relative;
+    }
+    @media (max-width: 480px) {
+        .vault-grid {
+            grid-template-columns: 1fr;
+            gap: 20px;
+        }
+    }
+
+    /* Glassmorphic Premium Card Styling */
+    .vault-card {
+        background: var(--glass-surface);
+        border: 1px solid var(--glass-border);
+        border-radius: var(--card-radius);
+        padding: 24px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        position: relative;
+        min-height: 480px;
+        backdrop-filter: blur(20px);
+        transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    /* Luxury border sweep glow */
+    .vault-card::before {
+        content: '';
+        position: absolute;
+        inset: -1px;
+        background: linear-gradient(135deg, transparent 40%, rgba(168, 85, 247, 0.2) 50%, transparent 60%);
+        border-radius: inherit;
+        opacity: 0;
+        z-index: 0;
+        pointer-events: none;
+        transition: opacity 0.4s ease;
+    }
+    .vault-card:hover::before {
+        opacity: 1;
+    }
+
+    .vault-card > * {
+        position: relative;
+        z-index: 1;
+    }
+
+    .vault-card:hover {
+        transform: translateY(-8px);
+        border-color: rgba(168, 85, 247, 0.3);
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6), 0 0 30px rgba(168, 85, 247, 0.1);
+        background: rgba(255, 255, 255, 0.03);
+    }
+
+    /* Card Header */
+    .card-header-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+    }
+    .card-post-num {
+        font-family: 'Outfit', sans-serif;
+        font-size: 12px;
+        font-weight: 800;
+        color: #a855f7;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+    }
+    .card-badge {
+        font-size: 10px;
+        font-weight: 800;
+        text-transform: uppercase;
+        padding: 4px 10px;
+        border-radius: 30px;
+        letter-spacing: 0.5px;
+    }
+    .badge-new {
+        background: rgba(6, 182, 212, 0.1);
+        color: #06b6d4;
+        border: 1px solid rgba(6, 182, 212, 0.25);
+    }
+    .badge-trending {
+        background: rgba(168, 85, 247, 0.1);
+        color: #a855f7;
+        border: 1px solid rgba(168, 85, 247, 0.25);
+    }
+    .badge-purging {
+        background: rgba(239, 68, 68, 0.1);
+        color: #ef4444;
+        border: 1px solid rgba(239, 68, 68, 0.25);
+        animation: pulseRedBadge 1.5s infinite;
+    }
+    @keyframes pulseRedBadge {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.6; }
+    }
+
+    /* Center Timer Ring Element */
+    .timer-ring-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        margin: 16px 0;
+        position: relative;
+    }
+    .svg-ring-wrapper {
+        position: relative;
+        width: 140px;
+        height: 140px;
+    }
+    .svg-ring-wrapper svg {
+        transform: rotate(-90deg);
+        width: 100%;
+        height: 100%;
+    }
+    .ring-bg {
+        fill: none;
+        stroke: rgba(255, 255, 255, 0.02);
+        stroke-width: 8;
+    }
+    .ring-fill {
+        fill: none;
+        stroke: #a855f7;
+        stroke-width: 8;
+        stroke-linecap: round;
+        stroke-dasharray: 377;
+        stroke-dashoffset: 0;
+        transition: stroke-dashoffset 1s linear, stroke 0.3s ease;
+    }
+    .ring-text {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        text-align: center;
+    }
+    .timer-digits {
+        font-family: 'Outfit', sans-serif;
+        font-size: 18px;
+        font-weight: 800;
+        color: #ffffff;
+        letter-spacing: -0.5px;
+    }
+    .timer-label {
+        font-size: 9px;
+        color: #6b7280;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        margin-top: 2px;
+    }
+
+    /* Expiring Critical Warning Mode */
+    .vault-card.warning-expiry {
+        border-color: rgba(239, 68, 68, 0.25);
+        box-shadow: 0 10px 30px rgba(239, 68, 68, 0.08);
+    }
+    .vault-card.warning-expiry .ring-fill {
+        stroke: #ef4444;
+        filter: drop-shadow(0 0 5px rgba(239, 68, 68, 0.5));
+    }
+    .vault-card.warning-expiry .timer-digits {
+        color: #ef4444;
+    }
+
+    /* Lifetime Progress Bar */
+    .progress-bar-row {
+        width: 100%;
+        margin-bottom: 20px;
+    }
+    .progress-bar-track {
+        height: 4px;
+        background: rgba(255, 255, 255, 0.03);
+        border-radius: 10px;
+        overflow: hidden;
+        position: relative;
+    }
+    .progress-bar-fill {
+        height: 100%;
+        background: linear-gradient(90deg, #7c3aed 0%, #a855f7 100%);
+        border-radius: 10px;
+        width: 100%;
+        transition: width 1s linear;
+    }
+    .progress-text {
+        display: flex;
+        justify-content: space-between;
+        font-size: 11px;
+        color: #6b7280;
+        margin-top: 6px;
+    }
+
+    /* Stats Grid */
+    .stats-card-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
+        margin-bottom: 24px;
+    }
+    .mini-stat-box {
+        background: rgba(255, 255, 255, 0.01);
+        border: 1px solid rgba(255, 255, 255, 0.04);
+        border-radius: 12px;
+        padding: 10px 4px;
+        text-align: center;
+        transition: all 0.3s ease;
+    }
+    .mini-stat-label {
+        font-size: 10px;
+        color: #6b7280;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        display: block;
+        margin-bottom: 4px;
+    }
+    .mini-stat-value {
+        font-family: 'Outfit', sans-serif;
+        font-size: 13px;
+        font-weight: 700;
+        color: #ffffff;
+    }
+
+    /* Stacked Glass Action Buttons */
+    .stacked-actions {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin-bottom: 20px;
+    }
+    .stacked-btn {
+        width: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        padding: 12px;
+        border-radius: 14px;
+        font-size: 13px;
+        font-weight: 700;
+        text-decoration: none;
+        transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    
+    .btn-demo {
+        background: rgba(255, 255, 255, 0.02);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        color: #e5e7eb;
+    }
+    .btn-demo:hover {
+        background: rgba(255, 255, 255, 0.06);
+        transform: translateY(-2px) scale(1.01);
+        box-shadow: 0 5px 15px rgba(255, 255, 255, 0.03);
+    }
+
+    .btn-normal {
+        background: rgba(6, 182, 212, 0.05);
+        border: 1px solid rgba(6, 182, 212, 0.2);
+        color: #06b6d4;
+    }
+    .btn-normal:hover {
+        background: rgba(6, 182, 212, 0.1);
+        transform: translateY(-2px) scale(1.01);
+        box-shadow: 0 5px 15px rgba(6, 182, 212, 0.1);
+    }
+
+    .btn-premium {
+        background: linear-gradient(135deg, rgba(225, 29, 72, 0.15) 0%, rgba(139, 92, 246, 0.15) 100%);
+        border: 1px solid rgba(225, 29, 72, 0.3);
+        color: #ffffff;
+        box-shadow: 0 0 15px rgba(225, 29, 72, 0.05);
+    }
+    .btn-premium:hover {
+        background: linear-gradient(135deg, rgba(225, 29, 72, 0.25) 0%, rgba(139, 92, 246, 0.25) 100%);
+        transform: translateY(-2px) scale(1.01);
+        border-color: rgba(225, 29, 72, 0.5);
+        box-shadow: 0 5px 25px rgba(225, 29, 72, 0.2);
+    }
+
+    /* Footer Voting & Interactions */
+    .card-footer-actions {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-top: 1px solid rgba(255, 255, 255, 0.04);
+        padding-top: 14px;
+    }
+    .action-icon-btn {
+        background: transparent;
+        border: none;
+        color: #6b7280;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 8px;
+        border-radius: 8px;
+        transition: all 0.2s ease;
+    }
+    .action-icon-btn:hover {
+        color: #ffffff;
+        background: rgba(255, 255, 255, 0.04);
+    }
+    .action-icon-btn.active-like {
+        color: #ef4444 !important;
+        background: rgba(239, 68, 68, 0.08);
+    }
+    .action-icon-btn.active-dislike {
+        color: #3b82f6 !important;
+        background: rgba(59, 130, 246, 0.08);
+    }
+</style>
+
+<!-- Background ambient elements -->
+<div class="vault-glow-blob vault-blob-1"></div>
+<div class="vault-glow-blob vault-blob-2"></div>
+
+<div class="page-frame">
+    <!-- Hero Vault Section -->
+    <header class="vault-hero animate-in">
+        <div class="vault-eyebrow">
+            <span></span> Live Vault Active
+        </div>
+        <h1 class="vault-title">🌑 DARK ARCHIVES</h1>
+        <p class="vault-subtitle">
+            Premium temporary vault. Every drop automatically expires and purges from database strictly after 24 Hours. Tap open Normal or Premium links before they disappear forever.
+        </p>
+        <div>
+            <a href="#vault-list" class="btn btn-primary" style="padding: 12px 30px; border-radius:30px; font-weight:700;">Explore Latest Vault Drops</a>
+        </div>
+    </header>
+
+    <!-- Filters and Controls Bar -->
+    <div id="vault-list" class="vault-controls-bar animate-in">
+        <!-- Live search by post number -->
+        <div class="vault-search-wrapper">
+            <span class="vault-search-icon">🔍</span>
+            <input type="text" 
+                   id="vault-search-input" 
+                   class="vault-search-input" 
+                   placeholder="Search by Post Number..." 
+                   autocomplete="off"
+                   aria-label="Search posts" />
+        </div>
+
+        <!-- Filter category tags -->
+        <div class="vault-filter-pills">
+            <button class="filter-pill active" data-filter="all">Newest drops</button>
+            <button class="filter-pill" data-filter="ending">Ending soon</button>
+            <button class="filter-pill" data-filter="trending">Trending</button>
+            <button class="filter-pill" data-filter="liked">Most Liked</button>
+            <button class="filter-pill" data-filter="viewed">Most Viewed</button>
+        </div>
+    </div>
+
+    <!-- Cards Grid -->
+    {% if posts %}
+    <div class="vault-grid" id="vault-grid">
+        {% for post in posts %}
+        <article class="vault-card gsap-hidden" 
+                 id="post-card-{{ post.id }}" 
+                 data-created="{{ post.created_at }}" 
+                 data-expires="{{ post.expires_at }}" 
+                 data-remaining="{{ post.seconds_remaining }}"
+                 data-views="{{ post.views }}"
+                 data-likes="{{ post.likes }}"
+                 data-dislikes="{{ post.dislikes }}"
+                 data-post-number="{{ post.post_number }}">
+
+            <!-- Header -->
+            <div class="card-header-row">
+                <span class="card-post-num">🔥 DARK POST #{{ "%03d" | format(post.post_number) }}</span>
+                {% if post.seconds_remaining < 7200 %}
+                <span class="card-badge badge-purging">⚠️ PURGING SOON</span>
+                {% elif post.views > 100 %}
+                <span class="card-badge badge-trending">🔥 TRENDING</span>
+                {% else %}
+                <span class="card-badge badge-new">🆕 NEW</span>
+                {% endif %}
+            </div>
+
+            <!-- SVG Timer Ring -->
+            <div class="timer-ring-container">
+                <div class="svg-ring-wrapper">
+                    <svg>
+                        <circle class="ring-bg" cx="70" cy="70" r="60"></circle>
+                        <circle class="ring-fill" id="ring-fill-{{ post.id }}" cx="70" cy="70" r="60"></circle>
+                    </svg>
+                    <div class="ring-text">
+                        <div class="timer-digits" id="timer-text-{{ post.id }}">--:--:--</div>
+                        <div class="timer-label">Expires in</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Progress remaining line -->
+            <div class="progress-bar-row">
+                <div class="progress-bar-track">
+                    <div class="progress-bar-fill" id="progress-fill-{{ post.id }}"></div>
+                </div>
+                <div class="progress-text">
+                    <span id="progress-percent-{{ post.id }}">100% remaining</span>
+                    <span>24h life</span>
+                </div>
+            </div>
+
+            <!-- Premium metrics -->
+            <div class="stats-card-grid">
+                <div class="mini-stat-box">
+                    <span class="mini-stat-label">Views</span>
+                    <span class="mini-stat-value count-up-number" id="views-val-{{ post.id }}" data-target="{{ post.views }}">{{ post.views }}</span>
+                </div>
+                <div class="mini-stat-box">
+                    <span class="mini-stat-label">Likes</span>
+                    <span class="mini-stat-value count-up-number" id="likes-val-{{ post.id }}" data-target="{{ post.likes }}">{{ post.likes }}</span>
+                </div>
+                <div class="mini-stat-box">
+                    <span class="mini-stat-label">Purges</span>
+                    <span class="mini-stat-value count-up-number" id="dislikes-val-{{ post.id }}" data-target="{{ post.dislikes }}">{{ post.dislikes }}</span>
+                </div>
+            </div>
+
+            <!-- Main dispatch actions -->
+            <div class="stacked-actions">
+                {% if post.demo_link %}
+                <a href="{{ post.demo_link }}" 
+                   target="_blank" 
+                   rel="noopener" 
+                   class="stacked-btn btn-demo action-link" 
+                   data-id="{{ post.id }}">
+                    🎬 Watch Demo
+                </a>
+                {% endif %}
+                <a href="{{ post.normal_link }}" 
+                   target="_blank" 
+                   rel="noopener" 
+                   class="stacked-btn btn-normal action-link" 
+                   data-id="{{ post.id }}">
+                    👤 Normal Access
+                </a>
+                <a href="{{ post.premium_link }}" 
+                   target="_blank" 
+                   rel="noopener" 
+                   class="stacked-btn btn-premium action-link" 
+                   data-id="{{ post.id }}">
+                    💎 Premium Access
+                </a>
+            </div>
+
+            <!-- Footer micro-interactions -->
+            <div class="card-footer-actions">
+                <button class="action-icon-btn vote-btn {{ 'active-like' if post.user_vote == 'like' else '' }}" 
+                        data-id="{{ post.id }}" 
+                        data-type="like">
+                    👍 <span id="btn-like-txt-{{ post.id }}">{{ post.likes }}</span>
+                </button>
+                <button class="action-icon-btn vote-btn {{ 'active-dislike' if post.user_vote == 'dislike' else '' }}" 
+                        data-id="{{ post.id }}" 
+                        data-type="dislike">
+                    👎 <span id="btn-dislike-txt-{{ post.id }}">{{ post.dislikes }}</span>
+                </button>
+                <button class="action-icon-btn share-btn" data-url="{{ canonical_url('/dark-archives') }}#post-card-{{ post.id }}">
+                    📤 Share
+                </button>
+                <button class="action-icon-btn copy-btn" data-url="{{ canonical_url('/dark-archives') }}#post-card-{{ post.id }}">
+                    📋 Copy
+                </button>
+            </div>
+
+        </article>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state animate-in" style="background:var(--glass-surface); border:1px solid var(--glass-border); border-radius:24px; padding:60px 20px;">
+        <div style="font-size: 56px; margin-bottom: 20px;">🌑</div>
+        <div class="panel-title" style="font-size:20px; font-weight:800; color:#ffffff;">Vault is Empty</div>
+        <p style="color:#6b7280; max-width:400px; margin: 8px auto 0;">No active drops in the vault right now. Admins publish drops using `/darkpost` from Telegram bot channels.</p>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+(function() {
+    // ── Wait helper for GSAP ──
+    function waitFor(fn, cb) {
+        if (fn()) { cb(); return; }
+        var t = setInterval(function() { if (fn()) { clearInterval(t); cb(); } }, 150);
+    }
+
+    // ── GSAP Entrance staggered timeline ──
+    waitFor(function() { return typeof gsap !== 'undefined'; }, function() {
+        var cards = document.querySelectorAll('.gsap-hidden');
+        if (cards.length > 0) {
+            gsap.fromTo(cards, 
+                { opacity: 0, y: 50, scale: 0.95 },
+                {
+                    opacity: 1,
+                    y: 0,
+                    scale: 1,
+                    duration: 0.6,
+                    stagger: 0.08,
+                    ease: 'power3.out',
+                    clearProps: 'transform'
+                }
+            );
+        }
+    });
+
+    // ── Live countdown progress ring ticks ──
+    function updateCountdownTimers() {
+        var cards = document.querySelectorAll('.vault-card');
+        var now = Math.floor(Date.now() / 1000);
+        
+        cards.forEach(function(card) {
+            var expires = parseInt(card.getAttribute('data-expires') || 0);
+            var id = card.id.replace('post-card-', '');
+            var seconds = expires - now;
+
+            if (seconds <= 0) {
+                // Instantly remove card when elapsed
+                if (typeof gsap !== 'undefined') {
+                    gsap.to(card, {
+                        opacity: 0,
+                        scale: 0.9,
+                        duration: 0.4,
+                        onComplete: function() { card.remove(); }
+                    });
+                } else {
+                    card.remove();
+                }
+                return;
+            }
+
+            // Expiry warning mode (less than 2 hours)
+            if (seconds < 7200) {
+                card.classList.add('warning-expiry');
+                var badge = card.querySelector('.card-badge');
+                if (badge && !badge.classList.contains('badge-purging')) {
+                    badge.className = 'card-badge badge-purging';
+                    badge.textContent = '⚠️ PURGING SOON';
+                }
+            }
+
+            // Display timer digital clock string
+            var hrs = Math.floor(seconds / 3600);
+            var mins = Math.floor((seconds % 3600) / 60);
+            var secs = seconds % 60;
+            var timerStr = (hrs < 10 ? '0' : '') + hrs + 'h ' +
+                           (mins < 10 ? '0' : '') + mins + 'm ' +
+                           (secs < 10 ? '0' : '') + secs + 's';
+            
+            var textEl = document.getElementById('timer-text-' + id);
+            if (textEl) textEl.textContent = timerStr;
+
+            // Update SVG ring stroke offset
+            var percent = (seconds / 86400) * 100;
+            var ring = document.getElementById('ring-fill-' + id);
+            if (ring) {
+                // Circumference = 2 * PI * r (2 * 3.14159 * 60 = 377)
+                var offset = 377 - (377 * percent) / 100;
+                ring.style.strokeDashoffset = offset;
+            }
+
+            // Update lifetime progress track fill
+            var fill = document.getElementById('progress-fill-' + id);
+            var prgPercent = document.getElementById('progress-percent-' + id);
+            if (fill) fill.style.width = percent.toFixed(1) + '%';
+            if (prgPercent) prgPercent.textContent = percent.toFixed(0) + '% lifetime remaining';
+        });
+    }
+    
+    // Tick immediately and configure interval
+    setInterval(updateCountdownTimers, 1000);
+    updateCountdownTimers();
+
+    // ── Click Action views tracking ──
+    document.querySelectorAll('.action-link').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var post_id = this.getAttribute('data-id');
+            fetch('/api/dark-archives/' + post_id + '/action', { method: 'POST' })
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (data && data.views !== undefined) {
+                        var counter = document.getElementById('views-val-' + post_id);
+                        if (counter) counter.textContent = data.views;
+                    }
+                }).catch(function() {});
+        });
+    });
+
+    // ── Vote system operations ──
+    document.querySelectorAll('.vote-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var post_id = this.getAttribute('data-id');
+            var type = this.getAttribute('data-type');
+            var card = document.getElementById('post-card-' + post_id);
+
+            fetch('/api/dark-archives/' + post_id + '/vote', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ type: type })
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data && data.success) {
+                    // Update counts in card stats and button labels
+                    var viewsEl = document.getElementById('likes-val-' + post_id);
+                    var dislikesEl = document.getElementById('dislikes-val-' + post_id);
+                    var btnLikeVal = document.getElementById('btn-like-txt-' + post_id);
+                    var btnDislikeVal = document.getElementById('btn-dislike-txt-' + post_id);
+                    
+                    if (viewsEl) viewsEl.textContent = data.likes;
+                    if (dislikesEl) dislikesEl.textContent = data.dislikes;
+                    if (btnLikeVal) btnLikeVal.textContent = data.likes;
+                    if (btnDislikeVal) btnDislikeVal.textContent = data.dislikes;
+
+                    // Toggle interactive styling classes
+                    var likeBtn = card.querySelector('.vote-btn[data-type="like"]');
+                    var dislikeBtn = card.querySelector('.vote-btn[data-type="dislike"]');
+                    
+                    if (likeBtn) likeBtn.classList.toggle('active-like', data.user_vote === 'like');
+                    if (dislikeBtn) dislikeBtn.classList.toggle('active-dislike', data.user_vote === 'dislike');
+
+                    if (typeof AZToast !== 'undefined') {
+                        AZToast(data.user_vote !== 'none' ? 'Vote registered successfully!' : 'Vote retracted.', 'success');
+                    }
+                }
+            }).catch(function() {});
+        });
+    });
+
+    // ── Share and Copy Actions ──
+    document.querySelectorAll('.share-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var url = this.getAttribute('data-url');
+            if (navigator.share) {
+                navigator.share({ title: 'Dark Archives Drop', url: url });
+            } else {
+                navigator.clipboard.writeText(url).then(function() {
+                    if (typeof AZToast !== 'undefined') AZToast('Vault link copied to clipboard!', 'success');
+                });
+            }
+        });
+    });
+
+    document.querySelectorAll('.copy-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var url = this.getAttribute('data-url');
+            navigator.clipboard.writeText(url).then(function() {
+                if (typeof AZToast !== 'undefined') AZToast('Link copied directly!', 'success');
+            });
+        });
+    });
+
+    // ── Vault live search filter by post number ──
+    var searchInput = document.getElementById('vault-search-input');
+    if (searchInput) {
+        searchInput.addEventListener('input', function() {
+            var q = this.value.toLowerCase().trim();
+            var cards = document.querySelectorAll('.vault-card');
+            cards.forEach(function(card) {
+                var postNum = card.getAttribute('data-post-number') || '';
+                var match = !q || postNum.includes(q) || ('post #' + postNum).includes(q) || ('#' + postNum).includes(q);
+                card.style.display = match ? '' : 'none';
+            });
+        });
+    }
+
+    // ── Filter pills tag handlers ──
+    document.querySelectorAll('.filter-pill').forEach(function(pill) {
+        pill.addEventListener('click', function() {
+            document.querySelectorAll('.filter-pill').forEach(function(p) { p.classList.remove('active'); });
+            this.classList.add('active');
+            var filter = this.getAttribute('data-filter');
+            var grid = document.getElementById('vault-grid');
+            if (!grid) return;
+            var cards = Array.from(grid.querySelectorAll('.vault-card'));
+
+            // Sort logic based on active filter
+            if (filter === 'all') {
+                // Newest drops (created_at DESC)
+                cards.sort(function(a, b) {
+                    return parseInt(b.getAttribute('data-created')) - parseInt(a.getAttribute('data-created'));
+                });
+            } else if (filter === 'ending') {
+                // Ending soon (seconds_remaining ASC)
+                cards.sort(function(a, b) {
+                    return parseInt(a.getAttribute('data-remaining')) - parseInt(b.getAttribute('data-remaining'));
+                });
+            } else if (filter === 'trending') {
+                // Trending (views DESC)
+                cards.sort(function(a, b) {
+                    return parseInt(b.getAttribute('data-views')) - parseInt(a.getAttribute('data-views'));
+                });
+            } else if (filter === 'liked') {
+                // Most Liked (likes DESC)
+                cards.sort(function(a, b) {
+                    return parseInt(b.getAttribute('data-likes')) - parseInt(a.getAttribute('data-likes'));
+                });
+            } else if (filter === 'viewed') {
+                // Most Viewed (views DESC)
+                cards.sort(function(a, b) {
+                    return parseInt(b.getAttribute('data-views')) - parseInt(a.getAttribute('data-views'));
+                });
+            }
+
+            // Re-render sorting arrangement
+            cards.forEach(function(card) { grid.appendChild(card); });
+        });
+    });
+})();
+</script>
+{% endblock %}
