@@ -6,6 +6,7 @@ import hmac
 import math
 import mimetypes
 import secrets
+import time
 from typing import AsyncGenerator, Optional
 from urllib.parse import urlencode, quote, urljoin
 from xml.sax.saxutils import escape
@@ -715,6 +716,26 @@ def supports_iter_download() -> bool:
     return hasattr(client, "iter_download")
 
 
+# ── In-memory message cache: avoids repeated Telegram API calls per range request ──
+# Key: (chat_id, message_id), Value: (message_object, cached_at_timestamp)
+_msg_cache: dict = {}
+_MSG_CACHE_TTL = 600  # seconds — 10 minutes
+
+def _msg_cache_get(chat_id: int, message_id: int):
+    key = (chat_id, message_id)
+    entry = _msg_cache.get(key)
+    if entry and (time.time() - entry[1]) < _MSG_CACHE_TTL:
+        return entry[0]
+    return None
+
+def _msg_cache_set(chat_id: int, message_id: int, message):
+    key = (chat_id, message_id)
+    _msg_cache[key] = (message, time.time())
+    # Evict old entries if cache grows large
+    if len(_msg_cache) > 200:
+        oldest = sorted(_msg_cache, key=lambda k: _msg_cache[k][1])[:50]
+        for k in oldest:
+            del _msg_cache[k]
 
 async def telegram_stream(message, start: int, end: Optional[int]) -> AsyncGenerator[bytes, None]:
     tg_chunk_size = 1024 * 1024
@@ -754,12 +775,22 @@ async def telegram_stream(message, start: int, end: Optional[int]) -> AsyncGener
 
 
 async def fetch_message(chat_id: int, message_id: int):
+    # Check cache first — avoids Telegram API call on every browser range request
+    cached = _msg_cache_get(chat_id, message_id)
+    if cached is not None:
+        return cached
     try:
-        return await client.get_messages(chat_id, message_id)
+        msg = await client.get_messages(chat_id, message_id)
+        if msg:
+            _msg_cache_set(chat_id, message_id, msg)
+        return msg
     except Exception:
         try:
             await client.get_chat(chat_id)
-            return await client.get_messages(chat_id, message_id)
+            msg = await client.get_messages(chat_id, message_id)
+            if msg:
+                _msg_cache_set(chat_id, message_id, msg)
+            return msg
         except Exception:
             return None
 
