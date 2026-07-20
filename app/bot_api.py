@@ -137,6 +137,10 @@ class DarkPostState(StatesGroup):
     waiting_premium_link = State()
 
 
+class StreamFilenameState(StatesGroup):
+    waiting_for_filename = State()
+
+
 @dataclass(frozen=True)
 class PaymentPlan:
     code: str
@@ -3184,7 +3188,7 @@ async def setvaultpass_cmd(message: Message) -> None:
 
 
 @dp.message(Command("stream"))
-async def stream_reply_cmd(message: Message) -> None:
+async def stream_reply_cmd(message: Message, state: FSMContext) -> None:
     if not is_admin(message.from_user.id if message.from_user else None):
         await message.reply(format_msg("❌ Access Denied", sections=[("", "Admins only.")]), parse_mode="HTML")
         return
@@ -3207,12 +3211,10 @@ async def stream_reply_cmd(message: Message) -> None:
         await message.reply("⚠️ Reply message does not contain any valid media file.")
         return
 
-    # Set up basic parameters
-    normal_token = secrets.token_urlsafe(24)
-    premium_token = secrets.token_urlsafe(24)
-    file_name = getattr(media, "file_name", None) or "file"
+    # Store media details in state context for second step
     mime_type = getattr(media, "mime_type", None) or "video/mp4"
     file_size = getattr(media, "file_size", None) or 0
+    default_name = getattr(media, "file_name", None) or "file.mp4"
 
     media_type = "document"
     if reply.video: media_type = "video"
@@ -3222,19 +3224,61 @@ async def stream_reply_cmd(message: Message) -> None:
     elif reply.video_note: media_type = "video_note"
     elif reply.photo: media_type = "photo"
 
+    await state.update_data(
+        file_id=media.file_id,
+        chat_id=reply.chat.id,
+        message_id=reply.message_id,
+        file_unique_id=media.file_unique_id,
+        mime_type=mime_type,
+        file_size=file_size,
+        media_type=media_type,
+        default_name=default_name
+    )
+
+    await state.set_state(StreamFilenameState.waiting_for_filename)
+    await message.reply(
+        f"✏️ <b>Enter the custom filename</b> for this stream (Default suggestion: <code>{default_name}</code>):",
+        parse_mode="HTML"
+    )
+
+
+@dp.message(StreamFilenameState.waiting_for_filename)
+async def stream_filename_entered(message: Message, state: FSMContext) -> None:
+    if not is_admin(message.from_user.id if message.from_user else None):
+        await message.reply(format_msg("❌ Access Denied", sections=[("", "Admins only.")]), parse_mode="HTML")
+        await state.clear()
+        return
+
+    custom_name = (message.text or "").strip()
+    data = await state.get_data()
+
+    if not custom_name:
+        custom_name = data.get("default_name", "file.mp4")
+
+    # Set up tokens
+    normal_token = secrets.token_urlsafe(24)
+    premium_token = secrets.token_urlsafe(24)
+
     # Default to current section if none exists, or use "stream" section fallback
     section_id, section_name = await store.get_section()
     if not section_id:
         section_id, section_name = "stream_gen", "Direct Stream"
 
     base_ref = dict(
-        file_id=media.file_id, chat_id=reply.chat.id, message_id=reply.message_id,
-        file_unique_id=media.file_unique_id, file_name=file_name, mime_type=mime_type,
-        file_size=file_size, media_type=media_type, created_at=time.time(),
-        section_id=section_id, section_name=section_name,
+        file_id=data["file_id"],
+        chat_id=data["chat_id"],
+        message_id=data["message_id"],
+        file_unique_id=data["file_unique_id"],
+        file_name=custom_name,
+        mime_type=data["mime_type"],
+        file_size=data["file_size"],
+        media_type=data["media_type"],
+        created_at=time.time(),
+        section_id=section_id,
+        section_name=section_name,
     )
 
-    # Store token references (valid for 1 day as requested or default token TTL)
+    # Store token references
     await store.set(normal_token, FileRef(**base_ref, access="normal"), settings.token_ttl_seconds)
     await store.set(premium_token, FileRef(**base_ref, access="premium"), settings.token_ttl_seconds)
 
@@ -3245,8 +3289,8 @@ async def stream_reply_cmd(message: Message) -> None:
         format_msg(
             "⚡ Stream Link Generated",
             sections=[
-                ("File Name", code(file_name)),
-                ("File Size", code(human_bytes(file_size) if 'human_bytes' in globals() or 'human_bytes' in locals() else f"{file_size} bytes")),
+                ("File Name", code(custom_name)),
+                ("File Size", code(human_bytes(data["file_size"]) if 'human_bytes' in globals() or 'human_bytes' in locals() else f"{data['file_size']} bytes")),
                 ("▶️ Stream Link", normal_link),
                 ("⬇️ Direct Download", premium_link)
             ],
