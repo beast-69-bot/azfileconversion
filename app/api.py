@@ -773,8 +773,6 @@ async def stream(token: str, request: Request, range: Optional[str] = Header(Non
         raise HTTPException(status_code=404, detail="Invalid or expired token")
     if ref.access == "normal" and not settings.public_stream:
         raise HTTPException(status_code=403, detail="Streaming is premium-only")
-    if not is_authed(request):
-        raise HTTPException(status_code=401, detail="Password required")
 
     message = await fetch_message(ref.chat_id, ref.message_id)
     stream_target = message if (message and message.media) else ref.file_id
