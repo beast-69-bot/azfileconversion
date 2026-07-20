@@ -3149,6 +3149,42 @@ async def darkpost_premium_handler(message: Message, state: FSMContext) -> None:
     await state.clear()
 
 
+@dp.message(Command("setvaultpass", "vaultpass"))
+async def setvaultpass_cmd(message: Message) -> None:
+    if not is_admin(message.from_user.id if message.from_user else None):
+        await message.reply(format_msg("❌ Access Denied", sections=[("", "Admins only.")]), parse_mode="HTML")
+        return
+    parts = (message.text or "").split(maxsplit=1)
+    if len(parts) < 2:
+        await message.reply(format_msg("⚠️ Usage", sections=[("", code("/setvaultpass <new_password>"))]), parse_mode="HTML")
+        return
+    new_pass = parts[1].strip()
+    if len(new_pass) < 4:
+        await message.reply("⚠️ Password must be at least 4 characters long.")
+        return
+
+    try:
+        if hasattr(store, "set_vault_password"):
+            await store.set_vault_password(new_pass)
+            await message.reply(
+                format_msg(
+                    "🔐 Vault Password Updated",
+                    sections=[
+                        ("Status", "Success"),
+                        ("New Password", code(new_pass))
+                    ],
+                    tip="Users must enter this new password to explore the Dark Archives."
+                ),
+                parse_mode="HTML"
+            )
+        else:
+            await message.reply("❌ Database configuration error: set_vault_password method missing.")
+    except Exception as e:
+        await message.reply(f"❌ Failed to set password: {str(e)}")
+
+
+
+
 @dp.message(Command("publicsections", "showpublic"))
 async def publicsections_cmd(message: Message) -> None:
     if not is_admin(message.from_user.id if message.from_user else None):

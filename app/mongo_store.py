@@ -1220,3 +1220,22 @@ class MongoTokenStore(TokenStore):
         res = await self._dark_posts.delete_many({"expires_at": {"$lte": now}})
         return int(res.deleted_count or 0)
 
+    async def set_vault_password(self, new_password: str) -> None:
+        """
+        Updates the access password for the Dark Archives vault database config.
+        """
+        await self._config_col.update_one(
+            {"_id": "dark_vault_config"},
+            {"$set": {"password": str(new_password).strip()}},
+            upsert=True
+        )
+
+    async def get_vault_password(self) -> str:
+        """
+        Returns current Dark Archives access password. Fallback defaults to 'dark18'.
+        """
+        doc = await self._config_col.find_one({"_id": "dark_vault_config"})
+        if doc and doc.get("password"):
+            return str(doc["password"]).strip()
+        return "dark18"
+

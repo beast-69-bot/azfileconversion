@@ -1,0 +1,260 @@
+{% extends "base.html" %}
+
+{% block title %}Enter Access Key — Dark Archives{% endblock %}
+{% block meta_description %}The requested content archive is locked. Enter the authorization access key password to explore vault drops.{% endblock %}
+
+{% block content %}
+<style>
+    /* Premium Login Vault Panel CSS */
+    :root {
+        --vault-bg: #090909;
+        --vault-glow-purple: rgba(139, 92, 246, 0.4);
+        --vault-glow-rose: rgba(225, 29, 72, 0.4);
+        --glass-surface: rgba(255, 255, 255, 0.02);
+        --glass-border: rgba(255, 255, 255, 0.06);
+    }
+
+    body {
+        background-color: var(--vault-bg) !important;
+        overflow: hidden;
+    }
+
+    /* Ambient animated blurred background blobs */
+    .vault-glow-blob {
+        position: absolute;
+        width: 400px;
+        height: 400px;
+        border-radius: 50%;
+        filter: blur(140px);
+        opacity: 0.1;
+        pointer-events: none;
+        z-index: 0;
+        animation: blobFloat 12s infinite ease-in-out;
+    }
+    .vault-blob-1 {
+        background: radial-gradient(circle, #8b5cf6 0%, transparent 80%);
+        top: 20%;
+        left: 10%;
+    }
+    .vault-blob-2 {
+        background: radial-gradient(circle, #e11d48 0%, transparent 80%);
+        bottom: 10%;
+        right: 10%;
+        animation-delay: -6s;
+    }
+
+    @keyframes blobFloat {
+        0%, 100% { transform: translateY(0) scale(1); }
+        50% { transform: translateY(20px) scale(1.05); }
+    }
+
+    /* Lock Screen Container */
+    .lock-screen-wrapper {
+        min-height: calc(100vh - 160px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+        position: relative;
+        z-index: 1;
+    }
+
+    .lock-card {
+        background: var(--glass-surface);
+        border: 1px solid var(--glass-border);
+        border-radius: 24px;
+        padding: 40px 30px;
+        width: 100%;
+        max-width: 440px;
+        backdrop-filter: blur(20px);
+        text-align: center;
+        box-shadow: 0 30px 60px rgba(0, 0, 0, 0.6);
+        transition: all 0.3s ease;
+    }
+
+    .lock-card:hover {
+        border-color: rgba(225, 29, 72, 0.3);
+        box-shadow: 0 30px 60px rgba(0, 0, 0, 0.6), 0 0 30px rgba(225, 29, 72, 0.1);
+    }
+
+    .lock-icon-ring {
+        width: 80px;
+        height: 80px;
+        background: rgba(225, 29, 72, 0.08);
+        border: 1px solid rgba(225, 29, 72, 0.2);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 32px;
+        margin: 0 auto 24px;
+        animation: pulseLock 2s infinite ease-in-out;
+    }
+
+    @keyframes pulseLock {
+        0%, 100% { box-shadow: 0 0 0 0 rgba(225, 29, 72, 0.2); }
+        50% { box-shadow: 0 0 20px 4px rgba(225, 29, 72, 0.1); }
+    }
+
+    .lock-title {
+        font-family: 'Outfit', sans-serif;
+        font-size: 24px;
+        font-weight: 800;
+        color: #ffffff;
+        margin-bottom: 12px;
+        letter-spacing: -0.5px;
+    }
+
+    .lock-subtitle {
+        font-size: 14px;
+        color: #9ca3af;
+        line-height: 1.5;
+        margin-bottom: 30px;
+    }
+
+    /* Input Field */
+    .lock-input-group {
+        position: relative;
+        margin-bottom: 20px;
+    }
+
+    .lock-input {
+        width: 100%;
+        background: rgba(255, 255, 255, 0.02);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 14px;
+        padding: 14px 20px 14px 44px;
+        font-size: 15px;
+        color: #ffffff;
+        text-align: left;
+        outline: none;
+        transition: all 0.3s ease;
+    }
+
+    .lock-input:focus {
+        border-color: #ef4444;
+        background: rgba(255, 255, 255, 0.04);
+        box-shadow: 0 0 15px rgba(239, 68, 68, 0.15);
+    }
+
+    .lock-input-icon {
+        position: absolute;
+        left: 16px;
+        top: 50%;
+        transform: translateY(-50%);
+        font-size: 16px;
+        color: #6b7280;
+    }
+
+    /* Submit Button */
+    .lock-btn {
+        width: 100%;
+        background: linear-gradient(135deg, #e11d48 0%, #be123c 100%);
+        border: none;
+        padding: 14px;
+        border-radius: 14px;
+        color: #ffffff;
+        font-size: 14px;
+        font-weight: 700;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        box-shadow: 0 0 15px rgba(225, 29, 72, 0.2);
+        transition: all 0.25s ease;
+    }
+
+    .lock-btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 5px 25px rgba(225, 29, 72, 0.45);
+    }
+
+    .lock-btn:active {
+        transform: translateY(0);
+    }
+
+    .lock-error-alert {
+        background: rgba(239, 68, 68, 0.1);
+        border: 1px solid rgba(239, 68, 68, 0.25);
+        color: #ef4444;
+        padding: 10px;
+        border-radius: 10px;
+        font-size: 12px;
+        font-weight: 600;
+        margin-top: 16px;
+        display: none;
+    }
+</style>
+
+<!-- Background glows -->
+<div class="vault-glow-blob vault-blob-1"></div>
+<div class="vault-glow-blob vault-blob-2"></div>
+
+<div class="lock-screen-wrapper">
+    <article class="lock-card">
+        <div class="lock-icon-ring">🔑</div>
+        <h2 class="lock-title">Vault Access Protected</h2>
+        <p class="lock-subtitle">
+            Enter the premium authorization key to access the Dark Archives vault. If you don't have the password, check telegram or contact admin support.
+        </p>
+
+        <form id="vault-auth-form" onsubmit="handleAuthSubmit(event)">
+            <div class="lock-input-group">
+                <span class="lock-input-icon">🔒</span>
+                <input type="password" 
+                       id="vault-pass-input" 
+                       class="lock-input" 
+                       placeholder="Enter Access Key..." 
+                       required 
+                       autocomplete="current-password" />
+            </div>
+            
+            <button type="submit" class="lock-btn" id="lock-submit-btn">
+                <span>Unlock Vault</span> ⚡
+            </button>
+            
+            <div id="auth-error-alert" class="lock-error-alert">Incorrect password entered. Please try again.</div>
+        </form>
+    </article>
+</div>
+
+<script>
+function handleAuthSubmit(e) {
+    e.preventDefault();
+    var password = document.getElementById('vault-pass-input').value.trim();
+    var btn = document.getElementById('lock-submit-btn');
+    var errorEl = document.getElementById('auth-error-alert');
+
+    if (!password) return;
+
+    btn.disabled = true;
+    btn.querySelector('span').textContent = 'Authorizing...';
+    errorEl.style.display = 'none';
+
+    fetch('/api/dark-archives/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: password })
+    })
+    .then(function(r) { return r.json().then(function(data) { return { status: r.status, data: data }; }); })
+    .then(function(res) {
+        if (res.status === 200 && res.data.success) {
+            // Unlock complete! Reload to vault index
+            window.location.reload();
+        } else {
+            btn.disabled = false;
+            btn.querySelector('span').textContent = 'Unlock Vault';
+            errorEl.style.display = 'block';
+            errorEl.textContent = res.data.error || 'Incorrect password entered.';
+        }
+    })
+    .catch(function() {
+        btn.disabled = false;
+        btn.querySelector('span').textContent = 'Unlock Vault';
+        errorEl.style.display = 'block';
+        errorEl.textContent = 'Connection error. Please try again.';
+    });
+}
+</script>
+{% endblock %}

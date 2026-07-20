@@ -275,8 +275,29 @@ async def health():
 @app.get("/dark-archives", response_class=HTMLResponse)
 async def dark_archives_page(request: Request):
     """
-    Renders the Premium Dark Archives vault page.
+    Renders the Premium Dark Archives vault page. Enforces password protection.
     """
+    # Fetch configured password
+    vault_pass = "dark18"
+    if hasattr(store, "get_vault_password"):
+        vault_pass = await store.get_vault_password()
+
+    # Generate expected auth cookie hash validation value
+    expected_hash = hashlib.sha256(vault_pass.encode()).hexdigest()
+    auth_cookie = request.cookies.get("dark_vault_auth")
+
+    # If password protection is active and cookie is missing/incorrect, load login page
+    if auth_cookie != expected_hash:
+        return templates.TemplateResponse(
+            request=request,
+            name="dark_login.html",
+            context={
+                "request": request,
+                "error": False,
+                "canonical_url": canonical_url("/dark-archives"),
+            }
+        )
+
     try:
         posts = []
         if hasattr(store, "list_dark_posts"):
@@ -303,6 +324,38 @@ async def dark_archives_page(request: Request):
             "canonical_url": canonical_url("/dark-archives"),
         },
     )
+
+
+@app.post("/api/dark-archives/auth", response_class=JSONResponse)
+async def api_dark_vault_auth(request: Request):
+    """
+    Verifies the submitted vault password and issues a cookie on success.
+    """
+    try:
+        body = await request.json()
+        password = str(body.get("password", "")).strip()
+
+        vault_pass = "dark18"
+        if hasattr(store, "get_vault_password"):
+            vault_pass = await store.get_vault_password()
+
+        if password == vault_pass:
+            cookie_hash = hashlib.sha256(vault_pass.encode()).hexdigest()
+            response = JSONResponse({"success": True})
+            # Register auth cookie valid for 7 days
+            response.set_cookie(
+                "dark_vault_auth",
+                cookie_hash,
+                httponly=True,
+                max_age=60 * 60 * 24 * 7,
+                samesite="lax",
+                secure=False  # Allow local/heroku routing without https restrictions if testing
+            )
+            return response
+        else:
+            return JSONResponse({"success": False, "error": "Incorrect password entered."}, status_code=401)
+    except Exception as e:
+        return JSONResponse({"success": False, "error": str(e)}, status_code=500)
 
 
 @app.post("/api/dark-archives/{post_id}/action", response_class=JSONResponse)
