@@ -1011,6 +1011,7 @@
   overflow: hidden;
   transition: opacity 0.4s ease;
   background: #030306;
+  pointer-events: none; /* Let clicks pass through to play button */
 }
 
 /* Shimmer sweep animation */
