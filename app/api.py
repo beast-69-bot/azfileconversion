@@ -1242,9 +1242,9 @@ async def player(token: str, request: Request):
     download_button_url = ""
     if settings.bot_username:
         if ref.access == "premium":
-            download_button_url = f"https://telegram.me/{settings.bot_username}?start=dl_{token}"
+            download_button_url = f"{settings.base_url}/player/{token}/download"
         elif getattr(ref, "dl_token", None):
-            download_button_url = f"https://telegram.me/{settings.bot_username}?start=dl_{ref.dl_token}"
+            download_button_url = f"{settings.base_url}/player/{ref.dl_token}/download"
 
     response = templates.TemplateResponse(
         request=request,
