@@ -3183,6 +3183,78 @@ async def setvaultpass_cmd(message: Message) -> None:
         await message.reply(f"❌ Failed to set password: {str(e)}")
 
 
+@dp.message(Command("stream"))
+async def stream_reply_cmd(message: Message) -> None:
+    if not is_admin(message.from_user.id if message.from_user else None):
+        await message.reply(format_msg("❌ Access Denied", sections=[("", "Admins only.")]), parse_mode="HTML")
+        return
+
+    reply = message.reply_to_message
+    if not reply:
+        await message.reply(
+            "⚠️ <b>Usage:</b> Reply to any file (video, document, audio, animation, voice) with <code>/stream</code> to generate its streaming link.",
+            parse_mode="HTML"
+        )
+        return
+
+    # Extract media from reply message
+    media = (
+        reply.document or reply.video or reply.audio or reply.animation or 
+        reply.voice or reply.video_note or (reply.photo[-1] if reply.photo else None)
+    )
+
+    if not media:
+        await message.reply("⚠️ Reply message does not contain any valid media file.")
+        return
+
+    # Set up basic parameters
+    normal_token = secrets.token_urlsafe(24)
+    premium_token = secrets.token_urlsafe(24)
+    file_name = getattr(media, "file_name", None) or "file"
+    mime_type = getattr(media, "mime_type", None) or "video/mp4"
+    file_size = getattr(media, "file_size", None) or 0
+
+    media_type = "document"
+    if reply.video: media_type = "video"
+    elif reply.audio: media_type = "audio"
+    elif reply.animation: media_type = "animation"
+    elif reply.voice: media_type = "voice"
+    elif reply.video_note: media_type = "video_note"
+    elif reply.photo: media_type = "photo"
+
+    # Default to current section if none exists, or use "stream" section fallback
+    section_id, section_name = await store.get_section()
+    if not section_id:
+        section_id, section_name = "stream_gen", "Direct Stream"
+
+    base_ref = dict(
+        file_id=media.file_id, chat_id=reply.chat.id, message_id=reply.message_id,
+        file_unique_id=media.file_unique_id, file_name=file_name, mime_type=mime_type,
+        file_size=file_size, media_type=media_type, created_at=time.time(),
+        section_id=section_id, section_name=section_name,
+    )
+
+    # Store token references (valid for 1 day as requested or default token TTL)
+    await store.set(normal_token, FileRef(**base_ref, access="normal"), settings.token_ttl_seconds)
+    await store.set(premium_token, FileRef(**base_ref, access="premium"), settings.token_ttl_seconds)
+
+    normal_link = build_link(normal_token)
+    premium_link = f"{settings.base_url}/player/{premium_token}/download"
+
+    await message.reply(
+        format_msg(
+            "⚡ Stream Link Generated",
+            sections=[
+                ("File Name", code(file_name)),
+                ("File Size", code(human_bytes(file_size) if 'human_bytes' in globals() or 'human_bytes' in locals() else f"{file_size} bytes")),
+                ("▶️ Stream Link", normal_link),
+                ("⬇️ Direct Download", premium_link)
+            ],
+            tip="This link connects directly to your telegram file and streams chunks dynamically."
+        ),
+        parse_mode="HTML",
+        disable_web_page_preview=True
+    )
 
 
 @dp.message(Command("publicsections", "showpublic"))
