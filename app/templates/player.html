@@ -122,6 +122,7 @@
     var mediaEl = document.getElementById('player');
     if (!mediaEl) return;
     new Plyr(mediaEl, {
+      ratio: '16:9',
       controls: [
         'play-large', 'play', 'progress', 'current-time',
         'mute', 'volume', 'settings', 'pip', 'airplay', 'fullscreen'
