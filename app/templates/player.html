@@ -100,9 +100,8 @@
           <div class="panel-title">Dispatch</div>
           <p class="panel-copy">Open the direct stream instantly or hand off the premium route to Telegram for download-friendly delivery.</p>
           <div class="actions-row">
-            <a class="btn btn-secondary" href="/stream/{{ token }}">Direct Stream</a>
             {% if download_button_url %}
-            <a class="btn btn-primary" href="{{ download_button_url }}">Telegram Download</a>
+            <a class="btn btn-primary" href="{{ download_button_url }}">Download File</a>
             {% endif %}
             <button id="share-btn" class="btn btn-ghost">Share</button>
             <button id="like-btn" class="btn btn-ghost {{ 'active' if liked else '' }}" data-liked="{{ 'true' if liked else 'false' }}" data-token="{{ token }}">
