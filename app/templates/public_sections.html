@@ -22,7 +22,7 @@
                 <p class="lede">Only admin-approved sections are shown here. Open the normal route for protected streaming or the premium route for Telegram delivery.</p>
                 <div class="chip-row">
                     <span class="chip chip-accent">
-                        <span class="count-up-number" data-target="{{ section_cards|length }}">{{ section_cards|length }}</span> public routes
+                        <span class="count-up-number" data-target="{{ section_cards|length }}">{{ section_cards|length }}</span>&nbsp;public routes
                     </span>
                     <span class="chip">Normal streaming</span>
                     <span class="chip">Premium handoff</span>
@@ -70,17 +70,17 @@
 
         <div class="public-section-grid gsap-stagger-parent" id="sections-grid">
             {% for section in section_cards %}
-            <article class="public-section-card gsap-stagger-child card-hoverable" style="border-radius:var(--radius-md);overflow:hidden;">
-                <div>
-                    <span class="route-kicker">Public section</span>
-                    <h2 style="margin:0 0 4px 0;font-size:1rem;">
-                        <a href="{{ section.href }}" style="color:inherit;text-decoration:none;">{{ section.name }}</a>
+            <article class="public-section-card gsap-stagger-child card-hoverable" style="border-radius:12px;overflow:hidden;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);padding:20px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;transition:all 0.3s ease;">
+                <div style="flex:1;">
+                    <span class="route-kicker" style="font-size:11px;font-weight:700;color:var(--color-secondary,#00f2fe);text-transform:uppercase;letter-spacing:1px;">Public section</span>
+                    <h2 style="margin:4px 0 6px 0;font-size:16px;font-weight:700;">
+                        <a href="{{ section.href }}" style="color:#ffffff;text-decoration:none;transition:color 0.2s ease;">{{ section.name }}</a>
                     </h2>
-                    <p>Open this published route with normal or premium access.</p>
+                    <p style="margin:0;font-size:13px;color:#9ca3af;line-height:1.4;">Open this published route with normal or premium access.</p>
                 </div>
-                <div class="public-section-actions">
-                    <a class="btn btn-secondary" href="{{ section.href }}">Normal Open</a>
-                    <a class="btn btn-ghost" href="{{ section.premium_href }}">Premium Open</a>
+                <div class="public-section-actions" style="display:flex;gap:10px;margin-left:20px;flex-shrink:0;">
+                    <a class="btn btn-secondary" href="{{ section.href }}" style="padding:10px 18px;font-size:13px;font-weight:600;border-radius:30px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.04);color:#ffffff;text-decoration:none;transition:all 0.2s ease;">Normal Open</a>
+                    <a class="btn btn-ghost" href="{{ section.premium_href }}" style="padding:10px 18px;font-size:13px;font-weight:600;border-radius:30px;border:1px solid var(--color-primary,#e11d48);background:transparent;color:var(--color-primary,#e11d48);text-decoration:none;transition:all 0.2s ease;">Premium Open</a>
                 </div>
             </article>
             {% endfor %}
