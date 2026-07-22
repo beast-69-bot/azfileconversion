@@ -73,7 +73,7 @@
                 </defs>
                 <polygon points="26,20 46,32 26,44" fill="rgba(225,29,72,0.9)"/>
               </svg>
-              <span class="player-loader-text">Loading stream... <span id="loader-pct" style="color:#e11d48;font-weight:700;margin-left:4px;">0%</span></span>
+              <span class="player-loader-text"><span id="loader-status">Press ▶ Play to Stream</span> <span id="loader-pct" style="color:#e11d48;font-weight:700;margin-left:4px;display:none;">0%</span></span>
             </div>
           </div>
           {% if media_tag == "audio" %}
@@ -160,6 +160,7 @@
     // ── Buffer progress percentage calculation ──
     var loader = document.getElementById('player-loader');
     var pctEl = document.getElementById('loader-pct');
+    var statusEl = document.getElementById('loader-status');
 
     function updateBufferPercentage() {
       if (!mediaEl) return;
@@ -168,7 +169,11 @@
         var bufferedEnd = mediaEl.buffered.end(mediaEl.buffered.length - 1);
         var percent = Math.min(100, Math.round((bufferedEnd / duration) * 100));
         if (pctEl) {
+          pctEl.style.display = 'inline';
           pctEl.textContent = percent + '%';
+        }
+        if (statusEl) {
+          statusEl.textContent = 'Buffering...';
         }
       }
     }
@@ -179,12 +184,25 @@
     player.on('progress', updateBufferPercentage);
 
     if (loader) {
+      loader.style.cursor = 'pointer';
+      loader.addEventListener('click', function() {
+        if (statusEl) statusEl.textContent = 'Buffering...';
+        if (pctEl) pctEl.style.display = 'inline';
+        player.play();
+      });
+
+      player.on('play', function() {
+        if (statusEl) statusEl.textContent = 'Buffering...';
+        if (pctEl) pctEl.style.display = 'inline';
+      });
+
       player.on('playing', function() {
         if (pctEl) pctEl.textContent = '100%';
         loader.style.opacity = '0';
         loader.style.pointerEvents = 'none';
         setTimeout(function() { loader.style.display = 'none'; }, 400);
       });
+
       player.on('canplay', function() {
         updateBufferPercentage();
       });
