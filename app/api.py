@@ -103,7 +103,7 @@ async def add_cache_headers(request: Request, call_next):
     try:
         response = await call_next(request)
     except Exception:
-        raise
+        return Response(status_code=204)
     if response is not None and hasattr(response, "headers"):
         path = request.url.path
         if path.startswith("/static/"):
