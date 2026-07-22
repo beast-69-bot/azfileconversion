@@ -26,6 +26,7 @@ class Settings:
     direct_download: bool
     reupload_video: bool
     dump_chat_id: int | str | None
+    stream_dump_chat_id: int | str | None
     send_link_as_message: bool
     stream_password: str
     history_limit: int
@@ -77,6 +78,17 @@ def get_settings() -> Settings:
             except ValueError:
                 dump_chat_id_val = dump_chat_id_raw
 
+    stream_dump_raw = os.getenv("STREAM_DUMP_CHAT_ID", "-1004356730594").strip()
+    stream_dump_val: int | str | None = None
+    if stream_dump_raw:
+        if stream_dump_raw.startswith("@"):
+            stream_dump_val = stream_dump_raw
+        else:
+            try:
+                stream_dump_val = int(stream_dump_raw)
+            except ValueError:
+                stream_dump_val = stream_dump_raw
+
     if not api_id or not api_hash or not bot_token:
         raise SystemExit("Missing API_ID, API_HASH, or BOT_TOKEN in environment.")
 
@@ -103,6 +115,7 @@ def get_settings() -> Settings:
         direct_download=direct_download,
         reupload_video=reupload_video,
         dump_chat_id=dump_chat_id_val,
+        stream_dump_chat_id=stream_dump_val,
         send_link_as_message=send_link_as_message,
         stream_password=stream_password,
         history_limit=history_limit,

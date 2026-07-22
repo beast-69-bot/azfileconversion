@@ -3264,10 +3264,24 @@ async def stream_filename_entered(message: Message, state: FSMContext) -> None:
     if not section_id:
         section_id, section_name = "stream_gen", "Direct Stream"
 
+    target_chat_id = data["chat_id"]
+    target_message_id = data["message_id"]
+
+    stream_dump = getattr(settings, "stream_dump_chat_id", None) or os.getenv("STREAM_DUMP_CHAT_ID", "-1004356730594")
+    if stream_dump:
+        try:
+            dump_chat = int(stream_dump) if str(stream_dump).replace("-", "").isdigit() else stream_dump
+            dumped_msg = await bot.copy_message(chat_id=dump_chat, from_chat_id=data["chat_id"], message_id=data["message_id"])
+            if dumped_msg and dumped_msg.message_id:
+                target_chat_id = dump_chat
+                target_message_id = dumped_msg.message_id
+        except Exception as e:
+            logger.warning(f"Failed to copy media to STREAM_DUMP_CHAT_ID ({stream_dump}): {e}")
+
     base_ref = dict(
         file_id=data["file_id"],
-        chat_id=data["chat_id"],
-        message_id=data["message_id"],
+        chat_id=target_chat_id,
+        message_id=target_message_id,
         file_unique_id=data["file_unique_id"],
         file_name=custom_name,
         mime_type=data["mime_type"],
