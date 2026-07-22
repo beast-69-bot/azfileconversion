@@ -46,6 +46,21 @@ client = Client(
     sleep_threshold=10000,
 )
 
+# ── Prevent Telegram Multi-DC Export Authorization FloodWaits ──
+from pyrogram.raw.functions.auth import ExportAuthorization
+
+_export_auth_lock = asyncio.Lock()
+_orig_invoke = client.invoke
+
+async def _locked_invoke(query, *args, **kwargs):
+    if isinstance(query, ExportAuthorization):
+        async with _export_auth_lock:
+            await asyncio.sleep(0.3)
+            return await _orig_invoke(query, *args, **kwargs)
+    return await _orig_invoke(query, *args, **kwargs)
+
+client.invoke = _locked_invoke
+
 _client_started = False
 _client_lock = asyncio.Lock()
 
@@ -85,15 +100,26 @@ def make_section_name(section_id: str) -> str:
 
 @app.middleware("http")
 async def add_cache_headers(request: Request, call_next):
-    response = await call_next(request)
-    path = request.url.path
-    if path.startswith("/static/"):
-        response.headers.setdefault("Cache-Control", "public, max-age=31536000, immutable")
-    elif path == "/favicon.ico":
-        response.headers.setdefault("Cache-Control", "public, max-age=86400")
-    elif request.method == "GET" and response.headers.get("content-type", "").startswith("text/html"):
-        response.headers.setdefault("Cache-Control", "public, max-age=60")
+    try:
+        response = await call_next(request)
+    except Exception:
+        raise
+    if response is not None and hasattr(response, "headers"):
+        path = request.url.path
+        if path.startswith("/static/"):
+            response.headers.setdefault("Cache-Control", "public, max-age=31536000, immutable")
+        elif path == "/favicon.ico":
+            response.headers.setdefault("Cache-Control", "public, max-age=86400")
+        elif request.method == "GET" and (response.headers.get("content-type") or "").startswith("text/html"):
+            response.headers.setdefault("Cache-Control", "public, max-age=60")
     return response
+
+
+@app.get("/placeholder.png")
+async def placeholder_image():
+    # 1x1 transparent PNG byte string to satisfy video poster requests cleanly
+    transparent_png = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15c4\x00\x00\x00\rIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
+    return Response(content=transparent_png, media_type="image/png")
 
 
 async def register_site_visit_safely(visitor_id: str) -> None:
