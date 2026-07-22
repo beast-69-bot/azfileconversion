@@ -3,6 +3,7 @@ import asyncio
 import aiohttp
 import hashlib
 import hmac
+import logging
 import math
 import mimetypes
 import secrets
@@ -10,6 +11,8 @@ import time
 from typing import AsyncGenerator, Optional
 from urllib.parse import urlencode, quote, urljoin
 from xml.sax.saxutils import escape
+
+logger = logging.getLogger("stream_api")
 
 from fastapi import FastAPI, Form, Header, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
@@ -828,20 +831,46 @@ async def fetch_message(chat_id: int, message_id: int):
             return None
 
 
+async def fetch_tg_bot_api_stream_url(file_id: str) -> Optional[str]:
+    if not file_id or not settings.bot_token:
+        return None
+    try:
+        url = f"https://api.telegram.org/bot{settings.bot_token}/getFile?file_id={file_id}"
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, timeout=aiohttp.ClientTimeout(total=4)) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    if data.get("ok") and "file_path" in data.get("result", {}):
+                        file_path = data["result"]["file_path"]
+                        return f"https://api.telegram.org/file/bot{settings.bot_token}/{file_path}"
+    except Exception as e:
+        logger.warning(f"[tg_bot_api_getFile] failed for file_id {file_id}: {e}")
+    return None
+
+async def http_stream_generator(http_url: str, range_header: Optional[str]) -> AsyncGenerator[bytes, None]:
+    req_headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+    }
+    if range_header:
+        req_headers["Range"] = range_header
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(http_url, headers=req_headers) as resp:
+                async for chunk in resp.content.iter_chunked(256 * 1024):
+                    yield chunk
+                    await asyncio.sleep(0)
+    except Exception as e:
+        logger.error(f"[http_stream_generator] exception: {e}")
+        return
+
+
 @app.get("/stream/{token}")
 async def stream(token: str, request: Request, range: Optional[str] = Header(None)):
-    await ensure_client_started()
-
     ref = await store.get(token, settings.token_ttl_seconds)
     if not ref:
         raise HTTPException(status_code=404, detail="Invalid or expired token")
     if ref.access == "normal" and not settings.public_stream:
         raise HTTPException(status_code=403, detail="Streaming is premium-only")
-
-    message = await fetch_message(ref.chat_id, ref.message_id)
-    stream_target = message if (message and message.media) else ref.file_id
-    if not stream_target:
-        raise HTTPException(status_code=404, detail="Message not found")
 
     start, end = parse_range(range, ref.file_size)
     total = ref.file_size
@@ -850,6 +879,33 @@ async def stream(token: str, request: Request, range: Optional[str] = Header(Non
         "Accept-Ranges": "bytes",
         "Content-Type": resolve_mime(ref),
     }
+
+    # ── Fast-path 1: Telegram Bot API Direct HTTP Stream (Bypasses Pyrogram DC Export Rate-Limits completely) ──
+    if ref.file_id:
+        tg_http_url = await fetch_tg_bot_api_stream_url(ref.file_id)
+        if tg_http_url:
+            status_code = 200
+            if range:
+                status_code = 206
+                if total is not None:
+                    content_length = (end - start + 1) if end is not None else total - start
+                    headers["Content-Range"] = f"bytes {start}-{start + content_length - 1}/{total}"
+                    headers["Content-Length"] = str(content_length)
+            elif total is not None:
+                headers["Content-Length"] = str(total)
+
+            return StreamingResponse(
+                http_stream_generator(tg_http_url, range),
+                status_code=status_code,
+                headers=headers,
+            )
+
+    # ── Fallback 2: Pyrogram Client Stream (For files > 20MB or where getFile is unavailable) ──
+    await ensure_client_started()
+    message = await fetch_message(ref.chat_id, ref.message_id)
+    stream_target = message if (message and message.media) else ref.file_id
+    if not stream_target:
+        raise HTTPException(status_code=404, detail="Message not found")
 
     status_code = 200
     if range:
