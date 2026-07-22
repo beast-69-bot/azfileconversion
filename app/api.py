@@ -44,7 +44,7 @@ client = Client(
     "stream_api",
     api_id=settings.api_id,
     api_hash=settings.api_hash,
-    bot_token=settings.bot_token,
+    bot_token=settings.stream_bot_token,
     no_updates=True,
     sleep_threshold=10,
 )
@@ -832,17 +832,18 @@ async def fetch_message(chat_id: int, message_id: int):
 
 
 async def fetch_tg_bot_api_stream_url(file_id: str) -> Optional[str]:
-    if not file_id or not settings.bot_token:
+    token = settings.stream_bot_token or settings.bot_token
+    if not file_id or not token:
         return None
     try:
-        url = f"https://api.telegram.org/bot{settings.bot_token}/getFile?file_id={file_id}"
+        url = f"https://api.telegram.org/bot{token}/getFile?file_id={file_id}"
         async with aiohttp.ClientSession() as session:
             async with session.get(url, timeout=aiohttp.ClientTimeout(total=4)) as resp:
                 if resp.status == 200:
                     data = await resp.json()
                     if data.get("ok") and "file_path" in data.get("result", {}):
                         file_path = data["result"]["file_path"]
-                        return f"https://api.telegram.org/file/bot{settings.bot_token}/{file_path}"
+                        return f"https://api.telegram.org/file/bot{token}/{file_path}"
     except Exception as e:
         logger.warning(f"[tg_bot_api_getFile] failed for file_id {file_id}: {e}")
     return None

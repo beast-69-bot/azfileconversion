@@ -1,4 +1,4 @@
-﻿import os
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -12,6 +12,7 @@ class Settings:
     api_id: int
     api_hash: str
     bot_token: str
+    stream_bot_token: str
     base_url: str
     redis_url: str | None
     mongo_uri: str | None
@@ -48,6 +49,7 @@ def get_settings() -> Settings:
     api_id = int(os.getenv("API_ID", "0"))
     api_hash = os.getenv("API_HASH", "")
     bot_token = os.getenv("BOT_TOKEN", "")
+    stream_bot_token = os.getenv("STREAM_BOT_TOKEN", "").strip() or bot_token
     base_url = os.getenv("BASE_URL", "http://localhost:8000").rstrip("/")
     redis_url = os.getenv("REDIS_URL") or None
     mongo_uri = os.getenv("MONGO_URI") or None
@@ -87,6 +89,7 @@ def get_settings() -> Settings:
         api_id=api_id,
         api_hash=api_hash,
         bot_token=bot_token,
+        stream_bot_token=stream_bot_token,
         base_url=base_url,
         redis_url=redis_url,
         mongo_uri=mongo_uri,
