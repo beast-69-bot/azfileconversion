@@ -43,20 +43,31 @@ client = Client(
     api_hash=settings.api_hash,
     bot_token=settings.bot_token,
     no_updates=True,
-    sleep_threshold=10000,
+    sleep_threshold=10,
 )
 
-# ── Prevent Telegram Multi-DC Export Authorization FloodWaits ──
+# ── Prevent Telegram Multi-DC Export Authorization FloodWaits via In-Memory Caching ──
 from pyrogram.raw.functions.auth import ExportAuthorization
 
+_exported_auth_cache = {}
 _export_auth_lock = asyncio.Lock()
 _orig_invoke = client.invoke
 
 async def _locked_invoke(query, *args, **kwargs):
     if isinstance(query, ExportAuthorization):
+        dc_id = getattr(query, "dc_id", None)
+        if dc_id and dc_id in _exported_auth_cache:
+            return _exported_auth_cache[dc_id]
         async with _export_auth_lock:
-            await asyncio.sleep(0.3)
-            return await _orig_invoke(query, *args, **kwargs)
+            if dc_id and dc_id in _exported_auth_cache:
+                return _exported_auth_cache[dc_id]
+            try:
+                res = await _orig_invoke(query, *args, **kwargs)
+                if dc_id and res:
+                    _exported_auth_cache[dc_id] = res
+                return res
+            except Exception:
+                raise
     return await _orig_invoke(query, *args, **kwargs)
 
 client.invoke = _locked_invoke
@@ -777,19 +788,23 @@ async def telegram_stream(message, start: int, end: Optional[int]) -> AsyncGener
             await asyncio.sleep(0)
         return
 
-    async for chunk in client.stream_media(message, offset=chunk_offset, limit=chunk_limit):
-        if start or end is not None:
-            if start:
-                drop = start % tg_chunk_size
-                chunk = chunk[drop:]
-                start = 0
-            if end is not None:
-                remaining = end + 1
-                if len(chunk) > remaining:
-                    chunk = chunk[:remaining]
-                end = remaining - len(chunk) - 1
-        yield chunk
-        await asyncio.sleep(0)
+    try:
+        async for chunk in client.stream_media(message, offset=chunk_offset, limit=chunk_limit):
+            if start or end is not None:
+                if start:
+                    drop = start % tg_chunk_size
+                    chunk = chunk[drop:]
+                    start = 0
+                if end is not None:
+                    remaining = end + 1
+                    if len(chunk) > remaining:
+                        chunk = chunk[:remaining]
+                    end = remaining - len(chunk) - 1
+            yield chunk
+            await asyncio.sleep(0)
+    except Exception as e:
+        logger.error(f"[stream_media_error] Stream exception: {e}")
+        return
 
 
 async def fetch_message(chat_id: int, message_id: int):
