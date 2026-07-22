@@ -153,7 +153,7 @@
       tooltips: { controls: true, seek: true },
       ads: {
         enabled: true,
-        tagUrl: 'https://s.magsrv.com/v1/vast.php?idz=5972662'
+        tagUrl: 'https://s.magsrv.com/v1/vast.php?idzone=5983464'
       }
     });
 
@@ -161,6 +161,13 @@
     var loader = document.getElementById('player-loader');
     var pctEl = document.getElementById('loader-pct');
     var statusEl = document.getElementById('loader-status');
+
+    function hideLoader() {
+      if (!loader) return;
+      loader.style.opacity = '0';
+      loader.style.pointerEvents = 'none';
+      setTimeout(function() { loader.style.display = 'none'; }, 400);
+    }
 
     function updateBufferPercentage() {
       if (!mediaEl) return;
@@ -176,11 +183,15 @@
           statusEl.textContent = 'Buffering...';
         }
       }
+      if (mediaEl.currentTime > 0 || !mediaEl.paused) {
+        hideLoader();
+      }
     }
 
     mediaEl.addEventListener('progress', updateBufferPercentage);
     mediaEl.addEventListener('timeupdate', updateBufferPercentage);
     mediaEl.addEventListener('canplay', updateBufferPercentage);
+    mediaEl.addEventListener('playing', hideLoader);
     player.on('progress', updateBufferPercentage);
 
     if (loader) {
@@ -196,11 +207,9 @@
         if (pctEl) pctEl.style.display = 'inline';
       });
 
-      player.on('playing', function() {
-        if (pctEl) pctEl.textContent = '100%';
-        loader.style.opacity = '0';
-        loader.style.pointerEvents = 'none';
-        setTimeout(function() { loader.style.display = 'none'; }, 400);
+      player.on('playing', hideLoader);
+      player.on('timeupdate', function() {
+        if (mediaEl.currentTime > 0) hideLoader();
       });
 
       player.on('canplay', function() {
