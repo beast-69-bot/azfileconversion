@@ -73,7 +73,7 @@
                 </defs>
                 <polygon points="26,20 46,32 26,44" fill="rgba(225,29,72,0.9)"/>
               </svg>
-              <span class="player-loader-text">Loading stream...</span>
+              <span class="player-loader-text">Loading stream... <span id="loader-pct" style="color:#e11d48;font-weight:700;margin-left:4px;">0%</span></span>
             </div>
           </div>
           {% if media_tag == "audio" %}
@@ -157,16 +157,36 @@
       }
     });
 
-    // ── Hide loader once video starts playing ──
+    // ── Buffer progress percentage calculation ──
     var loader = document.getElementById('player-loader');
+    var pctEl = document.getElementById('loader-pct');
+
+    function updateBufferPercentage() {
+      if (!mediaEl) return;
+      var duration = mediaEl.duration;
+      if (duration && duration > 0 && mediaEl.buffered && mediaEl.buffered.length > 0) {
+        var bufferedEnd = mediaEl.buffered.end(mediaEl.buffered.length - 1);
+        var percent = Math.min(100, Math.round((bufferedEnd / duration) * 100));
+        if (pctEl) {
+          pctEl.textContent = percent + '%';
+        }
+      }
+    }
+
+    mediaEl.addEventListener('progress', updateBufferPercentage);
+    mediaEl.addEventListener('timeupdate', updateBufferPercentage);
+    mediaEl.addEventListener('canplay', updateBufferPercentage);
+    player.on('progress', updateBufferPercentage);
+
     if (loader) {
       player.on('playing', function() {
+        if (pctEl) pctEl.textContent = '100%';
         loader.style.opacity = '0';
         loader.style.pointerEvents = 'none';
         setTimeout(function() { loader.style.display = 'none'; }, 400);
       });
       player.on('canplay', function() {
-        loader.querySelector('.player-loader-text').textContent = 'Ready — press play';
+        updateBufferPercentage();
       });
     }
   });
