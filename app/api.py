@@ -14,6 +14,39 @@ from xml.sax.saxutils import escape
 
 logger = logging.getLogger("stream_api")
 
+# ── Shared aiohttp session for connection pooling (reused across all requests) ──
+_aiohttp_connector: Optional[aiohttp.TCPConnector] = None
+_aiohttp_session: Optional[aiohttp.ClientSession] = None
+
+# ── Semaphore: max concurrent Pyrogram/Telegram streams (prevents overload) ──
+_STREAM_CONCURRENCY = 20
+_stream_sem: Optional[asyncio.Semaphore] = None
+
+def _get_stream_sem() -> asyncio.Semaphore:
+    global _stream_sem
+    if _stream_sem is None:
+        _stream_sem = asyncio.Semaphore(_STREAM_CONCURRENCY)
+    return _stream_sem
+
+async def get_aiohttp_session() -> aiohttp.ClientSession:
+    global _aiohttp_connector, _aiohttp_session
+    if _aiohttp_session is None or _aiohttp_session.closed:
+        _aiohttp_connector = aiohttp.TCPConnector(
+            limit=100,              # total connection pool size
+            limit_per_host=30,      # max connections per host (Telegram CDN)
+            ttl_dns_cache=300,      # DNS cache 5 min
+            keepalive_timeout=60,   # keep-alive 60s
+            enable_cleanup_closed=True,
+        )
+        _aiohttp_session = aiohttp.ClientSession(
+            connector=_aiohttp_connector,
+            headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36"
+            },
+            timeout=aiohttp.ClientTimeout(total=30, connect=5),
+        )
+    return _aiohttp_session
+
 from fastapi import FastAPI, Form, Header, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -831,35 +864,52 @@ async def fetch_message(chat_id: int, message_id: int):
             return None
 
 
+# ── Bot API URL cache: avoids repeated getFile calls for same file_id ──
+_botapi_url_cache: dict = {}
+_BOTAPI_URL_CACHE_TTL = 3600  # 1 hour
+
 async def fetch_tg_bot_api_stream_url(file_id: str) -> Optional[str]:
     token = settings.stream_bot_token or settings.bot_token
     if not file_id or not token:
         return None
+    # Check in-memory cache first
+    cached = _botapi_url_cache.get(file_id)
+    if cached and (time.time() - cached[1]) < _BOTAPI_URL_CACHE_TTL:
+        return cached[0]
     try:
         url = f"https://api.telegram.org/bot{token}/getFile?file_id={file_id}"
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, timeout=aiohttp.ClientTimeout(total=4)) as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    if data.get("ok") and "file_path" in data.get("result", {}):
-                        file_path = data["result"]["file_path"]
-                        return f"https://api.telegram.org/file/bot{token}/{file_path}"
+        session = await get_aiohttp_session()
+        async with session.get(url, timeout=aiohttp.ClientTimeout(total=4)) as resp:
+            if resp.status == 200:
+                data = await resp.json()
+                if data.get("ok") and "file_path" in data.get("result", {}):
+                    file_path = data["result"]["file_path"]
+                    stream_url = f"https://api.telegram.org/file/bot{token}/{file_path}"
+                    _botapi_url_cache[file_id] = (stream_url, time.time())
+                    # Evict old entries
+                    if len(_botapi_url_cache) > 500:
+                        oldest = sorted(_botapi_url_cache, key=lambda k: _botapi_url_cache[k][1])[:100]
+                        for k in oldest:
+                            del _botapi_url_cache[k]
+                    return stream_url
     except Exception as e:
         logger.warning(f"[tg_bot_api_getFile] failed for file_id {file_id}: {e}")
     return None
 
 async def http_stream_generator(http_url: str, range_header: Optional[str]) -> AsyncGenerator[bytes, None]:
-    req_headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
-    }
+    req_headers = {}
     if range_header:
         req_headers["Range"] = range_header
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(http_url, headers=req_headers) as resp:
-                async for chunk in resp.content.iter_chunked(256 * 1024):
-                    yield chunk
-                    await asyncio.sleep(0)
+        session = await get_aiohttp_session()
+        async with session.get(
+            http_url,
+            headers=req_headers,
+            timeout=aiohttp.ClientTimeout(total=None, connect=5, sock_read=30),
+        ) as resp:
+            async for chunk in resp.content.iter_chunked(512 * 1024):  # 512KB chunks for high throughput
+                yield chunk
+                await asyncio.sleep(0)
     except Exception as e:
         logger.error(f"[http_stream_generator] exception: {e}")
         return
@@ -879,6 +929,7 @@ async def stream(token: str, request: Request, range: Optional[str] = Header(Non
     headers = {
         "Accept-Ranges": "bytes",
         "Content-Type": resolve_mime(ref),
+        "X-Content-Type-Options": "nosniff",
     }
 
     # ── Fast-path 1: Telegram Bot API Direct HTTP Stream (Bypasses Pyrogram DC Export Rate-Limits completely) ──
@@ -901,7 +952,12 @@ async def stream(token: str, request: Request, range: Optional[str] = Header(Non
                 headers=headers,
             )
 
-    # ── Fallback 2: Pyrogram Client Stream (For files > 20MB or where getFile is unavailable) ──
+    # ── Fallback 2: Pyrogram Client Stream with semaphore (For files > 20MB) ──
+    sem = _get_stream_sem()
+    if not sem._value and sem.locked():  # type: ignore[attr-defined]
+        # Too many concurrent Pyrogram streams — return 503 to let client retry
+        raise HTTPException(status_code=503, detail="Server busy, please retry")
+
     await ensure_client_started()
     message = await fetch_message(ref.chat_id, ref.message_id)
     stream_target = message if (message and message.media) else ref.file_id
@@ -919,8 +975,13 @@ async def stream(token: str, request: Request, range: Optional[str] = Header(Non
     elif total is not None:
         headers["Content-Length"] = str(total)
 
+    async def semaphore_stream():
+        async with sem:
+            async for chunk in telegram_stream(stream_target, start, end):
+                yield chunk
+
     return StreamingResponse(
-        telegram_stream(stream_target, start, end),
+        semaphore_stream(),
         status_code=status_code,
         headers=headers,
     )
