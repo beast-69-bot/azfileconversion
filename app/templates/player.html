@@ -81,7 +81,7 @@
             <source src="/stream/{{ token }}" type="{{ mime_type }}" />
           </audio>
           {% else %}
-          <video id="player" controls crossorigin playsinline poster="/placeholder.png">
+          <video id="player" controls crossorigin playsinline preload="auto" poster="/placeholder.png">
             <source src="/stream/{{ token }}" type="{{ mime_type }}" />
           </video>
           {% endif %}

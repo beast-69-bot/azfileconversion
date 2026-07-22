@@ -747,11 +747,7 @@ async def telegram_stream(message, start: int, end: Optional[int]) -> AsyncGener
 
     if supports_iter_download():
         async for chunk in client.iter_download(message, offset=start, length=None if end is None else end - start + 1):
-            if settings.chunk_size and settings.chunk_size < len(chunk):
-                for i in range(0, len(chunk), settings.chunk_size):
-                    yield chunk[i:i + settings.chunk_size]
-            else:
-                yield chunk
+            yield chunk
             await asyncio.sleep(0)
         return
 
@@ -766,11 +762,7 @@ async def telegram_stream(message, start: int, end: Optional[int]) -> AsyncGener
                 if len(chunk) > remaining:
                     chunk = chunk[:remaining]
                 end = remaining - len(chunk) - 1
-        if settings.chunk_size and settings.chunk_size < len(chunk):
-            for i in range(0, len(chunk), settings.chunk_size):
-                yield chunk[i:i + settings.chunk_size]
-        else:
-            yield chunk
+        yield chunk
         await asyncio.sleep(0)
 
 
